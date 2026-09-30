@@ -10,7 +10,7 @@ See: V5_IMPLEMENTATION_ROADMAP.md Phase 4+ for when this data gets used
 
 ARCHITECTURAL PRINCIPLE:
 - This file defines the DATA STRUCTURE only
-- Actual data loading happens in beckonmu/server/conf/at_initial_setup.py
+- Runtime trait data is loaded into the DB by the traits app (evennia seed_traits)
 - Game logic uses database queries, NOT direct imports from this file
 """
 

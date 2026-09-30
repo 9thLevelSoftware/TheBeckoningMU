@@ -111,7 +111,7 @@ ruff format .
 
 ### Tests
 
-Tests use Evennia's Django test runner (pytest is not configured):
+Tests use Evennia's Django test runner:
 
 ```bash
 evennia test --settings settings.py .                 # everything
