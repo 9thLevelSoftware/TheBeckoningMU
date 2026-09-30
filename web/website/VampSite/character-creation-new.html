@@ -1,0 +1,763 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<title>Character Creation - The Beckoning</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=yes" />
+		<link rel="stylesheet" href="assets/css/character-sheet-new.css" />
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link href="https://fonts.googleapis.com/css2?family=Arizonia" rel="stylesheet">
+	</head>
+	<body>
+		<!-- Header -->
+		<header id="header">
+			<section id="gamename">
+				<div id="titletext">
+					<h1>The Beckoning</h1>
+				</div>
+				<div id="subtext">
+					<h4>Character Creation</h4>
+				</div>
+				<div class="nav-links">
+					<a href="index.html" class="button">Back to Home</a>
+				</div>
+			</section>
+		</header>
+
+		<!-- Character Sheet Container -->
+		<div id="character-sheet-container">
+			<div class="sheet-section">
+				<h2>Character Information</h2>
+				<div class="form-grid">
+					<div class="form-group">
+						<label for="character-name">Name</label>
+						<input type="text" id="character-name" name="character-name">
+					</div>
+					<div class="form-group">
+						<label for="concept">Concept</label>
+						<input type="text" id="concept" name="concept">
+					</div>
+					<div class="form-group">
+						<label for="chronicle">Chronicle</label>
+						<input type="text" id="chronicle" name="chronicle" value="The Beckoning">
+					</div>
+				</div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Clan</h2>
+				<div class="form-grid">
+					<div class="form-group full-width">
+						<select id="clan" name="clan">
+							<option value="">Select Clan</option>
+							<option value="brujah">Brujah</option>
+							<option value="gangrel">Gangrel</option>
+							<option value="malkavian">Malkavian</option>
+							<option value="nosferatu">Nosferatu</option>
+							<option value="toreador">Toreador</option>
+							<option value="tremere">Tremere</option>
+							<option value="ventrue">Ventrue</option>
+							<option value="caitiff">Caitiff</option>
+							<option value="thin-blood">Thin-Blood</option>
+						</select>
+					</div>
+				</div>
+				<div class="form-grid">
+					<div class="form-group full-width">
+						<label for="predator">Predator Type</label>
+						<select id="predator" name="predator">
+							<option value="">Select Predator Type</option>
+							<option value="alleycat">Alleycat</option>
+							<option value="bagger">Bagger</option>
+							<option value="bloodleech">Blood Leech</option>
+							<option value="cleaver">Cleaver</option>
+							<option value="consensualist">Consensualist</option>
+							<option value="farmer">Farmer</option>
+							<option value="osiris">Osiris</option>
+							<option value="sandman">Sandman</option>
+							<option value="scenequeen">Scene Queen</option>
+							<option value="siren">Siren</option>
+						</select>
+					</div>
+				</div>
+				<div id="clan-details" class="hidden">
+					<div class="form-group">
+						<label for="clan-bane">Clan Bane</label>
+						<textarea id="clan-bane" readonly></textarea>
+					</div>
+					<div class="form-group">
+						<label for="clan-compulsion">Clan Compulsion</label>
+						<textarea id="clan-compulsion" readonly></textarea>
+					</div>
+				</div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Attributes</h2>
+				<p class="instruction">Distribute dots using the 4/3/2 rule: One column gets 4 dots, one gets 3 dots, and one gets 2 dots.</p>
+				<div id="attribute-points-remaining" class="points-tracker">Points remaining: 9</div>
+
+				<div class="three-column-grid">
+					<!-- Physical Column -->
+					<div class="column" id="physical-attributes-column">
+						<h3>Physical</h3>
+						<div class="column-priority" id="physical-priority"></div>
+						<div class="form-group">
+							<label for="strength">Strength</label>
+							<div class="dots" data-category="physical" data-attribute="strength">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="dexterity">Dexterity</label>
+							<div class="dots" data-category="physical" data-attribute="dexterity">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="stamina">Stamina</label>
+							<div class="dots" data-category="physical" data-attribute="stamina">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+					</div>
+
+					<!-- Social Column -->
+					<div class="column" id="social-attributes-column">
+						<h3>Social</h3>
+						<div class="column-priority" id="social-priority"></div>
+						<div class="form-group">
+							<label for="charisma">Charisma</label>
+							<div class="dots" data-category="social" data-attribute="charisma">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="manipulation">Manipulation</label>
+							<div class="dots" data-category="social" data-attribute="manipulation">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="composure">Composure</label>
+							<div class="dots" data-category="social" data-attribute="composure">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+					</div>
+
+					<!-- Mental Column -->
+					<div class="column" id="mental-attributes-column">
+						<h3>Mental</h3>
+						<div class="column-priority" id="mental-priority"></div>
+						<div class="form-group">
+							<label for="intelligence">Intelligence</label>
+							<div class="dots" data-category="mental" data-attribute="intelligence">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="wits">Wits</label>
+							<div class="dots" data-category="mental" data-attribute="wits">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="resolve">Resolve</label>
+							<div class="dots" data-category="mental" data-attribute="resolve">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Skills</h2>
+				<p class="instruction">Distribute dots using the 13/9/5 rule: One column gets 13 dots, one gets 9 dots, and one gets 5 dots. No skill can exceed 3 dots during character creation.</p>
+				<div id="skill-points-remaining" class="points-tracker">Points remaining: 27</div>
+
+				<div class="three-column-grid">
+					<!-- Physical Skills Column -->
+					<div class="column" id="physical-skills-column">
+						<h3>Physical</h3>
+						<div class="column-priority" id="physical-skills-priority"></div>
+
+						<div class="form-group">
+							<label for="athletics">Athletics</label>
+							<div class="dots" data-category="physical" data-skill="athletics">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="brawl">Brawl</label>
+							<div class="dots" data-category="physical" data-skill="brawl">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="craft">Craft</label>
+							<div class="dots" data-category="physical" data-skill="craft">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="drive">Drive</label>
+							<div class="dots" data-category="physical" data-skill="drive">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="firearms">Firearms</label>
+							<div class="dots" data-category="physical" data-skill="firearms">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="melee">Melee</label>
+							<div class="dots" data-category="physical" data-skill="melee">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="stealth">Stealth</label>
+							<div class="dots" data-category="physical" data-skill="stealth">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="survival">Survival</label>
+							<div class="dots" data-category="physical" data-skill="survival">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+					</div>
+
+					<!-- Social Skills Column -->
+					<div class="column" id="social-skills-column">
+						<h3>Social</h3>
+						<div class="column-priority" id="social-skills-priority"></div>
+
+						<div class="form-group">
+							<label for="animalKen">Animal Ken</label>
+							<div class="dots" data-category="social" data-skill="animalKen">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="etiquette">Etiquette</label>
+							<div class="dots" data-category="social" data-skill="etiquette">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="insight">Insight</label>
+							<div class="dots" data-category="social" data-skill="insight">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="intimidation">Intimidation</label>
+							<div class="dots" data-category="social" data-skill="intimidation">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="leadership">Leadership</label>
+							<div class="dots" data-category="social" data-skill="leadership">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="performance">Performance</label>
+							<div class="dots" data-category="social" data-skill="performance">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="persuasion">Persuasion</label>
+							<div class="dots" data-category="social" data-skill="persuasion">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="streetwise">Streetwise</label>
+							<div class="dots" data-category="social" data-skill="streetwise">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="subterfuge">Subterfuge</label>
+							<div class="dots" data-category="social" data-skill="subterfuge">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+					</div>
+
+					<!-- Mental Skills Column -->
+					<div class="column" id="mental-skills-column">
+						<h3>Mental</h3>
+						<div class="column-priority" id="mental-skills-priority"></div>
+
+						<div class="form-group">
+							<label for="academics">Academics</label>
+							<div class="dots" data-category="mental" data-skill="academics">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="awareness">Awareness</label>
+							<div class="dots" data-category="mental" data-skill="awareness">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="finance">Finance</label>
+							<div class="dots" data-category="mental" data-skill="finance">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="investigation">Investigation</label>
+							<div class="dots" data-category="mental" data-skill="investigation">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="medicine">Medicine</label>
+							<div class="dots" data-category="mental" data-skill="medicine">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="occult">Occult</label>
+							<div class="dots" data-category="mental" data-skill="occult">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="politics">Politics</label>
+							<div class="dots" data-category="mental" data-skill="politics">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="science">Science</label>
+							<div class="dots" data-category="mental" data-skill="science">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="technology">Technology</label>
+							<div class="dots" data-category="mental" data-skill="technology">
+								<span class="dot" data-value="1"></span>
+								<span class="dot" data-value="2"></span>
+								<span class="dot" data-value="3"></span>
+								<span class="dot" data-value="4"></span>
+								<span class="dot" data-value="5"></span>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Disciplines</h2>
+				<p class="instruction">You have 3 dots to distribute among your clan disciplines. No discipline can exceed 2 dots during character creation.</p>
+				<div id="discipline-points-remaining" class="points-tracker">Points remaining: 3</div>
+				<div id="disciplines-container" class="form-grid">
+					<!-- Disciplines will be populated based on clan selection -->
+					<div class="form-group full-width">
+						<p>Select a clan to view available disciplines.</p>
+					</div>
+				</div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Backgrounds</h2>
+				<p class="instruction">You have 7 dots to distribute among backgrounds. No background can exceed 5 dots.</p>
+				<div id="background-points-remaining" class="points-tracker">Points remaining: 7</div>
+				<div class="form-grid">
+					<div class="form-group">
+						<label for="allies">Allies</label>
+						<div class="dots" data-background="allies">
+							<span class="dot" data-value="1"></span>
+							<span class="dot" data-value="2"></span>
+							<span class="dot" data-value="3"></span>
+							<span class="dot" data-value="4"></span>
+							<span class="dot" data-value="5"></span>
+						</div>
+					</div>
+					<div class="form-group">
+						<label for="contacts">Contacts</label>
+						<div class="dots" data-background="contacts">
+							<span class="dot" data-value="1"></span>
+							<span class="dot" data-value="2"></span>
+							<span class="dot" data-value="3"></span>
+							<span class="dot" data-value="4"></span>
+							<span class="dot" data-value="5"></span>
+						</div>
+					</div>
+					<div class="form-group">
+						<label for="fame">Fame</label>
+						<div class="dots" data-background="fame">
+							<span class="dot" data-value="1"></span>
+							<span class="dot" data-value="2"></span>
+							<span class="dot" data-value="3"></span>
+							<span class="dot" data-value="4"></span>
+							<span class="dot" data-value="5"></span>
+						</div>
+					</div>
+					<div class="form-group">
+						<label for="herd">Herd</label>
+						<div class="dots" data-background="herd">
+							<span class="dot" data-value="1"></span>
+							<span class="dot" data-value="2"></span>
+							<span class="dot" data-value="3"></span>
+							<span class="dot" data-value="4"></span>
+							<span class="dot" data-value="5"></span>
+						</div>
+					</div>
+					<div class="form-group">
+						<label for="influence">Influence</label>
+						<div class="dots" data-background="influence">
+							<span class="dot" data-value="1"></span>
+							<span class="dot" data-value="2"></span>
+							<span class="dot" data-value="3"></span>
+							<span class="dot" data-value="4"></span>
+							<span class="dot" data-value="5"></span>
+						</div>
+					</div>
+					<div class="form-group">
+						<label for="resources">Resources</label>
+						<div class="dots" data-background="resources">
+							<span class="dot" data-value="1"></span>
+							<span class="dot" data-value="2"></span>
+							<span class="dot" data-value="3"></span>
+							<span class="dot" data-value="4"></span>
+							<span class="dot" data-value="5"></span>
+						</div>
+					</div>
+					<div class="form-group">
+						<label for="retainer">Retainer</label>
+						<div class="dots" data-background="retainer">
+							<span class="dot" data-value="1"></span>
+							<span class="dot" data-value="2"></span>
+							<span class="dot" data-value="3"></span>
+							<span class="dot" data-value="4"></span>
+							<span class="dot" data-value="5"></span>
+						</div>
+					</div>
+					<div class="form-group">
+						<label for="status">Status</label>
+						<div class="dots" data-background="status">
+							<span class="dot" data-value="1"></span>
+							<span class="dot" data-value="2"></span>
+							<span class="dot" data-value="3"></span>
+							<span class="dot" data-value="4"></span>
+							<span class="dot" data-value="5"></span>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Specialties</h2>
+				<p class="instruction">Add specialties for your skills. Each specialty gives a bonus die when that specific application of the skill is used.</p>
+				<div class="form-grid">
+					<div class="form-group">
+						<label for="specialty-skill">Skill</label>
+						<select id="specialty-skill">
+							<option value="">Select Skill</option>
+							<optgroup label="Physical">
+								<option value="athletics">Athletics</option>
+								<option value="brawl">Brawl</option>
+								<option value="craft">Craft</option>
+								<option value="drive">Drive</option>
+								<option value="firearms">Firearms</option>
+								<option value="melee">Melee</option>
+								<option value="stealth">Stealth</option>
+								<option value="survival">Survival</option>
+							</optgroup>
+							<optgroup label="Social">
+								<option value="animalKen">Animal Ken</option>
+								<option value="etiquette">Etiquette</option>
+								<option value="insight">Insight</option>
+								<option value="intimidation">Intimidation</option>
+								<option value="leadership">Leadership</option>
+								<option value="performance">Performance</option>
+								<option value="persuasion">Persuasion</option>
+								<option value="streetwise">Streetwise</option>
+								<option value="subterfuge">Subterfuge</option>
+							</optgroup>
+							<optgroup label="Mental">
+								<option value="academics">Academics</option>
+								<option value="awareness">Awareness</option>
+								<option value="finance">Finance</option>
+								<option value="investigation">Investigation</option>
+								<option value="medicine">Medicine</option>
+								<option value="occult">Occult</option>
+								<option value="politics">Politics</option>
+								<option value="science">Science</option>
+								<option value="technology">Technology</option>
+							</optgroup>
+						</select>
+					</div>
+					<div class="form-group">
+						<label for="specialty-name">Specialty</label>
+						<input type="text" id="specialty-name" placeholder="e.g., Painting, Hacking, etc.">
+					</div>
+					<div class="form-group">
+						<label>&nbsp;</label>
+						<button id="add-specialty" class="button small">Add Specialty</button>
+					</div>
+				</div>
+				<div id="specialties-list" class="tags-list"></div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Advantages</h2>
+				<p class="instruction">Select advantages for your character. These represent special resources or connections.</p>
+				<div class="form-grid">
+					<div class="form-group">
+						<label for="beautiful">Beautiful</label>
+						<div class="dots" data-advantage="beautiful">
+							<span class="dot" data-value="1"></span>
+							<span class="dot" data-value="2"></span>
+							<span class="dot" data-value="3"></span>
+							<span class="dot" data-value="4"></span>
+							<span class="dot" data-value="5"></span>
+						</div>
+					</div>
+					<div class="form-group">
+						<label for="haven">Haven</label>
+						<div class="dots" data-advantage="haven">
+							<span class="dot" data-value="1"></span>
+							<span class="dot" data-value="2"></span>
+							<span class="dot" data-value="3"></span>
+							<span class="dot" data-value="4"></span>
+							<span class="dot" data-value="5"></span>
+						</div>
+					</div>
+					<div class="form-group">
+						<label for="resources">Resources</label>
+						<div class="dots" data-advantage="resources">
+							<span class="dot" data-value="1"></span>
+							<span class="dot" data-value="2"></span>
+							<span class="dot" data-value="3"></span>
+							<span class="dot" data-value="4"></span>
+							<span class="dot" data-value="5"></span>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Flaws</h2>
+				<p class="instruction">Select flaws for your character. These represent weaknesses or complications.</p>
+				<div class="form-grid">
+					<div class="form-group">
+						<label for="flaw-name">Flaw</label>
+						<input type="text" id="flaw-name" placeholder="e.g., Addiction, Dark Secret, etc.">
+					</div>
+					<div class="form-group">
+						<label for="flaw-rating">Rating</label>
+						<select id="flaw-rating">
+							<option value="1">1 (Minor)</option>
+							<option value="2">2 (Moderate)</option>
+							<option value="3">3 (Major)</option>
+						</select>
+					</div>
+					<div class="form-group">
+						<label>&nbsp;</label>
+						<button id="add-flaw" class="button small">Add Flaw</button>
+					</div>
+				</div>
+				<div id="flaws-list" class="tags-list"></div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Derived Stats</h2>
+				<div class="form-grid">
+					<div class="form-group">
+						<label for="health">Health</label>
+						<input type="text" id="health" readonly>
+					</div>
+					<div class="form-group">
+						<label for="willpower">Willpower</label>
+						<input type="text" id="willpower" readonly>
+					</div>
+					<div class="form-group">
+						<label for="humanity">Humanity</label>
+						<input type="text" id="humanity" value="7" readonly>
+					</div>
+					<div class="form-group">
+						<label for="blood-potency">Blood Potency</label>
+						<input type="text" id="blood-potency" value="1" readonly>
+					</div>
+					<div class="form-group">
+						<label for="hunger">Hunger</label>
+						<input type="text" id="hunger" value="1" readonly>
+					</div>
+				</div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Notes</h2>
+				<div class="form-group full-width">
+					<textarea id="character-notes" placeholder="Additional notes about your character..."></textarea>
+				</div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Submit Character</h2>
+				<p class="instruction">When you're satisfied with your character, click the button below to submit it to the Storyteller.</p>
+				<div class="form-group">
+					<button id="submit-character" class="button">Submit Character</button>
+					<div id="submission-status" class="hidden"></div>
+					<textarea id="json-output" class="hidden" readonly></textarea>
+				</div>
+			</div>
+		</div>
+
+		<!-- Scripts -->
+		<script src="assets/js/character-sheet-new.js"></script>
+	</body>
+</html>
