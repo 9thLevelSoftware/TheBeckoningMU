@@ -6,11 +6,10 @@ authors = [
     {name = "Devil", email = "dasblueeyeddevil@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
-    "evennia>=5.0.1,<6.0.0",
+    "evennia>=6.1.0,<7.0.0",
     "gitpython>=3.1.45,<4.0.0",
-    "setuptools>=70",
 ]
 
 [dependency-groups]
@@ -20,7 +19,7 @@ dev = [
 ]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 120
 exclude = [
     ".git",

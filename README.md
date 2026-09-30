@@ -6,9 +6,9 @@ A **Vampire: The Masquerade 5th Edition** MUD built on [Evennia](https://www.eve
 
 ## Requirements
 
-- Python **3.11+**
+- Python **3.12+**
 - [uv](https://docs.astral.sh/uv/) (recommended) or another PEP 621-compatible tool
-- Evennia **5.x** (installed as a project dependency)
+- Evennia **6.x** (installed as a project dependency)
 
 ## Quick Start
 
