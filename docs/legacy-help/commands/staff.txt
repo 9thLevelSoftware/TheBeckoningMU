@@ -1,0 +1,145 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                    STAFF APPROVAL COMMANDS                        |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+Staff commands for character application review and approval.
+
+|WCOMMANDS (STAFF ONLY):|n
+
+  |y+pending|n                  - List all pending character applications
+  |y+review <character>|n       - Review a character application in detail
+  |y+charedit <char>/<trait>=<value>|n - Edit character traits
+  |y+approve <character>|n      - Approve character for play
+  |y+reject <char>/<reason>|n   - Reject application with feedback
+  |y+import <character>=<file>|n - Import character from JSON
+
+|WEXAMPLES:|n
+
+  |y+pending|n
+    List all characters awaiting staff review
+
+  |y+review Alice|n
+    Review Alice's character application
+
+  |y+charedit Alice/strength=3|n
+    Set Alice's Strength to 3
+
+  |y+charedit Bob/discipline.celerity=2|n
+    Set Bob's Celerity discipline to 2
+
+  |y+approve Alice|n
+    Approve Alice's character for play
+
+  |y+reject Bob/Clan choice doesn't match concept, please revise|n
+    Reject Bob's application with feedback
+
+  |y+import Charlie=characters/charlie.json|n
+    Import character data from JSON file
+
+|WCHARACTER REVIEW PROCESS:|n
+
+1. |y+pending|n - See list of submitted applications
+2. |y+review <char>|n - Pull up full character sheet
+3. Check for:
+   - |yMechanical correctness|n (point allocation, legal choices)
+   - |yConcept coherence|n (does it all make sense together?)
+   - |yLore accuracy|n (fits V5 canon and game setting)
+   - |yBalance concerns|n (min-maxing, power gaming)
+   - |yBackground quality|n (sufficient detail and hooks)
+4. Either:
+   - |y+approve|n if everything checks out
+   - |y+charedit|n to fix minor issues
+   - |y+reject|n with feedback for major problems
+
+|WCHARACTER EDITING:|n
+
+Edit any character trait using dot notation:
+
+|yBasic Traits:|n
+  - |y+charedit <char>/strength=3|n
+  - |y+charedit <char>/brawl=2|n
+  - |y+charedit <char>/humanity=6|n
+
+|yNested Traits:|n
+  - |y+charedit <char>/discipline.celerity=2|n
+  - |y+charedit <char>/background.resources=3|n
+  - |y+charedit <char>/advantage.herd=2|n
+
+|ySpecial Values:|n
+  - |y+charedit <char>/hunger=1|n
+  - |y+charedit <char>/blood_potency=0|n
+  - |y+charedit <char>/clan=Brujah|n
+
+|WAPPROVAL CRITERIA:|n
+
+|yMechanical Check:|n
+  - Attributes: 7/5/3 distribution, max 4 at chargen
+  - Skills: 13/9/5 distribution, max 3 at chargen
+  - Disciplines: 2 dots in-clan only
+  - Advantages: 7 dots total, max 3 in any one
+  - Humanity: Default 7 (±1 with Flaw/Merit)
+
+|yConcept Check:|n
+  - Does clan match concept?
+  - Does predator type fit background?
+  - Are disciplines justified?
+  - Is background detailed enough?
+
+|yLore Check:|n
+  - Fits established V5 canon
+  - Appropriate for game setting
+  - Doesn't contradict existing metaplot
+  - Respects Camarilla/Anarchist differences
+
+|yBalance Check:|n
+  - Not min-maxed for pure combat
+  - Has reasonable weaknesses
+  - Appropriate power level for starting character
+  - Fits with existing character pool
+
+|WCOMMON ISSUES:|n
+
+  - |yIncorrect point allocation|n - Use +charedit to fix
+  - |yPoor concept/background|n - Request rewrite via +reject
+  - |yLore violations|n - Educate player, request changes
+  - |yMin-maxing|n - Discuss with player, may require rebuild
+  - |yMissing information|n - Contact player for clarification
+
+|WIMPORT SYSTEM:|n
+
+Import pre-built characters from JSON:
+  - Useful for NPCs or pre-generated characters
+  - Validates all traits during import
+  - Reports any errors or invalid data
+  - Staff can fix issues with +charedit after import
+
+|WREJECTION FEEDBACK:|n
+
+When rejecting, provide:
+  - |ySpecific issues|n (not just "doesn't work")
+  - |ySuggestions|n for fixing problems
+  - |yEncouragement|n - we want them to succeed
+  - |yTimeline|n - how soon can they resubmit?
+
+|WAPPROVAL WORKFLOW:|n
+
+1. Player submits with |y+chargen/submit|n
+2. Character enters |ypending|n queue
+3. Staff reviews with |y+review|n
+4. Staff either:
+   - Approves immediately (|y+approve|n)
+   - Makes minor edits (|y+charedit|n) then approves
+   - Rejects with feedback (|y+reject|n)
+5. Approved characters can enter IC play
+
+|WNOTES:|n
+
+  - Review within 24-48 hours when possible
+  - Communicate with players during review
+  - Be constructive with criticism
+  - Remember we're building a collaborative story
+  - Document significant character histories
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help chargen, help staff policy, help character creation

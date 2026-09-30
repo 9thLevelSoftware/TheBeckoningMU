@@ -1,0 +1,135 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                      COTERIE COMMANDS                             |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+Create and manage vampire coteries (groups and alliances).
+
+|WCOMMANDS:|n
+
+  |y+coterie|n                         - View your coterie information
+  |y+coterie/create <name>|n           - Create a new coterie
+  |y+coterie/invite <character>|n      - Invite someone to your coterie
+  |y+coterie/accept <coterie>|n        - Accept coterie invitation
+  |y+coterie/leave|n                   - Leave your current coterie
+  |y+coterie/promote <character>|n     - Promote member to lieutenant
+  |y+coterie/demote <character>|n      - Demote lieutenant to member
+  |y+coterie/kick <character>|n        - Remove member from coterie
+  |y+coterie/resource <type>=<dots>|n  - Allocate coterie resources
+  |y+social|n                          - View social connections and standing
+
+|WEXAMPLES:|n
+
+  |y+coterie|n
+    View your current coterie, members, and resources
+
+  |y+coterie/create Night Watch|n
+    Create a coterie named "Night Watch"
+
+  |y+coterie/invite Bob|n
+    Invite Bob to join your coterie
+
+  |y+coterie/accept Night Watch|n
+    Accept invitation to join "Night Watch" coterie
+
+  |y+coterie/promote Alice|n
+    Promote Alice to lieutenant role
+
+  |y+coterie/resource domain=3|n
+    Allocate 3 dots to coterie Domain resource
+
+  |y+social|n
+    View all your social connections, allies, and relationships
+
+|WCOTERIE BENEFITS:|n
+
+Coteries provide:
+  - |yStrength in numbers|n - pooled resources and support
+  - |yShared resources|n - Domain, Haven, Herd, Contacts
+  - |yPolitical power|n - unified voice in Camarilla
+  - |ySocial standing|n - reputation as a group
+  - |ySafety|n - mutual protection and backup
+
+|WCOTERIE ROLES:|n
+
+  |yLeader|n - Founder and primary decision-maker
+    - Can invite/kick members
+    - Manages coterie resources
+    - Represents coterie politically
+
+  |yLieutenant|n - Trusted second-in-command
+    - Can invite members
+    - Assists with management
+    - Deputizes for leader
+
+  |yMember|n - Regular coterie participant
+    - Benefits from coterie resources
+    - Contributes to coterie goals
+    - Has voice in decisions
+
+|WCOTERIE RESOURCES:|n
+
+Coteries can pool background dots:
+
+  |yDomain|n - Controlled territory in the city
+    - Hunting grounds
+    - Influence over area
+    - Protection from rivals
+
+  |yHaven|n - Shared secure location
+    - Size and security based on dots
+    - Safe meeting place
+    - Storage and facilities
+
+  |yHerd|n - Shared feeding pool
+    - Regular mortal vessels
+    - Reduces hunting risk
+    - Provides steady blood supply
+
+  |yContacts|n - Shared information network
+    - Mortal connections
+    - Access to information
+    - Social and practical benefits
+
+  |yRetainers|n - Shared ghouls or servants
+    - Loyal servants
+    - Daytime activities
+    - Specialized skills
+
+|WCOTERIE CREATION:|n
+
+When creating a coterie:
+1. Choose a meaningful name
+2. Define coterie purpose/concept
+3. Invite trusted allies
+4. Pool resources for mutual benefit
+5. Establish hierarchy and roles
+
+|WCOTERIE POLITICS:|n
+
+  - Coteries are the |ybasic unit|n of Camarilla politics
+  - Prince recognizes and tracks coteries
+  - Coteries compete for domain and influence
+  - Internal disputes should be resolved privately
+  - Betraying your coterie is a serious offense
+
+|WCOTERIE TYPES:|n
+
+Common coterie concepts:
+  - |ySecurity:|n Sheriff's enforcers
+  - |yInvestigation:|n Mystery solvers
+  - |yPolitical:|n Social climbers and schemers
+  - |yMercenary:|n Muscle for hire
+  - |yCriminal:|n Organized crime operators
+  - |yCultural:|n Artists, performers, socialites
+
+|WNOTES:|n
+
+  - Choose coterie-mates carefully - trust is essential
+  - Coterie resources belong to the group, not individuals
+  - Internal conflict weakens the entire coterie
+  - Coteries can be dissolved if all members leave
+  - Staff mediates serious coterie disputes
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help backgrounds, help domain, help camarilla, help politics

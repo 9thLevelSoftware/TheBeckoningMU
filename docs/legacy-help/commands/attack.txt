@@ -1,0 +1,79 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                        ATTACK COMMAND                             |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+Perform an attack roll against a target in combat.
+
+|WUSAGE:|n
+
+  |y+attack <target>|n              - Attack with default pool (Str + Brawl)
+  |y+attack <target>=<pool>|n       - Attack with specified dice pool
+  |y+attack <target>=<attr> + <skill>|n - Attack with attribute + skill
+
+|WCOMMON ATTACK POOLS:|n
+
+  |yBrawl (unarmed):|n Strength + Brawl
+  |yMelee (armed):|n Strength + Melee or Dexterity + Melee
+  |yFirearms:|n Composure + Firearms or Dexterity + Firearms
+  |yGrapple:|n Strength + Brawl
+
+|WEXAMPLES:|n
+
+  |y+attack Bob|n
+    Attack Bob with default pool (Strength + Brawl)
+
+  |y+attack Alice=Strength + Melee|n
+    Attack Alice with a melee weapon
+
+  |y+attack Charlie=Dexterity + Firearms|n
+    Shoot Charlie with a firearm
+
+|WHOW IT WORKS:|n
+
+1. System calculates your total dice pool from traits
+2. Applies modifiers:
+   - |[R-2 dice|n if you're Impaired (at half Health or less)
+   - |g+dice|n from active discipline powers (Celerity, Potence)
+3. Rolls against target's Defense (Dexterity + Athletics)
+4. Displays margin of success for damage calculation
+
+|WATTACK RESOLUTION:|n
+
+|ySuccess:|n You hit! Margin of success added to weapon damage
+|yFailure:|n You miss or target dodges
+|yCritical:|n Multiple 10s rolled - exceptional success
+
+After a successful attack, use |y+damage|n to apply the result.
+
+|WDEFENSE:|n
+
+Defense = |yDexterity + Athletics|n
+
+Modifiers to defense:
+  - Active Celerity powers add defense bonus
+  - Cover provides situational bonuses (ST adjudication)
+  - Surprised targets may have reduced defense
+
+|WDISCIPLINE BONUSES:|n
+
+  |yPotence:|n Adds damage to physical attacks
+  |yCelerity:|n May grant extra actions or defense bonuses
+  |yFortitude:|n Provides damage reduction when defending
+
+|WCOMBAT TIPS:|n
+
+  - Activate Potence |ybefore|n attacking for bonus damage
+  - Use Celerity for defense boost against counter-attacks
+  - Target Impaired opponents for easier hits
+  - Consider environment and tactics, not just dice
+
+|WNOTES:|n
+
+  - Impairment penalty applies if you're at ≤50% Health
+  - Some weapons modify damage or attack pools
+  - Storytellers may apply situational modifiers
+  - Combat should enhance narrative, not replace it
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help combat, help damage, help health, help disciplines

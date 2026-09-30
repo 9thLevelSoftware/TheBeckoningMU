@@ -1,0 +1,96 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                       FEEDING COMMAND                             |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+Feed on mortal prey to reduce your Hunger.
+
+|WUSAGE:|n
+
+  |yfeed <target> [<resonance>]|n
+  |yfeed/slake <target> [<resonance>]|n
+
+|WARGUMENTS:|n
+
+  <target>     - The mortal you're feeding on
+  <resonance>  - Optional: choleric, melancholic, phlegmatic, sanguine
+
+|WSWITCHES:|n
+
+  |y/slake|n - Feed until Hunger reaches 0 (multiple rolls, very risky!)
+
+|WRESONANCE TYPES:|n
+
+  |yCholeric|n     - Anger, aggression (affects violent traits)
+  |yMelancholic|n  - Sadness, depression (affects introspective traits)
+  |yPhlegmatic|n   - Calm, apathy (affects composed traits)
+  |ySanguine|n     - Joy, passion (affects social traits)
+
+Resonance choice affects your character's emotional state and can
+provide bonuses to related rolls.
+
+|WFEEDING MECHANICS:|n
+
+1. Roll |yStrength + Brawl|n (modified by Predator Type)
+2. Difficulty is usually 2
+3. Your current Hunger level determines Hunger dice risk
+
+|gSuccess (1-2 successes):|n
+  - Reduce Hunger by 1 point
+  - Set resonance if specified
+  - Safe, controlled feeding
+
+|gSuccess (3+ successes):|n
+  - Reduce Hunger by 2-3 points
+  - Set resonance if specified
+  - Very successful hunt
+
+|[RFailure:|n
+  - No Hunger reduction
+  - Possible complications
+  - Victim may escape or alert others
+
+|[RMessy Critical (all 10s on Hunger dice):|n
+  - Feeding frenzy
+  - Kill the victim
+  - Masquerade risk
+  - Gain Stains
+
+|[RBestial Failure (all 1s on Hunger dice):|n
+  - Trigger Compulsion
+  - Possible frenzy
+  - Hunting attempt fails
+
+|WEXAMPLES:|n
+
+  |yfeed mortal|n
+    Feed on a mortal with no specific resonance
+
+  |yfeed mortal choleric|n
+    Feed on an angry mortal (choleric resonance)
+
+  |yfeed/slake mortal sanguine|n
+    Feed to Hunger 0 on a joyful mortal (DANGEROUS!)
+
+|WSLAKE MODE:|n
+
+Using |y/slake|n makes multiple feeding rolls until Hunger reaches 0.
+This is |[REXTREMELY DANGEROUS|n:
+  - Each roll risks Messy Critical
+  - Multiple kills possible
+  - High Masquerade breach risk
+  - Multiple Stains likely
+
+Only use in emergencies or when safely isolated!
+
+|WNOTES:|n
+
+  - Cannot feed at Hunger 0
+  - Feeding while witnessed risks Masquerade breach
+  - Killing mortals adds Stains (Humanity loss risk)
+  - Your Predator Type affects feeding effectiveness
+  - Resonance persists and affects future rolls
+  - Use |yhunger|n command to check current Hunger level
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help hunt, help hunger, help bloodsurge, help resonance

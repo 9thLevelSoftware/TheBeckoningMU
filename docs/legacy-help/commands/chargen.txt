@@ -1,0 +1,115 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                  CHARACTER GENERATION SYSTEM                      |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+Create your Vampire: The Masquerade 5th Edition character.
+
+|WOVERVIEW:|n
+
+TheBeckoningMU uses an interactive character generation system
+that guides you through creating a V5 vampire. The process is
+saved at each step and can be resumed at any time.
+
+|WMAIN COMMANDS:|n
+
+  |y+chargen|n              - Start or resume character creation
+  |y+chargen/finalize|n     - Submit character for staff approval
+  |y+chargen/reset|n        - Start over (clears all progress)
+
+|WCREATION STEPS:|n
+
+1. |yChoose Clan|n
+   - Select from 13 playable clans
+   - Determines in-clan Disciplines
+   - Defines clan Bane and Compulsion
+
+2. |yChoose Predator Type|n
+   - Alleycat, Bagger, Consensualist, Farmer, etc.
+   - Affects hunting methods and starting traits
+   - Provides specialized bonuses
+
+3. |yAllocate Attributes|n
+   - Physical: Strength, Dexterity, Stamina
+   - Social: Charisma, Manipulation, Composure
+   - Mental: Intelligence, Wits, Resolve
+   - Use priority system (7/5/3)
+
+4. |yAllocate Skills|n
+   - 27 skills across Physical, Social, Mental
+   - Use priority system (13/9/5)
+   - Choose specialties
+
+5. |ySelect Disciplines|n
+   - Choose from in-clan Disciplines
+   - Allocate starting dots
+   - Some Predator Types grant bonus Disciplines
+
+6. |yChoose Advantages|n
+   - Backgrounds (Allies, Contacts, Herd, etc.)
+   - Merits and Flaws
+   - Additional character customization
+
+7. |ySet Derived Stats|n
+   - Health, Willpower, Humanity
+   - Blood Potency, starting Hunger
+   - Touchstones and Convictions
+
+|WAPPROVAL PROCESS:|n
+
+When you're done creating your character:
+
+1. |y+chargen/finalize|n submits for approval
+   - Creates automatic Job ticket for staff
+   - Staff review your sheet and background
+
+2. Staff review via Jobs system
+   - Check mechanical validity
+   - Review character concept and background
+   - Ensure theme/setting fit
+
+3. Staff decision
+   - |gAPPROVED:|n Character is ready to play!
+   - |yREVISIONS NEEDED:|n Staff provide feedback
+     Make changes and resubmit with |y+chargen/finalize|n
+
+4. Track approval status
+   - |y+job|n to see your approval request
+   - |y+pending|n to check approval queue
+
+|WTIPS FOR APPROVAL:|n
+
+- Write a compelling background story
+- Ensure your concept fits the chronicle theme
+- Check mechanical math (staff will verify)
+- Be patient - staff review takes time
+- Respond to revision requests promptly
+
+|WRESETTING CHARACTER:|n
+
+If you want to start over completely:
+  |y+chargen/reset|n
+
+|[RWARNING:|n This deletes ALL progress!
+
+|WEXAMPLES:|n
+
+  |y+chargen|n
+    Start or continue character creation
+
+  |y+chargen/finalize|n
+    Submit completed character for staff approval
+
+  |y+job|n
+    Check status of your approval request
+
+|WNOTES:|n
+
+  - Character creation can be done in multiple sessions
+  - Your progress is automatically saved
+  - All V5 core rules are supported
+  - Homebrew content requires staff approval
+  - Once approved, use |y+spend|n to advance your character
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help sheet, help xp, help spend, help jobs, help clans

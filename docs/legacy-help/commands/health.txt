@@ -1,0 +1,97 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                        HEALTH COMMAND                             |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+View current health status for yourself or another character.
+
+|WUSAGE:|n
+
+  |y+health|n              - View your own health status
+  |y+health <character>|n  - View another character's health status
+
+|WDISPLAYED INFORMATION:|n
+
+  |yHealth Boxes:|n Visual representation of current health
+  |yDamage Breakdown:|n Amount of superficial vs aggravated damage
+  |yImpairment Status:|n Whether you're suffering penalties
+  |yHealing Options:|n Available healing methods
+
+|WEXAMPLES:|n
+
+  |y+health|n
+    Display your current health status
+
+  |y+health Bob|n
+    View Bob's health status (if visible)
+
+|WHEALTH TRACKER:|n
+
+Health boxes = |yStamina + 3|n
+
+Each box can contain:
+  - |wO|n = Healthy (no damage)
+  - |y/|n = Superficial damage
+  - |[RX|n = Aggravated damage
+
+|WEXAMPLE OUTPUT:|n
+
+═══════════════════════════════════════════════════════════════════
+│ HEALTH STATUS: Alice
+═══════════════════════════════════════════════════════════════════
+
+Health: |w[O |y/ / |[RX X X|w]|n
+
+Maximum Health: 6 (Stamina 3 + 3)
+Superficial Damage: 2
+Aggravated Damage: 3
+Healthy Boxes: 1
+
+Status: |[RIMPAIRED|n (-2 dice to all actions)
+
+───────────────────────────────────────────────────────────────────
+
+|WIMPAIRMENT:|n
+
+When at ≤50% Health: |[R-2 dice penalty|n to all actions
+
+This represents difficulty functioning while grievously injured.
+
+Threshold = Total Health ÷ 2 (rounded down)
+
+|WHEALING:|n
+
+|ySuperficial Damage:|n
+  - Vampires: Blood Surge (Rouse check)
+  - Mortals: First aid, rest
+  - Heals quickly (hours to days)
+
+|yAggravated Damage:|n
+  - Vampires: Extended torpor or rituals
+  - Mortals: Extended medical care
+  - Heals slowly (weeks to months)
+
+Use |y+heal|n command to heal damage.
+
+|WTORPOR WARNING:|n
+
+When all Health boxes are filled with damage:
+  - |yAll Superficial:|n Enter Torpor (death-like sleep)
+  - |[RAny Aggravated:|n Final Death (character destroyed)
+
+|WCOMBAT IMPLICATIONS:|n
+
+  - Impaired characters are easier to hit
+  - May want to flee when heavily damaged
+  - Consider surrender before reaching Torpor
+  - Aggravated damage is serious - avoid fire and fangs
+
+|WNOTES:|n
+
+  - You can always see your own health
+  - Seeing others' health may require observation
+  - Health affects all dice pools when Impaired
+  - Tracking health is crucial in combat
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help combat, help damage, help heal, help torpor

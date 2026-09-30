@@ -1,0 +1,114 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                  THIN-BLOOD DAYLIGHT POWER                        |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+Thin-Blood merit allowing limited daytime activity.
+
+|WUSAGE:|n
+
+  |y+daylight|n              - Check daylight resistance status
+  |y+daylight/activate|n     - Activate daylight protection (if available)
+  |y+daylight/deactivate|n   - Deactivate protection
+
+|WOVERVIEW:|n
+
+Thin-Bloods with the |yDaywalker|n merit can resist the sun's lethal
+effects to a limited degree. This power represents their weakened
+vampire nature - a blessing and a curse.
+
+|WREQUIREMENTS:|n
+
+  - Must be |yThin-Blood|n clan
+  - Must have |yDaywalker|n merit (purchased during chargen or with XP)
+  - Merit levels determine protection strength
+
+|WDAYWALKER MERIT LEVELS:|n
+
+  |y1 Dot|n - Twilight Walker
+    - Tolerate dawn/dusk (indirect sunlight)
+    - Can be active 1 hour before/after sunrise/sunset
+    - Direct sunlight still causes aggravated damage
+
+  |y2 Dots|n - Overcast Days
+    - Tolerate cloudy/overcast daytime
+    - Can operate during heavy cloud cover
+    - Direct sunlight in clear weather still dangerous
+
+  |y3 Dots|n - Full Daywalker
+    - Nearly immune to sunlight
+    - Can operate in full daylight
+    - Extended exposure (hours) may still cause fatigue
+
+|WEXAMPLES:|n
+
+  |y+daylight|n
+    Check your current daylight protection status
+
+  |y+daylight/activate|n
+    Activate your Daywalker protection
+
+  |y+daylight/deactivate|n
+    Deactivate protection (conserve merit use if limited)
+
+|WSUNLIGHT EFFECTS:|n
+
+|yFor Normal Vampires:|n
+  - |[RDirect sunlight:|n 2-5 Aggravated damage per turn
+  - |[RExtended exposure:|n Final Death (complete immolation)
+  - |[RInstinctive terror:|n Rötschreck (terror frenzy)
+
+|yFor Thin-Bloods (no merit):|n
+  - Same as normal vampires
+  - Sunlight is just as lethal
+  - Must shelter during the day
+
+|yFor Daywalkers:|n
+  - Protection based on merit level
+  - May still take reduced damage
+  - No Rötschreck terror frenzy
+  - Can engage in daytime activities
+
+|WLIMITATIONS:|n
+
+  - Daywalker is |yThin-Blood exclusive|n
+  - Other vampires |ycannot|n learn this
+  - Higher-generation vampires sometimes resent this ability
+  - May draw unwanted attention from vampire hunters
+  - Still suffer other vampire weaknesses (blood, hunger, etc.)
+
+|WTACTICAL ADVANTAGES:|n
+
+  |yDaytime Operations:|n
+    - Conduct business during mortal hours
+    - Investigate while enemies sleep
+    - Escape pursuit by going out in daylight
+
+  |ySocial Benefits:|n
+    - Easier to maintain mortal connections
+    - Can work mortal jobs
+    - Less suspicious to mortals
+
+  |yStrategic Value:|n
+    - Gather intelligence while others shelter
+    - Daytime meetings with mortal contacts
+    - Emergency escape route
+
+|WROLEPLAY CONSIDERATIONS:|n
+
+  - Other vampires may be jealous or suspicious
+  - Elders see this as proof of your thin blood
+  - Camarilla may try to exploit your ability
+  - You're still weak in other ways (Blood Potency 0)
+  - Balance this advantage against thin-blood disadvantages
+
+|WNOTES:|n
+
+  - This power is part of the Thin-Blood Merit system
+  - Cannot be learned by other clan vampires
+  - Storytellers adjudicate edge cases (solar eclipses, etc.)
+  - May have plot implications - use wisely
+  - Staff approval required for exceptional circumstances
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help thinblood, help alchemy, help merits, help sunlight

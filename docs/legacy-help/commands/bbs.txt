@@ -1,0 +1,128 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                   BULLETIN BOARD SYSTEM (BBS)                     |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+Read and post to game bulletin boards.
+
+|WCOMMANDS:|n
+
+  |y+bbs|n                        - List all available boards
+  |y+bbs <board>|n                - View posts on a board
+  |y+bbread <board>/<post#>|n     - Read a specific post
+  |y+bbpost <board>=<title>/<body>|n         - Create a new post
+  |y+bbpost/anon <board>=<title>/<body>|n    - Create anonymous post
+  |y+bbcomment <board>/<post#>=<text>|n      - Add comment to post
+
+|WBOARD TYPES:|n
+
+Boards may be categorized as:
+  - |yOut-of-Character (OOC)|n - Player discussions
+  - |yIn-Character (IC)|n - Character knowledge and rumors
+  - |yStaff|n - Administrative announcements
+  - |yRestricted|n - Require specific permissions or flags
+
+|WANONYMOUS POSTING:|n
+
+Some boards allow anonymous posting using the |y/anon|n switch.
+
+  |y+bbpost/anon rumors=Strange Sighting/I saw something odd...|n
+
+|gHow it works:|n
+  - Your post shows as "Anonymous" to regular players
+  - |yStaff can always see your real identity|n
+  - You can always see your own name on your posts
+  - Prevents retaliation for IC information sharing
+  - Not all boards allow anonymous posting
+
+|yWhen to use anonymous posting:|n
+  - Sharing IC rumors without character attribution
+  - Reporting sensitive information
+  - Discussing controversial topics in-character
+
+|[RIMPORTANT:|n
+  - Abuse of anonymous posting will result in consequences
+  - Staff track all anonymous posts
+  - Not a shield for rule violations
+  - Board admins can disable anonymous posting
+
+|WREADING POSTS:|n
+
+View board list:
+  |y+bbs|n
+
+View specific board:
+  |y+bbs general|n
+  Shows all posts on the "general" board
+
+Read a post:
+  |y+bbread general/5|n
+  Reads post #5 on the "general" board with all comments
+
+|WPOSTING:|n
+
+Create a post:
+  |y+bbpost general=My First Post/This is the body of my post|n
+
+The format is:
+  |y+bbpost <board>=<title>/<body>|n
+
+|yTitle|n - Brief subject line
+|yBody|n  - Full content of your post
+
+Create anonymous post:
+  |y+bbpost/anon rumors=Overheard/I heard the Prince is concerned...|n
+
+|WCOMMENTING:|n
+
+Add a comment to an existing post:
+  |y+bbcomment general/5=Great post!|n
+
+Comments are always attributed (no anonymous comments).
+
+|WADMIN COMMANDS:|n
+
+(Staff only)
+
+  |y+bbadmin/create <name>=<description>|n
+    Create a new board
+
+  |y+bbadmin/edit <board>/allow_anonymous=true|n
+    Enable anonymous posting on a board
+
+  |y+bbadmin/edit <board>/is_ic=true|n
+    Mark a board as in-character
+
+  |y+bbdelete/post <board>/<post#>|n
+    Delete a post (admins only)
+
+|WEXAMPLES:|n
+
+  |y+bbs|n
+    List all boards
+
+  |y+bbs announcements|n
+    View the announcements board
+
+  |y+bbread announcements/1|n
+    Read announcement post #1
+
+  |y+bbpost general=Hello Everyone/Hi, I'm new here!|n
+    Post to the general board
+
+  |y+bbpost/anon rumors=Whispers/I heard something strange...|n
+    Post anonymously to the rumors board
+
+  |y+bbcomment general/3=Welcome to the game!|n
+    Comment on post #3
+
+|WNOTES:|n
+
+  - Posts and comments are permanent (unless deleted by staff)
+  - Be respectful in all posts
+  - IC and OOC boards have different rules
+  - Check |yhelp rules|n for posting guidelines
+  - Anonymous posts are logged and monitored
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help jobs, help news, help rules

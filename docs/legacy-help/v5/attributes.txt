@@ -1,0 +1,134 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                         ATTRIBUTES                                |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+Attributes represent your character's innate capabilities. All characters
+have 9 attributes rated from 1 (poor) to 5 (exceptional).
+
+|WPHYSICAL ATTRIBUTES:|n
+
+|yStrength|n - Raw physical power and muscle
+  - Lifting, pushing, breaking objects
+  - Melee damage and grappling
+  - Feats of physical might
+  - Dice pools: Brawl, Melee, Athletics (for jumping/climbing)
+
+|yDexterity|n - Agility, reflexes, and coordination
+  - Dodging attacks (Defense = Dexterity + Athletics)
+  - Fine manipulation and sleight of hand
+  - Ranged combat accuracy
+  - Dice pools: Firearms, Larceny, Stealth, Drive
+
+|yStamina|n - Endurance and physical resilience
+  - Determines Health (Stamina + 3)
+  - Resisting fatigue and disease
+  - Long-distance running
+  - Surviving harsh conditions
+  - Dice pools: Athletics (endurance), Survival
+
+|WSOCIAL ATTRIBUTES:|n
+
+|yCharisma|n - Force of personality and likability
+  - First impressions and natural charm
+  - Inspiring others
+  - Leading by example
+  - Dice pools: Performance, Leadership, Animal Ken
+
+|yManipulation|n - Persuasiveness and cunning
+  - Convincing others through argument
+  - Lying and deception
+  - Subtle influence
+  - Dice pools: Persuasion, Subterfuge, Intimidation
+
+|yComposure|n - Self-control and poise under pressure
+  - Determines Willpower (Composure + Resolve)
+  - Resisting frenzy and provocation
+  - Maintaining calm in crisis
+  - Firearms accuracy (steady hands)
+  - Dice pools: Etiquette, Streetwise, Firearms
+
+|WMENTAL ATTRIBUTES:|n
+
+|yIntelligence|n - Reasoning and analytical thinking
+  - Problem-solving and logic
+  - Education and knowledge retention
+  - Research and investigation
+  - Dice pools: Academics, Science, Finance, Medicine
+
+|yWits|n - Quick thinking and situational awareness
+  - Initiative and reaction time
+  - Noticing details
+  - Improvisation
+  - Dice pools: Awareness, Investigation, Insight
+
+|yResolve|n - Determination and mental fortitude
+  - Determines Willpower (Composure + Resolve)
+  - Resisting mental influence (Dominate)
+  - Maintaining focus under stress
+  - Long-term dedication
+  - Dice pools: Intimidation, Occult
+
+|WCHARACTER CREATION:|n
+
+During chargen, distribute attributes in priority:
+  - |yPrimary:|n 7 dots (can raise up to 4 in one attribute)
+  - |ySecondary:|n 5 dots
+  - |yTertiary:|n 3 dots
+
+All attributes start at |w1|n (minimum) by default.
+Maximum during chargen: |w4|n
+Maximum with XP: |w5|n
+
+|WATTRIBUTE RATINGS:|n
+
+  |y1|n - Poor: Below average human capability
+  |y2|n - Average: Typical human level
+  |y3|n - Good: Above average, competent
+  |y4|n - Excellent: Among the best mortals
+  |y5|n - Outstanding: Peak human performance
+
+Vampires with 5 in an attribute are truly exceptional.
+
+|WXP COSTS:|n
+
+Raising attributes costs: |yCurrent Rating × 5 XP|n
+
+Examples:
+  - Strength 2→3: 10 XP (2 × 5)
+  - Dexterity 3→4: 15 XP (3 × 5)
+  - Intelligence 4→5: 20 XP (4 × 5)
+
+|WDICE POOLS:|n
+
+Most actions combine Attribute + Skill:
+  - Physical action: Physical Attribute + Physical Skill
+  - Social action: Social Attribute + Social Skill
+  - Mental action: Mental Attribute + Mental Skill
+
+Examples:
+  - Attack: Strength + Brawl
+  - Sneak: Dexterity + Stealth
+  - Persuade: Manipulation + Persuasion
+  - Investigate: Intelligence + Investigation
+
+|WTIPS FOR ALLOCATION:|n
+
+|yBalanced:|n Spread dots evenly (versatile but not exceptional)
+|ySpecialized:|n Focus on 2-3 attributes (excellent at specific things)
+|yMin-Max:|n Maximize one attribute, accept weaknesses elsewhere
+
+Consider your character concept:
+  - |yBrawler:|n High Strength, Dexterity, Stamina
+  - |ySocialite:|n High Charisma, Manipulation, Composure
+  - |yScholar:|n High Intelligence, Wits, Resolve
+
+|WNOTES:|n
+
+  - Attributes are harder to raise than Skills (cost more XP)
+  - Choose wisely during chargen
+  - Zero is |yimpossible|n - minimum is 1
+  - Some supernatural powers may boost attributes temporarily
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help skills, help chargen, help dice, help xp

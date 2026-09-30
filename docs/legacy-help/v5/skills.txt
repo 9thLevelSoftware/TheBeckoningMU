@@ -1,0 +1,226 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                            SKILLS                                 |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+Skills represent learned abilities and training. Characters have 27 skills
+rated from 0 (untrained) to 5 (master).
+
+|WPHYSICAL SKILLS:|n
+
+|yAthletics|n - Running, jumping, climbing, swimming
+  - Defense pool (Dexterity + Athletics)
+  - Chasing and fleeing
+  - Parkour and acrobatics
+
+|yBrawl|n - Unarmed combat and grappling
+  - Fistfights and wrestling
+  - Martial arts
+  - Typically paired with Strength
+
+|yCraft|n - Creating and repairing physical objects
+  - Carpentry, mechanics, electronics
+  - Art and sculpture
+  - Sabotage and demolition
+
+|yDrive|n - Operating vehicles
+  - Cars, motorcycles, trucks
+  - Chases and evasive driving
+  - Vehicle maintenance
+
+|yFirearms|n - Shooting guns
+  - Pistols, rifles, shotguns
+  - Accuracy and weapon maintenance
+  - Tactical shooting
+
+|yLarceny|n - Security systems and locks
+  - Lockpicking
+  - Bypass alarms
+  - Sabotage security
+
+|yMelee|n - Armed combat with hand weapons
+  - Swords, knives, clubs
+  - Improvised weapons
+  - Parrying and defense
+
+|yStealth|n - Moving unseen and unheard
+  - Sneaking and hiding
+  - Tailing targets
+  - Ambushes
+
+|ySurvival|n - Wilderness skills and tracking
+  - Finding shelter and food
+  - Tracking prey or enemies
+  - Navigation
+  - Understanding nature
+
+|WSOCIAL SKILLS:|n
+
+|yAnimal Ken|n - Understanding and training animals
+  - Calming aggressive animals
+  - Training pets
+  - Riding horses
+  - Synergy with Animalism discipline
+
+|yEtiquette|n - Social graces and protocol
+  - High society manners
+  - Avoiding social faux pas
+  - Understanding social hierarchies
+  - Critical for Camarilla politics
+
+|yInsight|n - Reading people and emotions
+  - Detecting lies
+  - Understanding motivations
+  - Empathy
+  - Psychological assessment
+
+|yIntimidation|n - Threats and coercion
+  - Physical threats
+  - Social pressure
+  - Interrogation
+  - Commanding through fear
+
+|yLeadership|n - Inspiring and directing others
+  - Rallying allies
+  - Military tactics
+  - Organizational management
+  - Motivation
+
+|yPerformance|n - Entertaining and showmanship
+  - Acting, singing, dancing
+  - Public speaking
+  - Playing instruments
+  - Captivating audiences
+
+|yPersuasion|n - Convincing through logic and charm
+  - Negotiation
+  - Debate and argument
+  - Selling and bargaining
+  - Diplomacy
+
+|yStreetwise|n - Urban survival and criminal underworld
+  - Finding contacts
+  - Black market dealings
+  - Gang politics
+  - Urban navigation
+
+|ySubterfuge|n - Deception and misdirection
+  - Lying convincingly
+  - Disguise
+  - Creating alibis
+  - Feints and bluffs
+
+|WMENTAL SKILLS:|n
+
+|yAcademics|n - Scholarly knowledge and research
+  - History, literature, philosophy
+  - Research methods
+  - Languages
+  - General education
+
+|yAwareness|n - Perception and noticing details
+  - Spotting ambushes
+  - Finding clues
+  - Sensory awareness
+  - Synergy with Auspex discipline
+
+|yFinance|n - Money management and economics
+  - Investment and accounting
+  - Corporate finance
+  - Evaluating wealth
+  - Understanding markets
+
+|yInvestigation|n - Solving mysteries and gathering evidence
+  - Crime scene analysis
+  - Following leads
+  - Deductive reasoning
+  - Research and fact-finding
+
+|yMedicine|n - Healing and medical knowledge
+  - First aid and surgery
+  - Diagnosis
+  - Pharmacology
+  - Forensics
+
+|yOccult|n - Supernatural lore and mysticism
+  - Vampire traditions and history
+  - Rituals and ceremonies
+  - Supernatural creatures
+  - Synergy with Blood Sorcery
+
+|yPolitics|n - Government and power structures
+  - Political maneuvering
+  - Bureaucracy
+  - Current affairs
+  - Understanding institutions
+
+|yScience|n - Natural sciences and technology
+  - Biology, chemistry, physics
+  - Scientific method
+  - Laboratory work
+  - Analysis
+
+|yTechnology|n - Modern technology and computers
+  - Hacking and programming
+  - Electronics and gadgets
+  - Internet research
+  - Digital security
+
+|WCHARACTER CREATION:|n
+
+During chargen, distribute skills in priority:
+  - |yPrimary:|n 13 dots
+  - |ySecondary:|n 9 dots
+  - |yTertiary:|n 5 dots
+
+Skills start at |w0|n (untrained) by default.
+Maximum during chargen: |w3|n
+Maximum with XP: |w5|n
+
+|WSKILL RATINGS:|n
+
+  |y0|n - Untrained: No formal training
+  |y1|n - Novice: Basic competence
+  |y2|n - Practiced: Professional level
+  |y3|n - Expert: Among the best
+  |y4|n - Master: World-class ability
+  |y5|n - Legend: Peak human achievement
+
+|WXP COSTS:|n
+
+Raising skills costs: |yCurrent Rating × 3 XP|n
+
+Examples:
+  - Brawl 0→1: 0 XP (first dot free) or 3 XP
+  - Stealth 1→2: 3 XP (1 × 3)
+  - Persuasion 2→3: 6 XP (2 × 3)
+
+|WSPECIALTIES:|n
+
+At Skill 2+, you can purchase |ySpecialties|n (3 XP each):
+  - Narrow focus within a skill
+  - +1 die when specialty applies
+  - Examples:
+    * Brawl (Grappling)
+    * Firearms (Pistols)
+    * Persuasion (Seduction)
+    * Academics (History)
+
+|WTIPS FOR ALLOCATION:|n
+
+  - Choose skills that match your concept
+  - Don't spread too thin - focus is better
+  - Consider synergies with disciplines
+  - Every character needs some combat ability
+  - Social skills matter in Camarilla politics
+  - Zero dots means you can still attempt (but poorly)
+
+|WNOTES:|n
+
+  - Skills are cheaper than Attributes (good for XP spending)
+  - Zero dots is valid - you're just untrained
+  - Specialties add flavor and mechanical benefit
+  - Some tasks may require minimum skill rating
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help attributes, help chargen, help dice, help xp

@@ -1,0 +1,115 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                       STATUS COMMANDS                             |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+View and manage Camarilla social status and positions.
+
+|WCOMMANDS:|n
+
+  |y+status|n                  - View your status and positions
+  |y+status <character>|n      - View someone's status
+  |y+positions|n               - List all positions and their holders
+  |y+statusreq <position>/<reason>|n - Request a position
+  |y+statusadmin|n             - Admin status management (staff only)
+
+|WEXAMPLES:|n
+
+  |y+status|n
+    View your own status rating and position
+
+  |y+status Alice|n
+    View Alice's public status
+
+  |y+positions|n
+    See all available positions and current holders
+
+  |y+statusreq Sheriff/I have proven my loyalty and combat prowess|n
+    Request to be appointed as Sheriff
+
+|WSTATUS RATING:|n
+
+Your total status is the sum of:
+  - |yEarned Status:|n Personal reputation and accomplishments
+  - |yPosition Status:|n Bonus from held position
+
+Status ranges from |y0|n (fledgling) to |y5+|n (elder or titled)
+
+|WCAMARILLA POSITIONS:|n
+
+|yPrince|n - Ruler of the domain (Status +3)
+  - Ultimate authority in the city
+  - Maintains Masquerade and Traditions
+
+|ySeneschal|n - Prince's advisor and second (Status +2)
+  - Manages domain in Prince's absence
+  - Handles administrative matters
+
+|ySheriff|n - Keeper of the peace (Status +2)
+  - Enforces Prince's will
+  - Handles security and law enforcement
+
+|yScourge|n - Warden of territory (Status +1)
+  - Hunts intruders and thin-bloods
+  - Territorial enforcement
+
+|yKeeper of Elysium|n - Protector of neutral ground (Status +1)
+  - Maintains sanctity of Elysium
+  - Hosts gatherings and events
+
+|yHarpy|n - Social arbiter (Status +1)
+  - Tracks boons and favors
+  - Officiates social disputes
+  - Gossip and information broker
+
+|yWhip|n - Clan representative (Status +1)
+  - Represents clan interests to Prince
+  - Maintains clan unity
+
+|yPrimogen|n - Clan elder council (Status +2)
+  - Advises Prince on domain matters
+  - Represents clan in politics
+
+|WREQUESTING A POSITION:|n
+
+To request a position:
+1. Have appropriate status and reputation
+2. Use |y+statusreq <position>/<reason>|n
+3. Prince or staff reviews your request
+4. Appointment granted or denied
+
+Factors considered:
+  - IC reputation and accomplishments
+  - Current status rating
+  - Character competence
+  - Political support
+  - Domain needs
+
+|WSTATUS BENEFITS:|n
+
+Higher status provides:
+  - |ySocial influence|n over lower-status Kindred
+  - |yAccess|n to exclusive gatherings
+  - |yRespect|n from other vampires
+  - |yPolitical power|n in domain decisions
+  - |yResource access|n through connections
+
+|WLOSING STATUS:|n
+
+Status can be lost through:
+  - Violation of Traditions
+  - Failure to fulfill duties
+  - Political disgrace
+  - Prince's disfavor
+  - Major Masquerade breaches
+
+|WNOTES:|n
+
+  - Status is earned through RP and accomplishments
+  - Positions come with responsibilities, not just benefits
+  - Political intrigue is key to status games
+  - The Prince can grant or strip status at will
+  - Staff oversees position appointments
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help traditions, help boons, help prince, help camarilla

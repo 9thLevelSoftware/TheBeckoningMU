@@ -1,0 +1,97 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                        DAMAGE COMMAND                             |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+Apply damage to a target after a successful attack.
+
+|WUSAGE:|n
+
+  |y+damage <target>=<amount>|n            - Apply superficial damage
+  |y+damage <target>=<amount>/<type>|n    - Apply specific damage type
+
+|WDAMAGE TYPES:|n
+
+  |ySuperficial|n - Minor damage (default for vampires)
+    - Heals quickly via Blood Surge
+    - Fills health boxes from left to right
+    - Examples: Brawling, bashing weapons
+
+  |yLethal|n - Serious damage
+    - Converts to superficial for vampires (undead resilience)
+    - Mortals take lethal as-is
+    - Examples: Gunshots, stab wounds
+
+  |yAggravated|n - Severe, supernatural damage
+    - Very difficult to heal
+    - Fills health boxes from right to left
+    - Examples: Fire, sunlight, claws, vampire fangs
+
+|WEXAMPLES:|n
+
+  |y+damage Bob=3|n
+    Apply 3 superficial damage to Bob
+
+  |y+damage Alice=2/aggravated|n
+    Apply 2 aggravated damage to Alice
+
+  |y+damage Charlie=5/lethal|n
+    Apply 5 lethal damage to Charlie
+
+|WDAMAGE CALCULATION:|n
+
+Typical damage formula:
+  Base weapon damage |y+|n Margin of success |y+|n Discipline bonuses
+
+|yUnarmed (Brawl):|n 0 + margin + Potence
+|yKnife:|n 1 + margin + Potence
+|ySword:|n 2 + margin + Potence
+|yPistol:|n 2 + margin
+|yRifle:|n 3 + margin
+
+|WHEALTH TRACKER:|n
+
+Characters have Health = |yStamina + 3|n boxes:
+  - |wO|n = Healthy (undamaged)
+  - |y/|n = Superficial damage
+  - |[RX|n = Aggravated damage
+
+Example: |w[O O |y/ / |[RX X|w]|n
+  - 2 healthy, 2 superficial, 2 aggravated
+
+|WIMPAIRMENT:|n
+
+When reduced to ≤50% Health: |[R-2 dice|n penalty to all actions
+
+Example: Character with 5 Health at 2 Health or less is Impaired
+
+|WSPECIAL CASES:|n
+
+|yOverfill Superficial:|n
+  - If all boxes filled with superficial, additional superficial converts to aggravated
+
+|yFortitude Soak:|n
+  - Active Fortitude powers may reduce incoming damage
+
+|yArmor:|n
+  - Some armor provides damage reduction (ST adjudication)
+
+|WTORPOR (VAMPIRES):|n
+
+When all Health boxes filled:
+  - |gAll Superficial:|n Enter Torpor (death-like sleep)
+  - |[RAny Aggravated:|n Final Death (character destroyed)
+
+|WDEATH (MORTALS):|n
+
+Mortals die when all Health boxes filled with Lethal or Aggravated damage.
+
+|WNOTES:|n
+
+  - Use |y+heal|n to remove damage
+  - Storytellers apply damage based on narrative and rolls
+  - Combat damage should have lasting consequences
+  - Consider surrender before reaching Torpor/Death
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help attack, help heal, help health, help combat, help torpor

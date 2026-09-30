@@ -1,0 +1,81 @@
+|[R╔═══════════════════════════════════════════════════════════════════╗
+|W║                     DISCIPLINE POWERS                             |
+|[R╔═══════════════════════════════════════════════════════════════════╗|n
+
+Activate and manage your vampire's supernatural discipline powers.
+
+|WCOMMANDS:|n
+
+  |y+disciplines|n           - List all your known disciplines and powers
+  |y+power <name>|n          - Activate a discipline power
+  |y+power <name>=<target>|n - Activate power on a target
+  |y+powerinfo <name>|n      - Get detailed info on a specific power
+  |y+effects|n               - View all active discipline effects on you
+
+|WUSING POWERS:|n
+
+Most discipline powers require a |yRouse Check|n:
+  - Roll 1d10
+  - |g6+:|n Success - no Hunger increase
+  - |[R1-5:|n Failure - Hunger increases by 1
+
+Some powers are |yFree|n (no Rouse check required).
+
+|WEXAMPLES:|n
+
+  |y+disciplines|n
+    List all your disciplines and available powers
+
+  |y+power heightened senses|n
+    Activate Auspex: Heightened Senses
+
+  |y+power compel=Bob|n
+    Use Dominate: Compel on Bob
+
+  |y+powerinfo cloud memory|n
+    Get detailed information about Cloud Memory power
+
+  |y+effects|n
+    View all active effects on you (duration, source, etc.)
+
+|WPOWER LEVELS:|n
+
+Discipline powers are organized by level (1-5):
+  - |yLevel 1-2:|n Basic powers, lower costs
+  - |yLevel 3-4:|n Advanced powers, significant effects
+  - |yLevel 5:|n Master powers, dramatic effects
+
+You must have the appropriate discipline rating to use powers:
+  - Auspex 2 unlocks all Level 1-2 Auspex powers
+  - Auspex 4 unlocks all Level 1-4 Auspex powers
+
+|WAMALGAM POWERS:|n
+
+Some powers require multiple disciplines:
+  - Example: |yCloud Memory|n requires Dominate 3 + Obfuscate 1
+  - You must have |yboth|n prerequisites to use amalgam powers
+
+|WPOWER DURATION:|n
+
+  - |yInstant:|n One-time effect, resolves immediately
+  - |yScene:|n Lasts for current scene (typically one hour)
+  - |yNight:|n Lasts until next sunrise
+  - |yPermanent:|n Effect is permanent once activated
+
+|WDISCIPLINE CATEGORIES:|n
+
+  - |yPhysical:|n Celerity, Fortitude, Potence, Protean
+  - |yMental:|n Auspex, Dominate, Obfuscate
+  - |ySocial:|n Animalism, Presence
+  - |ySupernatural:|n Blood Sorcery, Oblivion, Thin-Blood Alchemy
+
+|WNOTES:|n
+
+  - Using powers at Hunger 5 risks frenzy
+  - Some powers require line of sight or physical touch
+  - Dominate typically requires eye contact with mortals
+  - Failed Rouse checks increase Hunger - manage carefully
+
+|[r╔═══════════════════════════════════════════════════════════════════╗|n
+
+|ySee also:|n help disciplines, help rouse, help hunger, help effects
