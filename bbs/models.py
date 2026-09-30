@@ -46,6 +46,7 @@ class Board(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
+        app_label = 'bbs'
         ordering = ['name']
         verbose_name = 'Board'
         verbose_name_plural = 'Boards'
@@ -110,6 +111,7 @@ class Post(models.Model):
     )
     
     class Meta:
+        app_label = 'bbs'
         ordering = ['board', 'sequence_number']
         unique_together = [['board', 'sequence_number']]
         verbose_name = 'Post'
@@ -185,6 +187,7 @@ class Comment(models.Model):
     )
     
     class Meta:
+        app_label = 'bbs'
         ordering = ['created_at']
         verbose_name = 'Comment'
         verbose_name_plural = 'Comments'

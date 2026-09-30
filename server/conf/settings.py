@@ -25,37 +25,106 @@ put secret game- or server-specific settings in secret_settings.py.
 """
 
 # Use the defaults from Evennia unless explicitly overridden
+from evennia.contrib.base_systems import color_markups
 from evennia.settings_default import *
-
-# Add beckonmu directory to Python path so apps can be imported
-import sys
-from pathlib import Path
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-BECKONMU_DIR = PROJECT_ROOT / "TheBeckoningMU"
-if str(BECKONMU_DIR) not in sys.path:
-    sys.path.insert(0, str(BECKONMU_DIR))
 
 ######################################################################
 # Evennia base server config
 ######################################################################
 
 # This is the name of your game. Make it catchy!
-SERVERNAME = "TheBeckoningMU"
+SERVERNAME = "Beckoning"
 
-# Add custom Django apps (BBS, Jobs, Status, Boons, Traits)
+# Add custom Django apps (BBS, Jobs, Status, Boons, Traits, Web Builder)
 INSTALLED_APPS += (
     "bbs",
     "jobs",
     "status",
     "boons",
     "traits",
+    "web.builder.apps.BuilderConfig",
 )
-# Port configurations for shared hosting
+
+######################################################################
+# MUX Color Markup Support
+######################################################################
+
+COLOR_ANSI_EXTRA_MAP = color_markups.MUX_COLOR_ANSI_EXTRA_MAP
+COLOR_XTERM256_EXTRA_FG = color_markups.MUX_COLOR_XTERM256_EXTRA_FG
+COLOR_XTERM256_EXTRA_BG = color_markups.MUX_COLOR_XTERM256_EXTRA_BG
+COLOR_XTERM256_EXTRA_GFG = color_markups.MUX_COLOR_XTERM256_EXTRA_GFG
+COLOR_XTERM256_EXTRA_GBG = color_markups.MUX_COLOR_XTERM256_EXTRA_GBG
+COLOR_ANSI_XTERM256_BRIGHT_BG_EXTRA_MAP = color_markups.MUX_COLOR_ANSI_XTERM256_BRIGHT_BG_EXTRA_MAP
+
+######################################################################
+# Port Configuration
+######################################################################
+
 TELNET_PORTS = [6660]
 WEBSERVER_PORTS = [(6665, 5001)]  # (external_port, internal_port)
 WEBSOCKET_CLIENT_PORT = 6662
 WEBSERVER_PROXY_PORT = 6661
-AMP_PORT = 6670  # Changed to 6670 to avoid conflicts
+AMP_PORT = 6670
+
+######################################################################
+# Client Settings
+######################################################################
+
+CLIENT_DEFAULT_WIDTH = 80
+
+######################################################################
+# Channel Configuration
+######################################################################
+
+# Channel that receives connection/disconnection messages for non-staff
+CHANNEL_CONNECTINFO = {
+    "key": "ConnInfo",
+    "aliases": "",
+    "desc": "Player Connect/Disconnect Log",
+    "locks": "control:perm(Developer);listen:true();send:false()",
+}
+
+######################################################################
+# Account Options (customizable per-account UI settings)
+######################################################################
+
+OPTIONS_ACCOUNT_DEFAULT = {
+    "border_color": ("Headers, footers, table borders, etc.", "Color", "R"),
+    "header_star_color": ("* inside Header lines.", "Color", "n"),
+    "header_text_color": ("Text inside Header lines.", "Color", "w"),
+    "header_fill": ("Fill for Header lines.", "Text", "="),
+    "separator_star_color": ("* inside Separator lines.", "Color", "n"),
+    "separator_text_color": ("Text inside Separator lines.", "Color", "w"),
+    "separator_fill": ("Fill for Separator Lines.", "Text", "-"),
+    "footer_star_color": ("* inside Footer lines.", "Color", "n"),
+    "footer_text_color": ("Text inside Footer Lines.", "Color", "n"),
+    "footer_fill": ("Fill for Footer Lines.", "Text", "="),
+    "column_names_color": ("Table column header text.", "Color", "w"),
+    "timezone": ("Timezone for dates.", "Timezone", "UTC"),
+}
+
+######################################################################
+# Command System
+######################################################################
+
+COMMAND_DEFAULT_CLASS = "commands.command.Command"
+
+######################################################################
+# Session and Character Configuration
+######################################################################
+
+# Multiple sessions per account, multiple sessions per puppet (share output)
+MULTISESSION_MODE = 3
+
+# Max characters an account can create
+MAX_NR_CHARACTERS = 10
+
+# Max characters an account can puppet simultaneously
+MAX_NR_SIMULTANEOUS_PUPPETS = 3
+
+# Disable auto character creation - we use custom char creation
+AUTO_CREATE_CHARACTER_WITH_ACCOUNT = False
+
 ######################################################################
 # Help System Configuration
 ######################################################################
@@ -65,16 +134,6 @@ FILE_HELP_ENTRY_MODULES = ["world.help_entries"]
 
 # File-based news entries
 FILE_NEWS_ENTRY_MODULES = ["world.news_entries"]
-
-######################################################################
-# Command System Configuration
-######################################################################
-
-# Custom command handler for styled error messages
-CMDHANDLER_MODULE = "server.conf.cmdhandler"
-
-# Custom search result handler for styled error messages
-SEARCH_AT_RESULT = "server.conf.at_search.at_search_result"
 
 ######################################################################
 # Settings given in secret_settings.py override those in this file.

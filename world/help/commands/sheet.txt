@@ -1,44 +1,76 @@
-|[R╔═══════════════════════════════════════════════════════════════════╗
-|W║                       CHARACTER SHEET                             |
-|[R╔═══════════════════════════════════════════════════════════════════╗|n
+|[R+===================================================================+
+|W|                  CHARACTER SHEET COMMANDS                        |
+|[R+===================================================================+|n
 
-View your complete character sheet or another character's public information.
+Commands for viewing your character's statistics and status.
 
-|WUSAGE:|n
+|WFULL CHARACTER SHEET:|n
 
-  |y+sheet|n              - View your own complete character sheet
-  |y+sheet <character>|n  - View another character's sheet
-  |y+st|n                 - View abbreviated status (quick reference)
+|y+sheet|n
+|ysheet|n
+  Display your comprehensive character sheet.
 
-|WDISPLAYED INFORMATION:|n
+Shows all V5 information including:
+  - Vampire vitals (generation, blood potency, hunger, humanity)
+  - Clan information (bane, compulsion)
+  - Attributes (Physical, Social, Mental)
+  - Skills (with specialties)
+  - Disciplines (with known powers)
+  - Backgrounds, Merits, and Flaws
+  - Humanity (convictions, touchstones, stains)
+  - Health, Willpower, and Experience
 
-|yPersonal Info:|n
-  - Name, Clan, Generation, Blood Potency
-  - Predator Type, Sire, Coterie
+The full sheet is formatted with gothic V:tM theming for easy
+reading of all your character's capabilities.
 
-|yVital Statistics:|n
-  - Health, Willpower, Humanity
-  - Blood Pool, Hunger level
-  - Experience Points (current/total/unspent)
+|WQUICK STATUS:|n
 
-|yAttributes:|n Physical, Social, Mental (9 total)
-|ySkills:|n Physical, Social, Mental (27 total)
-|yDisciplines:|n Known disciplines with power levels
-|yAdvantages:|n Backgrounds, Merits, Flaws
-|ySocial:|n Status, Boons owed/owing
+|y+st|n
+|yst|n
+|ystatus|n
+  Display abbreviated character stats.
 
-|WEXAMPLES:|n
+Shows vital statistics in a compact one-line format:
+  - Name
+  - Hunger level
+  - Health status
+  - Willpower status
+  - Humanity rating
 
-  |y+sheet|n
-  |y+sheet Alice|n
-  |y+st|n
+Perfect for quick status checks during play without scrolling
+through the full sheet.
 
-|WNOTES:|n
+|yExample Output:|n
+  John | Hunger: 2 | Health: OOOOO | Willpower: 4/5 | Humanity: 7
 
-  - Your own sheet shows all private information
-  - Other characters' sheets show only public info
-  - Use |y+st|n for a quick at-a-glance summary
+|WOTHER USEFUL COMMANDS:|n
 
-|[r╔═══════════════════════════════════════════════════════════════════╗|n
+|y+health|n
+  View detailed health status (see help combat_commands)
 
-|ySee also:|n help chargen, help xp, help status, help disciplines
+|y+humanity|n
+  View humanity, stains, convictions (see help humanity)
+
+|yhunger|n
+  View hunger and blood status (see help blood_commands)
+
+|y+disciplines|n
+  View discipline powers (see help discipline_commands)
+
+|y+effects|n
+  View active discipline effects (see help effects_commands)
+
+|y+background|n
+  View backgrounds (see help background_commands)
+
+|y+boon|n
+  View boon ledger (see help boons)
+
+|y+status|n
+  View political status (see help status)
+
+|WRELATED TOPICS:|n
+
+|ySee also:|n help chargen, help roll, help combat, help v5
+
+|[r+===================================================================+|n

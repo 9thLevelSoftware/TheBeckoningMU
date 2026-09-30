@@ -12,7 +12,7 @@ A **Vampire: The Masquerade 5th Edition** MUD built on [Evennia](https://www.eve
 
 ## Quick Start
 
-Always run Evennia commands from the project root (`TheBeckoningMU/`), **not** from inside `beckonmu/`.
+The repository root **is** the Evennia game directory — run every `evennia` command from here.
 
 ### With uv (recommended)
 
@@ -55,46 +55,40 @@ Ports are configured in `server/conf/settings.py` (defaults shown below; overrid
 | Service               | Default Port |
 | --------------------- | ------------ |
 | Telnet / MUD client   | `6660`       |
-| Web server (HTTP)     | `5001`       |
+| Web server (HTTP)     | `6665`       |
+| Web server (internal) | `5001`       |
 | WebSocket client      | `6662`       |
-| Web server proxy      | `6661`       |
 | AMP (server-to-server)| `6670`       |
 
 Web routes (assuming the default web port):
 
-- **Web client**: `http://localhost:5001/webclient/`
-- **Homepage / public site**: `http://localhost:5001/`
-- **Character creation**: `http://localhost:5001/character-creation/`
-- **Staff character approval**: `http://localhost:5001/staff/character-approval/`
-- **Builder (staff)**: `http://localhost:5001/builder/`
-- **Admin**: `http://localhost:5001/admin/`
-- **API**: `http://localhost:5001/api/`
+- **Web client**: `http://localhost:6665/webclient/`
+- **Homepage / public site**: `http://localhost:6665/`
+- **Character creation**: `http://localhost:6665/character-creation/`
+- **Staff character approval**: `http://localhost:6665/staff/character-approval/`
+- **Builder (staff)**: `http://localhost:6665/builder/`
+- **Admin**: `http://localhost:6665/admin/`
+- **API**: `http://localhost:6665/api/`
 
 ## Project Structure
 
+The repo root is a standard Evennia game directory. Python imports are relative to it
+(`from dice import ...`, `commands.command.Command`), with no package prefix.
+
 ```
 TheBeckoningMU/
-├── beckonmu/                # Main game code (importable Python package)
-│   ├── bbs/                 # Bulletin-board system
-│   ├── boons/               # Boon-tracking system
-│   ├── commands/            # In-game commands (MuxCommand-based)
-│   │   ├── v5/              # V5-specific commands
-│   │   └── builder/         # Builder-related commands
-│   ├── dice/                # V5 dice roller, rouse checks, discipline rolls
-│   ├── jobs/                # Staff job/request tracker
-│   ├── server/
-│   │   └── conf/            # Evennia settings.py, cmdhandler, at_search
-│   ├── status/              # Status / Influence tracking
-│   ├── traits/              # Character trait system
-│   ├── typeclasses/         # Account, Character, Room, Object, Exit, Script, Channel
-│   ├── web/                 # Django apps: website, webclient, admin, api, builder
-│   └── world/               # Game data (v5_data.py, v5_dice.py, ansi_theme, help, news)
-├── server/                  # Evennia runtime (db, logs) — gitignored
-├── world/                   # Root-level world helpers
-├── pyproject.toml           # Project metadata + dependencies (uv/pip)
-├── uv.lock                  # Locked dependency graph
-├── .pre-commit-config.yaml  # ruff + formatting hooks
-└── README.md
+├── server/conf/         # settings.py, connection screens, lockfuncs, secret_settings.py (untracked)
+├── typeclasses/         # Account, Character, Room, Object, Exit, Script, Channel
+├── commands/            # MuxCommand-based commands + default_cmdsets.py
+│   ├── v5/              # V5 commands; game logic lives in v5/utils/
+│   └── builder/         # sandbox / promote commands for the web builder
+├── dice/                # V5 dice roller, rouse checks, discipline rolls
+├── bbs/ jobs/ status/ boons/ traits/   # Django apps (models + in-game commands)
+├── web/                 # Django: website, webclient, admin, api, builder, templates, static
+├── world/               # v5_data.py, ansi_theme.py, help/ and news/ text files
+├── tests/               # cross-app tests (app-local tests live in each app)
+├── pyproject.toml
+└── uv.lock
 ```
 
 ## Development
@@ -117,11 +111,15 @@ ruff format .
 
 ### Tests
 
+Tests use Evennia's Django test runner (pytest is not configured):
+
 ```bash
-pytest
+evennia test --settings settings.py .                 # everything
+evennia test --settings settings.py dice.tests        # one module
+evennia test --settings settings.py jobs.tests.CmdJobsTests.test_list_all_jobs   # one test
 ```
 
-Test modules live alongside the code they exercise (e.g. `beckonmu/dice/tests.py`, `beckonmu/jobs/tests.py`).
+Test modules live alongside the code they exercise (e.g. `dice/tests.py`, `jobs/tests.py`) plus cross-app tests in `tests/`.
 
 ### Secrets & per-host config
 

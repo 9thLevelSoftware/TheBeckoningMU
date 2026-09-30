@@ -43,7 +43,9 @@ poetry.toml
 *.sqlite3
 server/evennia.db3
 server/logs/
-beckonmu/server/logs/
+server/.static/
+server/.media/
+!server/logs/README.md
 *.log
 
 # ----- IDEs -----
@@ -80,7 +82,6 @@ WEB_BUILDER_IMPLEMENTATION_PLAN.md
 
 # ----- Local Configuration -----
 server/conf/secret_settings.py
-beckonmu/server/conf/secret_settings.py
 *.local.json
 .env
 
