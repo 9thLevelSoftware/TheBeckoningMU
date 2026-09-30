@@ -1,0 +1,80 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<title>Character Creation - The Beckoning</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=yes" />
+		<link rel="stylesheet" href="assets/css/character-sheet.css" />
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link href="https://fonts.googleapis.com/css2?family=Arizonia" rel="stylesheet">
+	</head>
+	<body>
+		<!-- Header -->
+		<header id="header">
+			<section id="gamename">
+				<div id="titletext">
+					<h1>The Beckoning</h1>
+				</div>
+				<div id="subtext">
+					<h4>Character Creation</h4>
+				</div>
+				<div class="nav-links">
+					<a href="index.html" class="button">Back to Home</a>
+				</div>
+			</section>
+		</header>
+
+		<!-- Character Sheet Container -->
+		<div id="character-sheet-container">
+			<div class="sheet-section">
+				<h2>Character Information</h2>
+				<div class="form-grid">
+					<div class="form-group">
+						<label for="character-name">Name</label>
+						<input type="text" id="character-name" name="character-name">
+					</div>
+					<div class="form-group">
+						<label for="concept">Concept</label>
+						<input type="text" id="concept" name="concept">
+					</div>
+					<div class="form-group">
+						<label for="chronicle">Chronicle</label>
+						<input type="text" id="chronicle" name="chronicle" value="The Beckoning">
+					</div>
+				</div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Clan</h2>
+				<div class="form-grid">
+					<div class="form-group full-width">
+						<select id="clan" name="clan">
+							<option value="">Select Clan</option>
+							<option value="brujah">Brujah</option>
+							<option value="gangrel">Gangrel</option>
+							<option value="malkavian">Malkavian</option>
+							<option value="nosferatu">Nosferatu</option>
+							<option value="toreador">Toreador</option>
+							<option value="tremere">Tremere</option>
+							<option value="ventrue">Ventrue</option>
+							<option value="caitiff">Caitiff</option>
+							<option value="thin-blood">Thin-Blood</option>
+						</select>
+					</div>
+				</div>
+			</div>
+
+			<div class="sheet-section">
+				<h2>Export</h2>
+				<div class="form-group">
+					<button id="generate-json" class="button">Generate JSON</button>
+					<textarea id="json-output" readonly></textarea>
+				</div>
+			</div>
+		</div>
+
+		<!-- Scripts -->
+		<script src="assets/js/character-sheet.js"></script>
+	</body>
+</html>
