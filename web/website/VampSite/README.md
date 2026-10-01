@@ -8,6 +8,10 @@ Character creation happens on the game website. The pages here (`character-creat
 
 These static pages no longer validate creation rules or produce character JSON, and the game has no import path for pasted character data.
 
+### Game website address
+
+The game website is currently `https://beckon.vineyard.haus/`. It is set in exactly one place: `GAME_SITE_URL` at the top of `assets/js/game-site.js`. **When the game website moves (for example to Cloudflare), change that one line.** Every link with a `data-game-path` attribute (the "Create a Character" buttons in `index.html` and both creation pages) is pointed at `GAME_SITE_URL` + that path when the page loads. Without JavaScript the links fall back to a root-relative `/character-creation/`, which works only if this site is served from the same origin as the game.
+
 ## Project Structure
 
 - `index.html` - Main landing page
@@ -15,6 +19,7 @@ These static pages no longer validate creation rules or produce character JSON, 
 - `assets/css/` - CSS stylesheets (`main.css` is the site style)
 - `assets/js/` - JavaScript files
   - `main.js` - Main site functionality
+  - `game-site.js` - The game website address (`GAME_SITE_URL`) and the code that points the creation links at it
   - `character-sheet.js`, `character-sheet-new.js` - The retired client-side character builder. No page loads them any more; they are kept for reference.
 - `references/` - V5 reference materials (PDFs)
 
