@@ -35,103 +35,158 @@ Shows detailed information about a specific discipline power.
 ```
 Activates a discipline power. If the power requires a Rouse check, it will be performed automatically.
 
-## The 11 Core Disciplines
+## The Core Disciplines
+
+The V5 core book's disciplines (V5 core p.244-288). Each power is listed as
+name (level, cost). Amalgam powers also need the second discipline.
 
 ### Animalism
-Command over beasts and the Beast within. Bond with animals, communicate with them, or control multiple creatures.
+Commune with and command animals and the Beast (V5 core p.244-247).
 
-**Key Powers:**
-- Bond Famulus (1): Create supernatural bond with an animal
-- Feral Whispers (2): Communicate with and command animals
-- Subsume the Spirit (4): Project consciousness into an animal
+- Bond Famulus (1, 3 Rouse): Ghoul one animal as a bonded companion that obeys simple commands
+- Sense the Beast (1, free): Sense hostility, Hunger and supernatural nature in others
+- Feral Whispers (2, 1 Rouse): Talk with animals and summon those nearby
+- Animal Succulence (3, free): Feeding on animals slakes more Hunger
+- Quell the Beast (3, 1 Rouse): Cow a mortal into apathy, or pull a vampire out of frenzy
+- Unliving Hive (3, free; needs Obfuscate 2): Your body hosts insect swarms that your Animalism powers can command
+- Subsume the Spirit (4, 1 Rouse): Move your mind into an animal's body and control it
+- Animal Dominion (5, 2 Rouse): Command whole flocks or swarms of animals
+- Drawing Out the Beast (5, 1 Rouse): Push your own frenzy out onto a nearby victim
 
 ### Auspex
-Supernatural senses and perception. See the unseen, read auras, or project your senses remotely.
+Supernatural senses and perception (V5 core p.248-252).
 
-**Key Powers:**
-- Heightened Senses (1): Dramatically enhance all five senses
-- Sense the Unseen (1): Detect supernatural presences
-- Scry the Soul (3): Read auras and emotional states
-- Telepathy (5): Read thoughts and communicate mentally
+- Heightened Senses (1, free): Add Auspex to perception rolls; senses sharpen beyond human limits
+- Sense the Unseen (1, free): Notice Obfuscated beings, ghosts and spying Auspex
+- Premonition (2, free): Receive intuitive visions and warnings
+- Scry the Soul (3, 1 Rouse): Read a subject's aura: emotions, nature, diablerie
+- Share the Senses (3, 1 Rouse): See and hear through another person's senses
+- Spirit's Touch (4, 1 Rouse): Read emotional traces left on objects and places
+- Clairvoyance (5, 1 Rouse): Gather information about the surrounding area
+- Possession (5, 2 Rouse; needs Dominate 3): Take over a mortal's body
+- Telepathy (5, 1 Rouse): Read surface thoughts or send your own
 
 ### Blood Sorcery
-Blood magic and rituals. Unique discipline that includes both instant powers and time-consuming rituals.
+Blood magic and rituals (V5 core p.271-282).
 
-**Key Powers:**
-- Corrosive Vitae (1): Spit blood as acid
-- Scorpion's Touch (3): Blood becomes paralyzing poison
-- Cauldron of Blood (5): Boil victim's blood
+- Corrosive Vitae (1, 1 Rouse): Your blood eats through inanimate, non-living matter
+- A Taste for Blood (1, free): Tasting a drop of blood reveals basic facts about its owner
+- Extinguish Vitae (2, 1 Rouse): Spoil another vampire's blood, raising their Hunger
+- Blood of Potency (3, 1 Rouse): Temporarily raise your own Blood Potency
+- Scorpion's Touch (3, 1 Rouse): Turn your blood into a paralysing poison
+- Theft of Vitae (4, 1 Rouse): Draw a mortal's blood through the air into your mouth
+- Baal's Caress (5, 1 Rouse): Turn your blood into a poison that deals Aggravated damage
+- Cauldron of Blood (5, 1 Rouse): Boil a victim's blood inside their body
+
+Rituals (bought separately; 1 Rouse, Intelligence + Blood Sorcery):
+- Level 1: Blood Walk, Clinging of the Insect, Craft Bloodstone, Wake with Evening's Freshness, Ward against Ghouls
+- Level 2: Communicate with Kindred Sire, Eyes of Babel, Illuminate the Trail of Prey, Truth of Blood, Ward against Spirits, Warding Circle against Ghouls
+- Level 3: Dagon's Call, Deflection of Wooden Doom, Essence of Air, Firewalker, Ward against Lupines, Warding Circle against Spirits
+- Level 4: Defense of the Sacred Haven, Eyes of the Nighthawk, Incorporeal Passage, Ward against Cainites, Warding Circle against Lupines
+- Level 5: Escape to True Sanctuary, Heart of Stone, Shaft of Belated Dissolution, Warding Circle against Cainites
 
 ### Celerity
-Supernatural speed and reflexes. Move faster, react quicker, or act multiple times.
+Supernatural speed and reflexes (V5 core p.252-254).
 
-**Key Powers:**
-- Cat's Grace (1): Automatic success on Dexterity rolls, passive defense bonus
-- Fleetness (2): Double movement speed
-- Blink (3): Teleport short distances
-- Lightning Strike (5): Multiple attacks in one turn
+- Cat's Grace (1, free): Automatically keep your balance
+- Rapid Reflexes (1, free): Dodge gunfire without cover at no penalty; minor actions are faster
+- Fleetness (2, 1 Rouse): Add Celerity to non-combat Dexterity rolls and to Dexterity-based defense
+- Blink (3, 1 Rouse): Dash a long distance almost instantly and still act
+- Traversal (3, 1 Rouse): Run up walls or across liquid
+- Draught of Elegance (4, 1 Rouse): Those who drink your blood gain Celerity
+- Unerring Aim (4, 1 Rouse; needs Auspex 2): The target can't defend against your ranged attack
+- Lightning Strike (5, 1 Rouse): The target can't defend against your close-combat attack
+- Split Second (5, 1 Rouse): Act in a sudden moment, rewriting what just happened
 
 ### Dominate
-Mind control and mental commands. Alter memories, implant commands, or control crowds.
+Mind control and mental commands (V5 core p.254-257).
 
-**Key Powers:**
-- Compel (1): Issue one-word command
-- Mesmerize (2): Issue complex commands
-- The Forgetful Mind (3): Rewrite extensive memories
-- Mass Manipulation (5): Dominate multiple targets
+- Cloud Memory (1, free): Make the target forget the current moment
+- Compel (1, free): A one-word or short command the target obeys at once
+- Mesmerize (2, 1 Rouse): Implant a more complex command
+- Dementation (2, 1 Rouse; needs Obfuscate 2): Push the target toward breakdown or madness
+- The Forgetful Mind (3, 1 Rouse): Rewrite the target's memories
+- Submerged Directive (3, free): Mesmerize commands can wait for a trigger
+- Rationalize (4, free): Victims explain away dominated acts as their own choice
+- Mass Manipulation (5, 1 Rouse): Use a Dominate power on a whole group at once
+- Terminal Decree (5, free): Your commands may now harm or kill the victim
 
 ### Fortitude
-Supernatural resilience and endurance. Resist damage, ignore wounds, or become invulnerable.
+Supernatural resilience and toughness (V5 core p.258-260).
 
-**Key Powers:**
-- Resilience (1): Add Fortitude to Health
-- Toughness (2): Reduce fire/sunlight damage
-- Flesh of Marble (5): Near invulnerability
+- Resilience (1, free): Add Fortitude to your Health track
+- Unswayable Mind (1, free): Add Fortitude to resist coercion and attempts to sway your mind
+- Toughness (2, 1 Rouse): Subtract Fortitude from Superficial physical damage
+- Enduring Beasts (2, 1 Rouse; needs Animalism 1): Animals you influence gain extra Health equal to your Fortitude
+- Defy Bane (3, 1 Rouse): Turn Aggravated damage from your banes into Superficial
+- Fortify the Inner Facade (3, free): Harder to read with Scry the Soul or Telepathy; add Fortitude to resist
+- Draught of Endurance (4, 1 Rouse): Those who drink your blood temporarily gain Fortitude
+- Flesh of Marble (5, 2 Rouse): Ignore the first source of physical damage each turn (not sunlight)
+- Prowess from Pain (5, 1 Rouse): No wound penalties; your injuries boost physical Attributes
 
 ### Obfuscate
-Supernatural stealth and illusion. Become invisible, change your appearance, or hide others.
+Supernatural stealth and invisibility (V5 core p.260-263).
 
-**Key Powers:**
-- Cloak of Shadows (1): Invisible while stationary
-- Unseen Passage (2): Invisible while moving
-- Mask of a Thousand Faces (3): Appear as someone else
-- Vanish (5): Disappear even while observed
-
-### Oblivion
-Power over death and the Underworld. Control shadows, see ghosts, or animate corpses.
-
-**Key Powers:**
-- Shadow Cloak (1): Hide using shadows
-- Oblivion's Sight (1): See into the lands of the dead
-- Shadow Cast (3): Control shadows to attack
-- Shadowstep (5): Teleport through shadows
+- Cloak of Shadows (1, free): Become unseen while you keep still
+- Silence of Death (1, free): Silence every sound you make
+- Unseen Passage (2, 1 Rouse): Stay hidden while you move
+- Ghost in the Machine (3, free): Your Obfuscate also fools cameras, recordings and electronics
+- Mask of a Thousand Faces (3, 1 Rouse): Appear as a forgettable stranger who fits the setting
+- Conceal (4, 1 Rouse; needs Auspex 3): Hide an object up to the size of a small building
+- Vanish (4, free): Use Cloak of Shadows or Unseen Passage while being watched
+- Cloak the Gathering (5, 1 Rouse): Extend your Obfuscate to your companions
+- Impostor's Guise (5, 1 Rouse): Look like one specific person
 
 ### Potence
-Supernatural strength. Hit harder, jump farther, or cause earthquakes.
+Supernatural strength (V5 core p.263-266).
 
-**Key Powers:**
-- Lethal Body (1): Unarmed attacks deal extra damage
-- Prowess (2): Bonus dice to Strength rolls
-- Fist of Caine (5): Devastating single attack
+- Lethal Body (1, free): Your unarmed blows deal Aggravated damage to mortals
+- Soaring Leap (1, free): Jump much higher and farther
+- Prowess (2, 1 Rouse): Add Potence to unarmed and melee damage and to Strength feats
+- Brutal Feed (3, free): Drain a mortal completely within seconds
+- Spark of Rage (3, 1 Rouse; needs Presence 3): Stir onlookers to anger or frenzy
+- Uncanny Grip (3, 1 Rouse): Climb and hang from walls and ceilings
+- Draught of Might (4, 1 Rouse): Those who drink your blood temporarily gain Potence
+- Earthshock (5, 2 Rouse): Strike the ground to stagger or knock down those nearby
+- Fist of Caine (5, 1 Rouse): Your unarmed attacks deal Aggravated damage to mortals and vampires
 
 ### Presence
-Supernatural charisma and emotion manipulation. Inspire awe or terror, entrance victims, or summon people to you.
+Supernatural charisma and emotion manipulation (V5 core p.266-269).
 
-**Key Powers:**
-- Awe (1): Become center of attention
-- Daunt (1): Inspire terror
-- Entrancement (3): Create obsessive fascination
-- Majesty (5): Others cannot act against you
+- Awe (1, free): Become captivating; add Presence to Persuasion, Performance and Charisma pools
+- Daunt (1, free): Add Presence to Intimidation; can't be used with Awe
+- Lingering Kiss (2, free): Those you feed on grow attached to you
+- Dread Gaze (3, 1 Rouse): Terrify a target into fleeing or cowering
+- Entrancement (3, 1 Rouse): The target becomes infatuated and eager to please
+- Irresistible Voice (4, free; needs Dominate 1): Use Dominate with your voice alone, without eye contact
+- Summon (4, 1 Rouse): Call someone you have used Presence on, or who tasted your blood
+- Majesty (5, 2 Rouse): No one can act against you without first resisting
+- Star Magnetism (5, 1 Rouse): Presence powers work through live video and audio
 
 ### Protean
-Shapeshifting and transformation. Transform into animals, mist, or monstrous forms.
+Shapeshifting and transformation (V5 core p.269-271).
 
-**Key Powers:**
-- Eyes of the Beast (1): See in darkness
-- Feral Weapons (2): Grow claws
-- Metamorphosis (2): Transform into bat, wolf, or rat
-- Earth Meld (3): Merge with earth
-- Horrid Form (5): Transform into combat monster
+- Eyes of the Beast (1, free): Your eyes glow and see in total darkness
+- Weight of the Feather (1, free): Become nearly weightless; no damage from falls or impacts
+- Feral Weapons (2, 1 Rouse): Grow deadly claws or fangs
+- Earth Meld (3, 1 Rouse): Sink into the earth to rest
+- Shapechange (3, 1 Rouse): Turn into one human-sized animal
+- Metamorphosis (4, 1 Rouse): Take an extra animal form of any size
+- Mist Form (5, 1 Rouse): Turn into mist that only fire, sun or supernatural attacks can harm
+- The Unfettered Heart (5, free): Your heart moves within your chest, making you much harder to stake
+
+### Thin-Blood Alchemy
+Alchemical formulae unique to thin-blooded vampires (V5 core p.282-288).
+
+Thin-bloods get Alchemy through the Thin-blood Alchemist merit. Formulas:
+- Far Reach (1): Telekinetically shove or hold an object or person
+- Haze (1): Surround yourself with a cloud of mist
+- Envelop (2): A mist smothers and blinds one target
+- Counterfeit (2): Copy a Discipline power one level below your Alchemy rating
+- Defractionate (3): Make bagged or treated blood drinkable and nourishing
+- Profane Hieros Gamos (3): Permanently reshape your body or sex
+- Airborne Momentum (4): Fly under your own power
+- Awaken the Sleeper (5): Wake a vampire from day-sleep or torpor
 
 ## Rouse Checks
 
@@ -139,28 +194,38 @@ Most discipline powers require a Rouse check. When you activate such a power:
 - Roll a single d10
 - Success (6+): Hunger stays the same
 - Failure (1-5): Hunger increases by 1
-- Bestial Failure (1): Hunger increases AND your Beast stirs
+
+Some powers cost two or more Rouse checks; the list above shows the cost.
+At Hunger 5 you can't make a Rouse check (QR p.4). Blood Potency lets you
+re-roll a failed Rouse check for low-level powers (see help hunger).
 
 The power activates regardless of the Rouse check result, but failure means you're closer to losing control.
 
 ## Amalgam Powers
 
-Some advanced powers require knowledge of multiple disciplines. For example:
+Some powers combine two disciplines (V5 core p.244). You must have both
+disciplines at the required levels:
+- Unliving Hive (Animalism 3) requires Obfuscate 2
 - Possession (Auspex 5) requires Dominate 3
 - Unerring Aim (Celerity 4) requires Auspex 2
-- Living Hive (Animalism 3) requires Obfuscate 2
-
-You must have BOTH disciplines at the required levels to use amalgam powers.
+- Dementation (Dominate 2) requires Obfuscate 2
+- Enduring Beasts (Fortitude 2) requires Animalism 1
+- Conceal (Obfuscate 4) requires Auspex 3
+- Spark of Rage (Potence 3) requires Presence 3
+- Irresistible Voice (Presence 4) requires Dominate 1
 
 ## Resonance Bonuses
 
-When you feed from mortals with strong emotions, you gain Resonance which provides +1 die to related disciplines:
+The blood you last drank carries a Resonance (V5 core p.226-231). Intense or
+Acute Resonance adds one die to the matching disciplines' pools; Fleeting
+Resonance adds no dice but lets you spend XP on them:
 
-- **Sanguine** (enthusiastic): Celerity, Presence
-- **Melancholic** (sad): Fortitude, Obfuscate
-- **Choleric** (angry): Potence, Presence
-- **Phlegmatic** (calm): Auspex, Dominate
-- **Animal**: Animalism, Protean
+- **Choleric** (anger, rage, violence): Celerity, Potence
+- **Melancholic** (sadness, depression, fear): Fortitude, Obfuscate
+- **Phlegmatic** (calm, apathy, laziness): Auspex, Dominate
+- **Sanguine** (joy, lust, passion): Blood Sorcery, Presence
+- **Animal** (bestial (from animals)): Animalism, Protean
+- **Animal blood**: Animalism, Protean (bagged blood: none)
 
 ## Learning Disciplines
 

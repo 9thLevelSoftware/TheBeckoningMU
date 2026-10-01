@@ -162,1065 +162,619 @@ CLANS = {
 # ============================================================================
 # DISCIPLINES (power levels 1-5)
 # ============================================================================
+# Source: V5 core book Disciplines chapter (p.244-288); each discipline's
+# "source" gives its pages (anchors from the V5 Quick Reference 2.0 p.7).
+# Power names, levels, Rouse costs, pools and amalgams were cross-checked
+# against at least two community transcriptions of the core book:
+# vtm.paradoxwikis.com (cites book and page), whitewolf.fandom.com
+# ("Standard Powers (V5)"), and the VicarData, Progeny and vtm-platform V5
+# character-creator datasets on GitHub. Powers from later books
+# (Camarilla, Anarch, Chicago by Night, Cults of the Blood Gods, Players
+# Guide, Companion, ...) are left out.
+#
+# Each power:
+#   name, level (the key it sits under), description (a short paraphrase)
+#   rouse      - number of Rouse checks to activate (0 = free)
+#   dice_pool  - the user's pool, "Attribute + Trait"; "A / B + C" means
+#                A or B plus C. None = no roll.
+#   opposed_by - the target's resistance pool, if the roll is contested
+#   duration   - short text
+#   amalgam    - "Discipline N" the character must also have, or None
+#   note       - optional rules detail the fields above can't express
+#
+# Blood Sorcery rituals and Thin-Blood Alchemy formulas are not powers:
+# they live under "rituals" and "formulas" and are bought separately
+# (XP: level x 3, QR p.1).
+
+
+def _power(name, rouse, dice_pool, duration, description, *, opposed_by=None, amalgam=None, note=None):
+    power = {
+        "name": name,
+        "description": description,
+        "rouse": rouse,
+        "dice_pool": dice_pool,
+        "duration": duration,
+        "amalgam": amalgam,
+    }
+    if opposed_by:
+        power["opposed_by"] = opposed_by
+    if note:
+        power["note"] = note
+    return power
+
+
+def _ritual(name, level, description, *, dice_pool="Intelligence + Blood Sorcery", opposed_by=None, rouse=1):
+    ritual = {"name": name, "level": level, "description": description, "rouse": rouse, "dice_pool": dice_pool}
+    if opposed_by:
+        ritual["opposed_by"] = opposed_by
+    return ritual
+
+
+def _formula(name, rouse, dice_pool, duration, description, *, resonance=None, opposed_by=None, note=None):
+    formula = _power(name, rouse, dice_pool, duration, description, opposed_by=opposed_by, note=note)
+    formula["resonance"] = resonance
+    return formula
+
 
 DISCIPLINES = {
     "Animalism": {
         "type": "standard",
         "description": "Commune with and command animals and the Beast",
+        "source": "V5 core p.244-247",
         "powers": {
             1: [
-                {
-                    "name": "Bond Famulus",
-                    "description": "Create supernatural bond with one animal, mental communication",
-                    "rouse": True,
-                    "dice_pool": "Charisma + Animal Ken",
-                    "duration": "permanent",
-                    "amalgam": None
-                },
-                {
-                    "name": "Sense the Beast",
-                    "description": "Sense presence and emotional state of animals and vampires nearby",
-                    "rouse": False,
-                    "dice_pool": "Resolve + Animalism",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Bond Famulus", 3, "Charisma + Animal Ken", "permanent",
+                       "Ghoul one animal as a bonded companion that obeys simple commands",
+                       note="3 Rouse checks over three nights, done once; the pool is for giving commands"),
+                _power("Sense the Beast", 0, "Resolve + Animalism", "passive",
+                       "Sense hostility, Hunger and supernatural nature in others",
+                       opposed_by="Composure + Subterfuge"),
             ],
             2: [
-                {
-                    "name": "Feral Whispers",
-                    "description": "Communicate with and command animals",
-                    "rouse": True,
-                    "dice_pool": "Manipulation/Charisma + Animalism",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Feral Whispers", 1, "Manipulation / Charisma + Animalism", "one scene",
+                       "Talk with animals and summon those nearby",
+                       note="1 Rouse per animal type per scene"),
             ],
             3: [
-                {
-                    "name": "Animal Succulence",
-                    "description": "Slake 1 additional Hunger when feeding from animals",
-                    "rouse": False,
-                    "dice_pool": None,
-                    "duration": "passive",
-                    "amalgam": None
-                },
-                {
-                    "name": "Quell the Beast",
-                    "description": "Calm or rouse the Beast in others",
-                    "rouse": True,
-                    "dice_pool": "Charisma/Manipulation + Animalism",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Living Hive",
-                    "description": "Infest body with stinging insects for defense and concealment",
-                    "rouse": True,
-                    "dice_pool": "Composure + Animalism",
-                    "duration": "scene",
-                    "amalgam": "Obfuscate 2"
-                }
+                _power("Animal Succulence", 0, None, "passive",
+                       "Feeding on animals slakes more Hunger"),
+                _power("Quell the Beast", 1, "Charisma + Animalism", "one scene",
+                       "Cow a mortal into apathy, or pull a vampire out of frenzy",
+                       opposed_by="Stamina + Resolve"),
+                _power("Unliving Hive", 0, None, "passive",
+                       "Your body hosts insect swarms that your Animalism powers can command",
+                       amalgam="Obfuscate 2"),
             ],
             4: [
-                {
-                    "name": "Subsume the Spirit",
-                    "description": "Project consciousness into animal, control it fully",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Animalism",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Subsume the Spirit", 1, "Manipulation + Animalism", "one scene",
+                       "Move your mind into an animal's body and control it"),
             ],
             5: [
-                {
-                    "name": "Animal Dominion",
-                    "description": "Command multiple animals or swarms simultaneously",
-                    "rouse": True,
-                    "dice_pool": "Charisma + Animalism",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Draw Out the Beast",
-                    "description": "Force another's Beast into frenzy or calm it entirely",
-                    "rouse": True,
-                    "dice_pool": "Charisma + Animalism",
-                    "duration": "instant",
-                    "amalgam": None
-                }
-            ]
-        }
+                _power("Animal Dominion", 2, "Charisma + Animalism", "one scene",
+                       "Command whole flocks or swarms of animals"),
+                _power("Drawing Out the Beast", 1, "Wits + Animalism", "one scene",
+                       "Push your own frenzy out onto a nearby victim",
+                       opposed_by="Composure + Resolve"),
+            ],
+        },
     },
     "Auspex": {
         "type": "standard",
         "description": "Supernatural senses and perception",
+        "source": "V5 core p.248-252",
         "powers": {
             1: [
-                {
-                    "name": "Heightened Senses",
-                    "description": "Dramatically enhance all five senses",
-                    "rouse": False,
-                    "dice_pool": "Wits/Resolve + Auspex",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Sense the Unseen",
-                    "description": "Detect supernatural presences (Obfuscate, ghosts, magic)",
-                    "rouse": False,
-                    "dice_pool": "Wits/Resolve + Auspex",
-                    "duration": "instant",
-                    "amalgam": None
-                }
+                _power("Heightened Senses", 0, None, "until ended",
+                       "Add Auspex to perception rolls; senses sharpen beyond human limits",
+                       note="Wits + Resolve only to resist sensory overload"),
+                _power("Sense the Unseen", 0, "Wits / Resolve + Auspex", "passive",
+                       "Notice Obfuscated beings, ghosts and spying Auspex",
+                       opposed_by="Wits + Obfuscate (hidden vampires)"),
             ],
             2: [
-                {
-                    "name": "Premonition",
-                    "description": "Get glimpses of danger or future events",
-                    "rouse": False,
-                    "dice_pool": "Resolve + Auspex",
-                    "duration": "passive",
-                    "amalgam": None
-                }
+                _power("Premonition", 0, "Resolve + Auspex", "passive",
+                       "Receive intuitive visions and warnings",
+                       note="1 Rouse when invoked actively; the pool is for active use"),
             ],
             3: [
-                {
-                    "name": "Scry the Soul",
-                    "description": "Read aura, discern emotional state, vampiric nature, resonance",
-                    "rouse": True,
-                    "dice_pool": "Intelligence + Auspex",
-                    "duration": "instant",
-                    "amalgam": None
-                },
-                {
-                    "name": "Share the Senses",
-                    "description": "See/hear through another's senses remotely",
-                    "rouse": True,
-                    "dice_pool": "Resolve + Auspex",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Scry the Soul", 1, "Intelligence + Auspex", "one turn",
+                       "Read a subject's aura: emotions, nature, diablerie",
+                       opposed_by="Composure + Subterfuge"),
+                _power("Share the Senses", 1, "Resolve + Auspex", "one scene",
+                       "See and hear through another person's senses"),
             ],
             4: [
-                {
-                    "name": "Spirit's Touch",
-                    "description": "Read psychic impressions from objects (psychometry)",
-                    "rouse": False,
-                    "dice_pool": "Intelligence + Auspex",
-                    "duration": "instant",
-                    "amalgam": None
-                }
+                _power("Spirit's Touch", 1, "Intelligence + Auspex", "one turn",
+                       "Read emotional traces left on objects and places"),
             ],
             5: [
-                {
-                    "name": "Clairvoyance",
-                    "description": "Project senses to a distant familiar location",
-                    "rouse": True,
-                    "dice_pool": "Intelligence + Auspex",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Possession",
-                    "description": "Fully possess another person's body",
-                    "rouse": True,
-                    "dice_pool": "Resolve + Auspex",
-                    "duration": "scene",
-                    "amalgam": "Dominate 3"
-                },
-                {
-                    "name": "Telepathy",
-                    "description": "Read surface thoughts, project thoughts, mental communication",
-                    "rouse": True,
-                    "dice_pool": "Resolve + Auspex",
-                    "duration": "scene",
-                    "amalgam": None
-                }
-            ]
+                _power("Clairvoyance", 1, "Intelligence + Auspex", "up to one night",
+                       "Gather information about the surrounding area"),
+                _power("Possession", 2, "Resolve + Auspex", "until ended",
+                       "Take over a mortal's body",
+                       opposed_by="Resolve + Intelligence", amalgam="Dominate 3"),
+                _power("Telepathy", 1, "Resolve + Auspex", "one scene",
+                       "Read surface thoughts or send your own",
+                       opposed_by="Wits + Subterfuge",
+                       note="Also 1 Willpower against an unwilling vampire"),
+            ],
         },
     },
     "Blood Sorcery": {
         "type": "ritual",
         "description": "Blood magic and rituals",
+        "source": "V5 core p.271-282",
         "powers": {
             1: [
-                {
-                    "name": "Corrosive Vitae",
-                    "description": "Spit vitae as acid weapon",
-                    "rouse": True,
-                    "dice_pool": "Strength + Blood Sorcery",
-                    "duration": "instant",
-                    "amalgam": None
-                },
-                {
-                    "name": "Blood of Potency",
-                    "description": "Temporarily raise Blood Potency (ritual)",
-                    "rouse": False,
-                    "dice_pool": "Intelligence + Blood Sorcery",
-                    "duration": "scene",
-                    "amalgam": None,
-                    "ritual": True
-                }
+                _power("Corrosive Vitae", 1, None, "instant",
+                       "Your blood eats through inanimate, non-living matter",
+                       note="More Rouse checks for a bigger effect"),
+                _power("A Taste for Blood", 0, "Resolve + Blood Sorcery", "instant",
+                       "Tasting a drop of blood reveals basic facts about its owner"),
             ],
             2: [
-                {
-                    "name": "Extinguish Vitae",
-                    "description": "Paralyze a vampire's limb (ritual)",
-                    "rouse": False,
-                    "dice_pool": "Intelligence + Blood Sorcery",
-                    "duration": "scene",
-                    "amalgam": None,
-                    "ritual": True
-                },
-                {
-                    "name": "Ward Against Ghouls",
-                    "description": "Create protective ward against ghouls (ritual)",
-                    "rouse": False,
-                    "dice_pool": "Intelligence + Blood Sorcery",
-                    "duration": "permanent",
-                    "amalgam": None,
-                    "ritual": True
-                }
+                _power("Extinguish Vitae", 1, "Intelligence + Blood Sorcery", "instant",
+                       "Spoil another vampire's blood, raising their Hunger",
+                       opposed_by="Stamina + Composure"),
             ],
             3: [
-                {
-                    "name": "Scorpion's Touch",
-                    "description": "Vitae becomes paralyzing poison in melee",
-                    "rouse": True,
-                    "dice_pool": "Strength + Blood Sorcery",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Incorporeal Passage",
-                    "description": "Walk through walls (ritual)",
-                    "rouse": False,
-                    "dice_pool": "Intelligence + Blood Sorcery",
-                    "duration": "scene",
-                    "amalgam": None,
-                    "ritual": True
-                }
+                _power("Blood of Potency", 1, "Resolve + Blood Sorcery", "one scene or one night",
+                       "Temporarily raise your own Blood Potency"),
+                _power("Scorpion's Touch", 1, "Strength + Blood Sorcery", "one scene",
+                       "Turn your blood into a paralysing poison",
+                       opposed_by="Stamina + Occult / Fortitude",
+                       note="More Rouse checks for a stronger poison"),
             ],
             4: [
-                {
-                    "name": "Theft of Vitae",
-                    "description": "Drain vitae from target at a distance",
-                    "rouse": True,
-                    "dice_pool": "Wits + Blood Sorcery",
-                    "duration": "instant",
-                    "amalgam": None
-                }
+                _power("Theft of Vitae", 1, "Wits + Blood Sorcery", "one feeding",
+                       "Draw a mortal's blood through the air into your mouth",
+                       opposed_by="Wits + Occult"),
             ],
             5: [
-                {
-                    "name": "Cauldron of Blood",
-                    "description": "Boil victim's blood, causing massive damage",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Blood Sorcery",
-                    "duration": "instant",
-                    "amalgam": None
-                }
-            ]
+                _power("Baal's Caress", 1, "Strength + Blood Sorcery", "one scene",
+                       "Turn your blood into a poison that deals Aggravated damage",
+                       opposed_by="Stamina + Occult / Fortitude",
+                       note="More Rouse checks for a stronger poison"),
+                _power("Cauldron of Blood", 1, "Resolve + Blood Sorcery", "one turn",
+                       "Boil a victim's blood inside their body",
+                       opposed_by="Composure + Occult / Fortitude",
+                       note="Also costs Stains"),
+            ],
         },
-        "rituals": []
+        # Rituals are learned separately from powers (XP: ritual level x 3).
+        # Each costs 1 Rouse check, takes 5 minutes per level and rolls
+        # Intelligence + Blood Sorcery at Difficulty level + 1 unless noted.
+        # Source: V5 core p.275-282.
+        "rituals": [
+            _ritual("Blood Walk", 1, "Learn a subject's name, generation and sire from their blood"),
+            _ritual("Clinging of the Insect", 1, "Climb walls and ceilings like a spider"),
+            _ritual("Craft Bloodstone", 1, "Make a stone you can always locate"),
+            _ritual("Wake with Evening's Freshness", 1, "Wake during the day when danger comes"),
+            _ritual("Ward against Ghouls", 1, "Ward an object so it harms ghouls who touch it"),
+            _ritual("Communicate with Kindred Sire", 2, "Talk mind to mind with your sire"),
+            _ritual("Eyes of Babel", 2, "Gain a language from an eye and tongue"),
+            _ritual("Illuminate the Trail of Prey", 2, "Make a known target's path glow"),
+            _ritual("Truth of Blood", 2, "Your blood shows whether a statement is true"),
+            _ritual("Ward against Spirits", 2, "Ward an object against spirits"),
+            _ritual("Warding Circle against Ghouls", 2, "Ward an area against ghouls"),
+            _ritual("Dagon's Call", 3, "Drown a target from afar through their blood",
+                    dice_pool="Resolve + Blood Sorcery", opposed_by="Stamina + Resolve"),
+            _ritual("Deflection of Wooden Doom", 3, "The first stake to strike you fails"),
+            _ritual("Essence of Air", 3, "Become able to fly"),
+            _ritual("Firewalker", 3, "Resist fire"),
+            _ritual("Ward against Lupines", 3, "Ward an object against werewolves"),
+            _ritual("Warding Circle against Spirits", 3, "Ward an area against spirits"),
+            _ritual("Defense of the Sacred Haven", 4, "Your haven's windows block sunlight"),
+            _ritual("Eyes of the Nighthawk", 4, "See through a bird and use Disciplines through it"),
+            _ritual("Incorporeal Passage", 4, "Become intangible"),
+            _ritual("Ward against Cainites", 4, "Ward an object against vampires"),
+            _ritual("Warding Circle against Lupines", 4, "Ward an area against werewolves"),
+            _ritual("Escape to True Sanctuary", 5, "Step between two prepared circles"),
+            _ritual("Heart of Stone", 5, "Your heart turns to stone: immune to staking and emotion"),
+            _ritual("Shaft of Belated Dissolution", 5, "Make a rowan stake whose splinter seeks the heart",
+                    rouse=2),
+            _ritual("Warding Circle against Cainites", 5, "Ward an area against vampires"),
+        ],
     },
     "Celerity": {
         "type": "standard",
         "description": "Supernatural speed and reflexes",
+        "source": "V5 core p.252-254",
         "powers": {
             1: [
-                {
-                    "name": "Cat's Grace",
-                    "description": "Gain automatic success on Dexterity + Athletics roll. Passive: Add Celerity rating to Defense",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "instant",
-                    "amalgam": None
-                },
-                {
-                    "name": "Rapid Reflexes",
-                    "description": "Add Celerity rating to initiative",
-                    "rouse": False,
-                    "dice_pool": None,
-                    "duration": "passive",
-                    "amalgam": None
-                }
+                _power("Cat's Grace", 0, None, "passive",
+                       "Automatically keep your balance"),
+                _power("Rapid Reflexes", 0, None, "passive",
+                       "Dodge gunfire without cover at no penalty; minor actions are faster"),
             ],
             2: [
-                {
-                    "name": "Fleetness",
-                    "description": "Double movement speed for scene",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Fleetness", 1, None, "one scene",
+                       "Add Celerity to non-combat Dexterity rolls and to Dexterity-based defense"),
             ],
             3: [
-                {
-                    "name": "Blink",
-                    "description": "Move short distance instantly (appears to teleport)",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "instant",
-                    "amalgam": None
-                },
-                {
-                    "name": "Traversal",
-                    "description": "Scale walls, run across water, perform impossible movements",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Blink", 1, "Dexterity + Athletics", "one turn",
+                       "Dash a long distance almost instantly and still act",
+                       note="Roll only if the terrain makes it uncertain"),
+                _power("Traversal", 1, "Dexterity + Athletics", "one turn",
+                       "Run up walls or across liquid"),
             ],
             4: [
-                {
-                    "name": "Draught of Elegance",
-                    "description": "Gain Celerity rating as bonus dice to Dexterity rolls for scene",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Unerring Aim",
-                    "description": "Automatically hit target with ranged attack",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "instant",
-                    "amalgam": "Auspex 2"
-                }
+                _power("Draught of Elegance", 1, None, "one night",
+                       "Those who drink your blood gain Celerity"),
+                _power("Unerring Aim", 1, None, "one attack",
+                       "The target can't defend against your ranged attack",
+                       amalgam="Auspex 2"),
             ],
             5: [
-                {
-                    "name": "Lightning Strike",
-                    "description": "Make multiple attacks in single turn",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "instant",
-                    "amalgam": None
-                },
-                {
-                    "name": "Split Second",
-                    "description": "Act first in turn order, interrupt actions",
-                    "rouse": True,
-                    "dice_pool": "Wits + Awareness",
-                    "duration": "instant",
-                    "amalgam": None
-                }
-            ]
+                _power("Lightning Strike", 1, None, "one attack",
+                       "The target can't defend against your close-combat attack"),
+                _power("Split Second", 1, None, "one action",
+                       "Act in a sudden moment, rewriting what just happened"),
+            ],
         },
     },
     "Dominate": {
         "type": "standard",
         "description": "Mind control and mental commands",
+        "source": "V5 core p.254-257",
         "powers": {
             1: [
-                {
-                    "name": "Cloud Memory",
-                    "description": "Remove or alter short-term memories",
-                    "rouse": True,
-                    "dice_pool": "Charisma + Dominate",
-                    "duration": "permanent",
-                    "amalgam": None
-                },
-                {
-                    "name": "Compel",
-                    "description": "Issue one-word command target must obey",
-                    "rouse": True,
-                    "dice_pool": "Charisma/Manipulation + Dominate",
-                    "duration": "instant",
-                    "amalgam": None
-                }
+                _power("Cloud Memory", 0, "Charisma + Dominate", "permanent",
+                       "Make the target forget the current moment",
+                       opposed_by="Wits + Resolve"),
+                _power("Compel", 0, "Charisma + Dominate", "up to one scene",
+                       "A one-word or short command the target obeys at once",
+                       opposed_by="Intelligence + Resolve"),
             ],
             2: [
-                {
-                    "name": "Mesmerize",
-                    "description": "Issue complex hypnotic commands",
-                    "rouse": True,
-                    "dice_pool": "Charisma/Manipulation + Dominate",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Dementation",
-                    "description": "Drive target temporarily insane with hallucinations",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Dominate",
-                    "duration": "scene",
-                    "amalgam": "Obfuscate 2"
-                },
-                {
-                    "name": "Submerged Directive",
-                    "description": "Plant delayed trigger command",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Dominate",
-                    "duration": "permanent",
-                    "amalgam": None
-                }
+                _power("Mesmerize", 1, "Manipulation + Dominate", "until done or scene ends",
+                       "Implant a more complex command",
+                       opposed_by="Intelligence + Resolve"),
+                _power("Dementation", 1, "Manipulation + Dominate", "one scene",
+                       "Push the target toward breakdown or madness",
+                       opposed_by="Composure + Intelligence", amalgam="Obfuscate 2"),
             ],
             3: [
-                {
-                    "name": "The Forgetful Mind",
-                    "description": "Rewrite or remove extensive memories",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Dominate",
-                    "duration": "permanent",
-                    "amalgam": None
-                }
+                _power("The Forgetful Mind", 1, "Manipulation + Dominate", "permanent",
+                       "Rewrite the target's memories",
+                       opposed_by="Intelligence + Resolve"),
+                _power("Submerged Directive", 0, None, "passive",
+                       "Mesmerize commands can wait for a trigger"),
             ],
             4: [
-                {
-                    "name": "Rationalize",
-                    "description": "Make victim justify/accept anything",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Dominate",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Rationalize", 0, None, "permanent",
+                       "Victims explain away dominated acts as their own choice"),
             ],
             5: [
-                {
-                    "name": "Mass Manipulation",
-                    "description": "Dominate multiple targets simultaneously",
-                    "rouse": True,
-                    "dice_pool": "Charisma + Dominate",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Terminal Decree",
-                    "description": "Implant suicidal or self-destructive command",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Dominate",
-                    "duration": "permanent",
-                    "amalgam": None
-                }
-            ]
+                _power("Mass Manipulation", 1, None, "as the amplified power",
+                       "Use a Dominate power on a whole group at once",
+                       note="1 Rouse on top of the amplified power's cost; uses its pool"),
+                _power("Terminal Decree", 0, None, "passive",
+                       "Your commands may now harm or kill the victim"),
+            ],
         },
     },
     "Fortitude": {
         "type": "standard",
         "description": "Supernatural resilience and toughness",
+        "source": "V5 core p.258-260",
         "powers": {
             1: [
-                {
-                    "name": "Resilience",
-                    "description": "Add Fortitude rating to Health for scene",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Unswayable Mind",
-                    "description": "Add Fortitude rating to Resolve or Composure for resisting mental attacks",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Resilience", 0, None, "passive",
+                       "Add Fortitude to your Health track"),
+                _power("Unswayable Mind", 0, None, "passive",
+                       "Add Fortitude to resist coercion and attempts to sway your mind"),
             ],
             2: [
-                {
-                    "name": "Toughness",
-                    "description": "Reduce Aggravated damage from fire/sunlight by 1 per Bane Severity",
-                    "rouse": False,
-                    "dice_pool": None,
-                    "duration": "passive",
-                    "amalgam": None
-                },
-                {
-                    "name": "Enduring Beast",
-                    "description": "Ignore physical damage penalties for scene",
-                    "rouse": True,
-                    "dice_pool": "Stamina + Survival",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Toughness", 1, None, "one scene",
+                       "Subtract Fortitude from Superficial physical damage"),
+                _power("Enduring Beasts", 1, "Stamina + Animalism", "one scene",
+                       "Animals you influence gain extra Health equal to your Fortitude",
+                       amalgam="Animalism 1", note="Free and no roll on your famulus"),
             ],
             3: [
-                {
-                    "name": "Fortify the Inner Facade",
-                    "description": "Superficial damage becomes bashing for mortals witnessing violence",
-                    "rouse": True,
-                    "dice_pool": "Stamina + Fortitude",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Defy Bane", 1, None, "one scene",
+                       "Turn Aggravated damage from your banes into Superficial",
+                       note="Wits + Survival to activate it reflexively"),
+                _power("Fortify the Inner Facade", 0, None, "one scene",
+                       "Harder to read with Scry the Soul or Telepathy; add Fortitude to resist"),
             ],
             4: [
-                {
-                    "name": "Draught of Endurance",
-                    "description": "Add Fortitude rating as bonus dice to Stamina rolls for scene",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Draught of Endurance", 1, None, "one night",
+                       "Those who drink your blood temporarily gain Fortitude"),
             ],
             5: [
-                {
-                    "name": "Flesh of Marble",
-                    "description": "Become nearly invulnerable to physical harm",
-                    "rouse": True,
-                    "dice_pool": "Composure + Fortitude",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Prowess from Pain",
-                    "description": "Convert Health damage into bonus dice",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                }
-            ]
+                _power("Flesh of Marble", 2, None, "one scene",
+                       "Ignore the first source of physical damage each turn (not sunlight)"),
+                _power("Prowess from Pain", 1, None, "one scene",
+                       "No wound penalties; your injuries boost physical Attributes"),
+            ],
         },
     },
     "Obfuscate": {
         "type": "standard",
         "description": "Supernatural stealth and invisibility",
+        "source": "V5 core p.260-263",
+        # Seeing through Obfuscate is a contest; the core book's general rule
+        # is the observer's Wits + Auspex against the user's Wits +
+        # Obfuscate (UNVERIFIED: from one researcher's reading of p.260).
         "powers": {
             1: [
-                {
-                    "name": "Cloak of Shadows",
-                    "description": "Become invisible while stationary",
-                    "rouse": True,
-                    "dice_pool": "Wits + Obfuscate",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Silence of Death",
-                    "description": "Suppress all sound you make",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Cloak of Shadows", 0, None, "one scene",
+                       "Become unseen while you keep still"),
+                _power("Silence of Death", 0, None, "one scene",
+                       "Silence every sound you make"),
             ],
             2: [
-                {
-                    "name": "Unseen Passage",
-                    "description": "Remain invisible while moving",
-                    "rouse": True,
-                    "dice_pool": "Wits + Obfuscate",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                # UNVERIFIED: whether it has an activation pool (sources give
+                # none, Wits + Stealth, or Wits + Obfuscate / Stealth).
+                _power("Unseen Passage", 1, None, "one scene",
+                       "Stay hidden while you move"),
             ],
             3: [
-                {
-                    "name": "Ghost in the Machine",
-                    "description": "Erase digital presence, disappear from cameras",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Obfuscate",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Mask of a Thousand Faces",
-                    "description": "Appear as a different person",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Obfuscate",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Ghost in the Machine", 0, None, "as the power used",
+                       "Your Obfuscate also fools cameras, recordings and electronics"),
+                _power("Mask of a Thousand Faces", 1, None, "one scene",
+                       "Appear as a forgettable stranger who fits the setting"),
             ],
             4: [
-                {
-                    "name": "Conceal",
-                    "description": "Hide objects or other people",
-                    "rouse": True,
-                    "dice_pool": "Wits + Obfuscate",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Conceal", 1, "Intelligence + Obfuscate", "one night",
+                       "Hide an object up to the size of a small building",
+                       amalgam="Auspex 3", note="One more night per point of margin"),
+                _power("Vanish", 0, "Wits + Obfuscate", "as the power used",
+                       "Use Cloak of Shadows or Unseen Passage while being watched",
+                       opposed_by="Wits + Awareness",
+                       note="Costs what the boosted power costs"),
             ],
             5: [
-                {
-                    "name": "Vanish",
-                    "description": "Disappear instantly, even while observed",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Imposter's Guise",
-                    "description": "Perfectly mimic specific person (voice, mannerisms, etc.)",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Obfuscate",
-                    "duration": "scene",
-                    "amalgam": None
-                }
-            ]
-        },
-    },
-    "Oblivion": {
-        "type": "standard",
-        "description": "Power over death and the Underworld",
-        "powers": {
-            1: [
-                {
-                    "name": "Shadow Cloak",
-                    "description": "Obfuscate 1 equivalent using shadows",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Oblivion's Sight",
-                    "description": "See into lands of the dead",
-                    "rouse": False,
-                    "dice_pool": "Resolve + Oblivion",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Binding the Fetters",
-                    "description": "Strengthen ghost anchors (ritual)",
-                    "rouse": False,
-                    "dice_pool": "Intelligence + Oblivion",
-                    "duration": "permanent",
-                    "amalgam": None,
-                    "ritual": True
-                }
+                _power("Cloak the Gathering", 1, None, "as the power used",
+                       "Extend your Obfuscate to your companions",
+                       note="1 Rouse on top of the extended power's cost"),
+                _power("Impostor's Guise", 1, "Wits + Obfuscate", "one scene",
+                       "Look like one specific person",
+                       note="Manipulation + Performance to keep up the act"),
             ],
-            2: [
-                {
-                    "name": "Tenebrous Avatar",
-                    "description": "Become shadow-form",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Where the Shroud Thins",
-                    "description": "Find weak points in death barrier (ritual)",
-                    "rouse": False,
-                    "dice_pool": "Intelligence + Oblivion",
-                    "duration": "scene",
-                    "amalgam": None,
-                    "ritual": True
-                }
-            ],
-            3: [
-                {
-                    "name": "Shadow Cast",
-                    "description": "Control shadows to attack or manipulate",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Oblivion",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Summon Spirit",
-                    "description": "Call ghost to appear",
-                    "rouse": True,
-                    "dice_pool": "Intelligence + Oblivion",
-                    "duration": "scene",
-                    "amalgam": None
-                }
-            ],
-            4: [
-                {
-                    "name": "Shadow Perspective",
-                    "description": "Scry through shadows",
-                    "rouse": True,
-                    "dice_pool": "Intelligence + Oblivion",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Compel Spirit",
-                    "description": "Force ghost to obey",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Oblivion",
-                    "duration": "scene",
-                    "amalgam": None
-                }
-            ],
-            5: [
-                {
-                    "name": "Shadowstep",
-                    "description": "Teleport through shadows",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "instant",
-                    "amalgam": None
-                },
-                {
-                    "name": "Shambling Hordes",
-                    "description": "Animate corpses",
-                    "rouse": True,
-                    "dice_pool": "Intelligence + Oblivion",
-                    "duration": "scene",
-                    "amalgam": None
-                }
-            ]
         },
     },
     "Potence": {
         "type": "standard",
         "description": "Supernatural strength",
+        "source": "V5 core p.263-266",
         "powers": {
             1: [
-                {
-                    "name": "Lethal Body",
-                    "description": "Unarmed attacks deal +1 damage, can be Aggravated",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Soaring Leap",
-                    "description": "Jump incredible distances",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "instant",
-                    "amalgam": None
-                }
+                _power("Lethal Body", 0, None, "passive",
+                       "Your unarmed blows deal Aggravated damage to mortals"),
+                _power("Soaring Leap", 0, None, "passive",
+                       "Jump much higher and farther"),
             ],
             2: [
-                {
-                    "name": "Prowess",
-                    "description": "Add Potence rating as bonus dice to Strength rolls for scene",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Prowess", 1, None, "one scene",
+                       "Add Potence to unarmed and melee damage and to Strength feats"),
             ],
             3: [
-                {
-                    "name": "Brutal Feed",
-                    "description": "Gain additional Resonance benefit when feeding violently",
-                    "rouse": False,
-                    "dice_pool": None,
-                    "duration": "passive",
-                    "amalgam": None
-                }
+                _power("Brutal Feed", 0, None, "one feeding",
+                       "Drain a mortal completely within seconds"),
+                _power("Spark of Rage", 1, "Manipulation + Potence", "one scene",
+                       "Stir onlookers to anger or frenzy",
+                       amalgam="Presence 3"),
+                _power("Uncanny Grip", 1, None, "one scene",
+                       "Climb and hang from walls and ceilings"),
             ],
             4: [
-                {
-                    "name": "Spark of Rage",
-                    "description": "Cause frenzy in nearby vampires",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "instant",
-                    "amalgam": "Presence 3"
-                }
+                _power("Draught of Might", 1, None, "one night",
+                       "Those who drink your blood temporarily gain Potence"),
             ],
             5: [
-                {
-                    "name": "Earthshock",
-                    "description": "Shockwave knocks down all nearby",
-                    "rouse": True,
-                    "dice_pool": "Strength + Potence",
-                    "duration": "instant",
-                    "amalgam": None
-                },
-                {
-                    "name": "Fist of Caine",
-                    "description": "One devastating attack causing massive damage",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "instant",
-                    "amalgam": None
-                }
-            ]
+                _power("Earthshock", 2, None, "instant",
+                       "Strike the ground to stagger or knock down those nearby",
+                       note="Everyone within 5 m rolls Dexterity + Athletics at Difficulty 3; once per scene"),
+                _power("Fist of Caine", 1, None, "one scene",
+                       "Your unarmed attacks deal Aggravated damage to mortals and vampires"),
+            ],
         },
     },
     "Presence": {
         "type": "standard",
         "description": "Supernatural charisma and emotion manipulation",
+        "source": "V5 core p.266-269",
         "powers": {
             1: [
-                {
-                    "name": "Awe",
-                    "description": "Become magnetic center of attention",
-                    "rouse": True,
-                    "dice_pool": "Charisma/Manipulation + Presence",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Daunt",
-                    "description": "Inspire terror in onlookers",
-                    "rouse": True,
-                    "dice_pool": "Charisma/Manipulation + Presence",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Awe", 0, "Manipulation + Presence", "one scene",
+                       "Become captivating; add Presence to Persuasion, Performance and Charisma pools",
+                       opposed_by="Composure + Intelligence"),
+                _power("Daunt", 0, None, "one scene",
+                       "Add Presence to Intimidation; can't be used with Awe",
+                       note="Anyone attacking you rolls Resolve + Composure at Difficulty 2"),
             ],
             2: [
-                {
-                    "name": "Lingering Kiss",
-                    "description": "Your Kiss causes euphoria, not pain",
-                    "rouse": False,
-                    "dice_pool": None,
-                    "duration": "passive",
-                    "amalgam": None
-                }
+                _power("Lingering Kiss", 0, None, "passive",
+                       "Those you feed on grow attached to you",
+                       note="The effect on a victim lasts nights equal to your Presence"),
             ],
             3: [
-                {
-                    "name": "Dread Gaze",
-                    "description": "Paralyze target with terror",
-                    "rouse": True,
-                    "dice_pool": "Charisma/Manipulation + Presence",
-                    "duration": "instant",
-                    "amalgam": None
-                },
-                {
-                    "name": "Entrancement",
-                    "description": "Create obsessive fascination/love in target",
-                    "rouse": True,
-                    "dice_pool": "Charisma/Manipulation + Presence",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Dread Gaze", 1, "Charisma + Presence", "one turn",
+                       "Terrify a target into fleeing or cowering",
+                       opposed_by="Composure + Resolve"),
+                _power("Entrancement", 1, "Charisma + Presence", "one hour",
+                       "The target becomes infatuated and eager to please",
+                       opposed_by="Composure + Wits", note="One more hour per point of margin"),
             ],
             4: [
-                {
-                    "name": "Irresistible Voice",
-                    "description": "Commands carry supernatural compulsion",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Presence",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Summon",
-                    "description": "Call target to your location (they must come)",
-                    "rouse": True,
-                    "dice_pool": "Manipulation + Presence",
-                    "duration": "permanent",
-                    "amalgam": None
-                }
+                _power("Irresistible Voice", 0, None, "passive",
+                       "Use Dominate with your voice alone, without eye contact",
+                       amalgam="Dominate 1"),
+                _power("Summon", 1, "Manipulation + Presence", "one night",
+                       "Call someone you have used Presence on, or who tasted your blood",
+                       opposed_by="Composure + Intelligence"),
             ],
             5: [
-                {
-                    "name": "Majesty",
-                    "description": "Radiate such magnificence others cannot act against you",
-                    "rouse": True,
-                    "dice_pool": "Charisma + Presence",
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Star Magnetism",
-                    "description": "Affect large crowds with Presence powers",
-                    "rouse": True,
-                    "dice_pool": "Charisma + Presence",
-                    "duration": "scene",
-                    "amalgam": None
-                }
-            ]
+                _power("Majesty", 2, "Charisma + Presence", "one scene",
+                       "No one can act against you without first resisting",
+                       opposed_by="Composure + Resolve"),
+                _power("Star Magnetism", 1, None, "as the power used",
+                       "Presence powers work through live video and audio",
+                       note="1 Rouse on top of the power used"),
+            ],
         },
     },
     "Protean": {
         "type": "standard",
         "description": "Shapeshifting and transformation",
+        "source": "V5 core p.269-271",
         "powers": {
             1: [
-                {
-                    "name": "Eyes of the Beast",
-                    "description": "See perfectly in darkness, eyes glow red",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Weight of the Feather",
-                    "description": "Reduce falling damage, land gracefully",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "instant",
-                    "amalgam": None
-                }
+                _power("Eyes of the Beast", 0, None, "as long as desired",
+                       "Your eyes glow and see in total darkness"),
+                _power("Weight of the Feather", 0, None, "as long as desired",
+                       "Become nearly weightless; no damage from falls or impacts",
+                       note="Wits + Survival to activate it reflexively"),
             ],
             2: [
-                {
-                    "name": "Feral Weapons",
-                    "description": "Grow claws dealing Aggravated damage",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Metamorphosis",
-                    "description": "Transform into animal form (bat, wolf, rat)",
-                    "rouse": True,
-                    "dice_pool": "Stamina + Protean",
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Feral Weapons", 1, None, "one scene",
+                       "Grow deadly claws or fangs"),
             ],
             3: [
-                {
-                    "name": "Shapechange",
-                    "description": "Transform into mist form",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Earth Meld",
-                    "description": "Merge with earth/stone for day sleep",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                }
+                _power("Earth Meld", 1, None, "a day or more",
+                       "Sink into the earth to rest"),
+                _power("Shapechange", 1, None, "one scene",
+                       "Turn into one human-sized animal"),
             ],
             4: [
-                {
-                    "name": "One with the Beast",
-                    "description": "Remain conscious while in frenzy",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "Fleshcraft",
-                    "description": "Sculpt flesh (self or others)",
-                    "rouse": True,
-                    "dice_pool": "Dexterity + Protean",
-                    "duration": "permanent",
-                    "amalgam": None
-                }
+                _power("Metamorphosis", 1, None, "one scene",
+                       "Take an extra animal form of any size",
+                       note="Requires Shapechange"),
             ],
             5: [
-                {
-                    "name": "Horrid Form",
-                    "description": "Transform into massive combat monster",
-                    "rouse": True,
-                    "dice_pool": None,
-                    "duration": "scene",
-                    "amalgam": None
-                },
-                {
-                    "name": "The Unfettered Heart",
-                    "description": "Remove heart from body, hide it elsewhere (ritual)",
-                    "rouse": False,
-                    "dice_pool": "Intelligence + Protean",
-                    "duration": "permanent",
-                    "amalgam": None,
-                    "ritual": True
-                }
-            ]
-        }
+                _power("Mist Form", 1, None, "one scene",
+                       "Turn into mist that only fire, sun or supernatural attacks can harm",
+                       note="Up to 3 Rouse checks; each extra one makes the change faster"),
+                _power("The Unfettered Heart", 0, None, "passive",
+                       "Your heart moves within your chest, making you much harder to stake"),
+            ],
+        },
     },
     "Thin-Blood Alchemy": {
         "type": "thin-blood",
         "description": "Alchemical formulae unique to thin-blooded vampires",
-        "powers": {
+        "source": "V5 core p.282-288",
+        # Thin-Blood Alchemy has formulas, not powers; a thin-blood gets it
+        # through the Thin-blood Alchemist merit (QR p.2, p.11). Formulas are
+        # learned separately (XP: formula level x 3) and distilled before
+        # use. Distilling costs 1 Rouse check (Athanor Corporis: Stamina +
+        # Alchemy; Calcinatio: Manipulation + Alchemy; Fixatio: Intelligence
+        # + Alchemy when used), then the formula's own activation cost
+        # applies. "rouse" below is that activation cost.
+        "powers": {},
+        "formulas": {
             1: [
-                {
-                    "name": "Far Reach",
-                    "description": "Telekinesis to pull or push objects within short range (5 meters)",
-                    "rouse": False,
-                    "dice_pool": "Resolve + Thin-Blood Alchemy",
-                    "duration": "scene",
-                    "amalgam": None,
-                    "ingredients": ["vampire blood", "quicksilver"],
-                    "craft_difficulty": 2
-                },
-                {
-                    "name": "Haze",
-                    "description": "Cloud the minds of observers, making them forget your presence",
-                    "rouse": False,
-                    "dice_pool": "Manipulation + Thin-Blood Alchemy",
-                    "duration": "scene",
-                    "amalgam": None,
-                    "ingredients": ["vampire blood", "alcohol"],
-                    "craft_difficulty": 2
-                },
-                {
-                    "name": "Envelop",
-                    "description": "Wrap yourself in shadows, becoming harder to see",
-                    "rouse": False,
-                    "dice_pool": "Wits + Thin-Blood Alchemy",
-                    "duration": "scene",
-                    "amalgam": None,
-                    "ingredients": ["vampire blood", "ash"],
-                    "craft_difficulty": 2
-                }
+                _formula("Far Reach", 1, "Resolve + Thin-Blood Alchemy", "one scene",
+                         "Telekinetically shove or hold an object or person",
+                         resonance="Choleric", opposed_by="Strength + Athletics"),
+                _formula("Haze", 1, None, "one scene",
+                         "Surround yourself with a cloud of mist",
+                         resonance="Phlegmatic", note="1 more Rouse to cover a group"),
             ],
             2: [
-                {
-                    "name": "Counterfeit",
-                    "description": "Create a temporary duplicate of a small object",
-                    "rouse": False,
-                    "dice_pool": "Intelligence + Thin-Blood Alchemy",
-                    "duration": "night",
-                    "amalgam": None,
-                    "ingredients": ["vampire blood", "clay", "piece of original object"],
-                    "craft_difficulty": 3
-                },
-                {
-                    "name": "Defractionate",
-                    "description": "Split your consciousness, perceive multiple locations",
-                    "rouse": False,
-                    "dice_pool": "Wits + Thin-Blood Alchemy",
-                    "duration": "scene",
-                    "amalgam": None,
-                    "ingredients": ["vampire blood", "mirror shards"],
-                    "craft_difficulty": 3
-                }
+                _formula("Envelop", 1, "Wits + Thin-Blood Alchemy", "one scene",
+                         "A mist smothers and blinds one target",
+                         resonance="Melancholy and Phlegmatic", opposed_by="Stamina + Survival"),
+                _formula("Counterfeit", 0, None, "as the copied power",
+                         "Copy a Discipline power one level below your Alchemy rating",
+                         note=("Formula at levels 2-5; from level 3 needs vitae of a vampire who has "
+                               "the Discipline. Cost and pool are the copied power's.")),
             ],
             3: [
-                {
-                    "name": "Airborne Momentum",
-                    "description": "Levitate and move through the air",
-                    "rouse": False,
-                    "dice_pool": "Dexterity + Thin-Blood Alchemy",
-                    "duration": "scene",
-                    "amalgam": None,
-                    "ingredients": ["vampire blood", "feather", "powdered bone"],
-                    "craft_difficulty": 4
-                }
+                # UNVERIFIED: activation cost (sources split between 0 and 1 Rouse).
+                _formula("Defractionate", 0, None, "instant",
+                         "Make bagged or treated blood drinkable and nourishing",
+                         resonance="Melancholy and Sanguine"),
+                _formula("Profane Hieros Gamos", 1, "Stamina + Resolve", "permanent",
+                         "Permanently reshape your body or sex",
+                         resonance="Melancholy and Phlegmatic",
+                         note="Difficulty 8 minus the distillation successes"),
             ],
             4: [
-                {
-                    "name": "Awaken the Sleeper",
-                    "description": "Temporarily grant a mortal a vampiric discipline power",
-                    "rouse": False,
-                    "dice_pool": "Manipulation + Thin-Blood Alchemy",
-                    "duration": "scene",
-                    "amalgam": None,
-                    "ingredients": ["vampire blood", "distilled adrenaline", "rare herb"],
-                    "craft_difficulty": 5
-                }
+                _formula("Airborne Momentum", 1, "Strength + Thin-Blood Alchemy", "one scene",
+                         "Fly under your own power",
+                         resonance="Choleric and Sanguine"),
             ],
             5: [
-                {
-                    "name": "Discipline Distillation",
-                    "description": "Distill another vampire's blood to create a temporary discipline power",
-                    "rouse": False,
-                    "dice_pool": "Intelligence + Thin-Blood Alchemy",
-                    "duration": "night",
-                    "amalgam": None,
-                    "ingredients": ["vampire blood with discipline", "alchemical catalyst"],
-                    "craft_difficulty": 6
-                }
-            ]
+                # UNVERIFIED: activation cost (sources split between 0 and 1 Rouse).
+                _formula("Awaken the Sleeper", 1, None, "instant",
+                         "Wake a vampire from day-sleep or torpor",
+                         resonance="Choleric or Sanguine"),
+            ],
         },
     },
 }
+
+# Non-core disciplines. NOT offered to players: they belong to the non-core
+# clans (NON_CORE_CLANS) and are not in the trait registry or the power
+# index. Kept so the owner can decide; see the PR 11 sign-off table.
+#
+# Oblivion: Chicago by Night p.293-294, Cults of the Blood Gods p.204-208,
+# Players Guide p.85-90 (names, levels and amalgams from
+# vtm.paradoxwikis.com, which cites those pages).
+# UNVERIFIED: every Rouse cost and pool below except Tenebrous Avatar (2
+# Rouse); they default to 1 Rouse and no pool. Ceremonies are listed by
+# name and level only.
+NON_CORE_DISCIPLINES = {
+    "Oblivion": {
+        "type": "standard",
+        "description": "Power over shadow and the restless dead",
+        "source": "Chicago by Night; Cults of the Blood Gods; Players Guide",
+        "powers": {
+            1: [
+                _power("Shadow Cloak", 1, None, "one scene", "Wrap yourself in concealing shadow"),
+                _power("Oblivion's Sight", 1, None, "one scene", "See in darkness and perceive ghosts"),
+                _power("Ashes to Ashes", 1, None, "instant", "Dissolve a corpse"),
+                _power("The Binding Fetter", 1, None, "one scene", "Sense the objects that anchor ghosts"),
+            ],
+            2: [
+                _power("Shadow Cast", 1, None, "one scene", "Conjure shadows that hinder others"),
+                _power("Arms of Ahriman", 1, None, "one scene", "Shadow limbs that grapple and strike",
+                       amalgam="Potence 2"),
+                _power("Fatal Precognition", 1, None, "instant", "Foresee a target's death",
+                       amalgam="Auspex 2"),
+                _power("Where the Shroud Thins", 1, None, "instant", "Sense how thin the barrier to death is"),
+            ],
+            3: [
+                _power("Aura of Decay", 1, None, "one scene", "Things around you rot and wither"),
+                _power("Passion Feast", 1, None, "instant", "Feed on a ghost's passion to slake Hunger",
+                       amalgam="Fortitude 2"),
+                _power("Shadow Perspective", 1, None, "one scene", "See and hear through a shadow"),
+                _power("Shadow Servant", 1, None, "one scene", "Send a shadow to spy or act for you"),
+                _power("Touch of Oblivion", 1, None, "instant", "Wither a victim's body by touch"),
+            ],
+            4: [
+                _power("Necrotic Plague", 1, None, "instant", "Inflict a wasting sickness"),
+                _power("Stygian Shroud", 1, None, "one scene", "Fill an area with smothering darkness"),
+            ],
+            5: [
+                _power("Shadow Step", 1, None, "instant", "Step through one shadow and out of another"),
+                _power("Skuld Fulfilled", 1, None, "instant", "Bring back an illness or injury a victim survived"),
+                _power("Tenebrous Avatar", 2, None, "one scene", "Become a creature of living shadow"),
+                _power("Withering Spirit", 1, None, "instant", "Erode a victim's will to live"),
+            ],
+        },
+        "ceremonies": [
+            {"name": "Gift of False Life", "level": 1},
+            {"name": "Summon Spirit", "level": 1},
+            {"name": "Awaken the Homuncular Servant", "level": 2},
+            {"name": "Compel Spirit", "level": 2},
+            {"name": "Host Spirit", "level": 3},
+            {"name": "Shambling Hordes", "level": 3},
+            {"name": "Bind the Spirit", "level": 4},
+            {"name": "Split the Shroud", "level": 4},
+            {"name": "Lazarene Blessing", "level": 5},
+        ],
+    },
+}
+
+# Every discipline name the data mentions, core or not (used to check that
+# amalgams and clan lists point at something real).
+ALL_DISCIPLINES = {**DISCIPLINES, **NON_CORE_DISCIPLINES}
+
 
 # ============================================================================
 # PREDATOR TYPES

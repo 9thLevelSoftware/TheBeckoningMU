@@ -209,7 +209,7 @@ def get_thin_blood_powers(character):
 
     formulae = []
     disc_data = DISCIPLINES.get("Thin-Blood Alchemy", {})
-    powers = disc_data.get("powers", {})
+    powers = disc_data.get("formulas", {})
 
     for level in range(1, alchemy_level + 1):
         if level in powers:
@@ -232,7 +232,7 @@ def get_formula_by_name(formula_name, max_level):
         dict: Formula data or None
     """
     disc_data = DISCIPLINES.get("Thin-Blood Alchemy", {})
-    powers = disc_data.get("powers", {})
+    powers = disc_data.get("formulas", {})
 
     for level in range(1, max_level + 1):
         if level in powers:

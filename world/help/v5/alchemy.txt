@@ -2,78 +2,34 @@
 |W|                     THIN-BLOOD ALCHEMY                            |
 |[R+===================================================================+|n
 
-Thin-Blood Alchemy is a unique discipline available only to
-thin-blooded vampires. It allows crafting of alchemical formulae
-that mimic discipline powers.
+Thin-Blood Alchemy is the thin-bloods' answer to disciplines: formulas
+distilled from blood and emotion that mimic vampiric powers. A thin-blood
+gets it through the Thin-blood Alchemist merit. (V5 core p.282-288.)
 
-|WHOW IT WORKS:|n
+|WIN THE BOOK:|n
 
-1. |yLearn Formulae:|n
-   - Gain Thin-Blood Alchemy dots (1-5)
-   - Each level unlocks new formulae
+  - Each formula is learned separately (XP: formula level x 3).
+  - Distilling a formula costs 1 Rouse check, using one of three methods:
+    |yAthanor Corporis|n (in your own body, Stamina + Alchemy),
+    |yCalcinatio|n (in a mortal host, Manipulation + Alchemy) or
+    |yFixatio|n (in a lab, Intelligence + Alchemy when it is used).
+  - Using the formula then costs its own activation (usually 1 Rouse).
+  - Each formula needs blood of particular Resonances.
 
-2. |yGather Ingredients:|n
-   - Vampire blood (your own or others')
-   - Mundane ingredients (quicksilver, ash, herbs, etc.)
-   - Rare components for advanced formulae
+|WCORE FORMULAS:|n
 
-3. |yCraft Formula:|n
-   - Roll Intelligence + Thin-Blood Alchemy vs Difficulty
-   - Success: Formula created (single use)
-   - Failure: Ingredients consumed, no formula
+|yLevel 1:|n Far Reach (telekinesis), Haze (a cloud of mist)
+|yLevel 2:|n Envelop (mist that blinds and smothers a target),
+         Counterfeit (copy a discipline power one level lower; levels 2-5)
+|yLevel 3:|n Defractionate (make bagged blood nourishing),
+         Profane Hieros Gamos (reshape your body)
+|yLevel 4:|n Airborne Momentum (flight)
+|yLevel 5:|n Awaken the Sleeper (wake a vampire from day-sleep or torpor)
 
-4. |yUse Formula:|n
-   - Activate the crafted formula
-   - Effect lasts for duration
-   - |yNo Rouse check required!|n
+|WIN THE GAME:|n
 
-|WLEVEL 1 FORMULAE:|n
-
-|yFar Reach|n (Difficulty 2)
-  - Telekinesis to pull/push objects
-  - Range: 5 meters
-  - Ingredients: vampire blood, quicksilver
-
-|yHaze|n (Difficulty 2)
-  - Cloud observers' minds, make them forget
-  - Like Obfuscate lite
-  - Ingredients: vampire blood, alcohol
-
-|yEnvelop|n (Difficulty 2)
-  - Wrap in shadows, harder to see
-  - Stealth bonus
-  - Ingredients: vampire blood, ash
-
-|WLEVEL 2 FORMULAE:|n
-
-|yCounterfeit|n (Difficulty 3)
-  - Create duplicate of small object
-  - Lasts one night
-  - Ingredients: vampire blood, clay, piece of original
-
-|yDefractionate|n (Difficulty 3)
-  - Split consciousness, perceive multiple places
-  - Like Auspex scrying
-  - Ingredients: vampire blood, mirror shards
-
-|WHIGHER LEVELS:|n
-
-Level 3-5 formulae available with advancement.
-See |y+alchemy|n in-game for complete list.
-
-|WADVANTAGES:|n
-  - |yNo Rouse checks|n (Blood Potency 0 benefit)
-  - Versatile effects
-  - Can share with others
-  - Unique powers unavailable to other vampires
-
-|WDISADVANTAGES:|n
-  - Single use (must re-craft)
-  - Requires ingredients
-  - Craft roll can fail
-  - Effects weaker than true disciplines
-
-|WCOMMANDS:|n
+The |y+alchemy|n commands use a simplified crafting roll (Intelligence +
+Thin-Blood Alchemy) rather than the book's distillation methods.
 
 |y+alchemy|n
   View all known formulae

@@ -64,7 +64,7 @@ def roll_discipline_power(
         ValueError: If the power is not found or has no dice pool
 
     Examples:
-        >>> result = roll_discipline_power(character, "Corrosive Vitae", difficulty=2)
+        >>> result = roll_discipline_power(character, "Scry the Soul", difficulty=2)
         >>> if result['success']:
         >>>     print(f"Success with {result['roll_result'].total_successes} successes!")
     """
@@ -247,7 +247,7 @@ def can_use_power(character, power_name: str) -> Tuple[bool, str]:
         Tuple of (can_use: bool, reason: str)
 
     Examples:
-        >>> can_use, reason = can_use_power(character, "Corrosive Vitae")
+        >>> can_use, reason = can_use_power(character, "Scry the Soul")
         >>> if not can_use:
         >>>     print(f"Cannot use power: {reason}")
     """
