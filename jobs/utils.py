@@ -2,32 +2,82 @@
 Jobs utility functions for shared functionality across job commands.
 """
 
-from .models import Job, Bucket
+from django.db.models import Q
 from evennia.accounts.models import AccountDB
-from django.core.exceptions import ObjectDoesNotExist
+from evennia.objects.objects import DefaultObject
+
+from .models import Bucket, Job
+
+STAFF_PERM = "Builder"
 
 
-def get_job(caller, job_id, bucket=None):
+def account_of(caller):
+    """The Account behind a caller: a puppeted Object's account, or the Account itself."""
+    if isinstance(caller, DefaultObject):
+        return caller.account
+    return caller
+
+
+def is_staff(caller):
+    """True if the caller's Account holds Builder or higher (superusers included)."""
+    account = account_of(caller)
+    return bool(account) and account.check_permstring(STAFF_PERM)
+
+
+def jobs_visible_to(caller, queryset=None):
+    """Restrict a Job queryset to what the caller may see (see can_view_job)."""
+    queryset = Job.objects.all() if queryset is None else queryset
+    queryset = queryset.select_related("bucket").prefetch_related("players")
+    if is_staff(caller):
+        return queryset
+    account = account_of(caller)
+    if not account:
+        return queryset.none()
+    return queryset.filter(
+        Q(creator=account) | Q(assigned_to=account) | Q(players=account)
+    ).distinct()
+
+
+def get_job(caller, job_ref, bucket=None):
     """
-    Fetches a Job by sequence number with error handling.
-    
+    Find a Job by `<bucket>/<n>`, or by a bare `<n>` when only one bucket has it.
+
+    Sequence numbers are per bucket, so a bare number that exists in more
+    than one bucket is ambiguous and is refused.
+
     Args:
-        caller: The calling character
-        job_id: Job sequence number (string or int)
-        bucket: Optional bucket to search within
-    
+        caller: The calling character (receives error messages)
+        job_ref: "<bucket>/<n>", "<n>" or an int
+        bucket: Optional Bucket to search within
+
     Returns:
         Job object or None, messaging the caller on failure.
     """
+    job_ref = str(job_ref).strip()
+    if bucket is None and "/" in job_ref:
+        bucket_name, job_ref = job_ref.rsplit("/", 1)
+        bucket = get_bucket(caller, bucket_name.strip())
+        if not bucket:
+            return None
     try:
-        if bucket:
-            job = Job.objects.get(sequence_number=int(job_id), bucket=bucket)
-        else:
-            job = Job.objects.get(sequence_number=int(job_id))
-        return job
-    except (ValueError, Job.DoesNotExist):
-        caller.msg(f"Job #{job_id} not found.")
+        number = int(job_ref)
+    except ValueError:
+        caller.msg(f"Job '{job_ref}' not found. Use <bucket>/<number>.")
         return None
+
+    jobs = Job.objects.select_related("bucket").filter(sequence_number=number)
+    if bucket is not None:
+        jobs = jobs.filter(bucket=bucket)
+    jobs = list(jobs[:5])
+    if not jobs:
+        where = f"{bucket.name}/{number}" if bucket is not None else f"#{number}"
+        caller.msg(f"Job {where} not found.")
+        return None
+    if len(jobs) > 1:
+        refs = ", ".join(job.ref for job in jobs)
+        caller.msg(f"Job #{number} is ambiguous; use <bucket>/{number} ({refs}).")
+        return None
+    return jobs[0]
 
 
 def get_bucket(caller, bucket_name):
@@ -68,38 +118,34 @@ def get_account(caller, account_name):
         return None
 
 
+def _is_party(account, job):
+    """Creator, primary assignee or one of the job's players."""
+    if not account:
+        return False
+    return (
+        job.creator_id == account.id
+        or job.assigned_to_id == account.id
+        or job.players.filter(id=account.id).exists()
+    )
+
+
 def check_job_permission(caller, job):
     """
-    Checks if a caller has permission to interact with a specific job.
-    
-    Args:
-        caller: The calling character
-        job: Job object
-    
-    Returns:
-        Boolean - True if caller can interact with the job
+    True if the caller may comment on a job: staff, its creator or an assignee.
     """
-    # Admins can always interact
-    if caller.check_permstring("Builder"):
-        return True
-    
-    # Account created the job
-    if caller.account == job.creator:
-        return True
-    
-    # Account is assigned to the job
-    if caller.account in job.players.all():
-        return True
-    
-    return False
+    return is_staff(caller) or _is_party(account_of(caller), job)
 
 
-def format_job_view(job):
+def format_job_view(job, viewer):
     """
     Returns a formatted string for detailed job view.
 
+    Private comments are staff-only: a non-staff viewer sees only public
+    comments and private ones they wrote themselves.
+
     Args:
         job: Job object
+        viewer: The character or account looking at the job
 
     Returns:
         Formatted string for display
@@ -108,8 +154,8 @@ def format_job_view(job):
     output = "\n|c*" + "=" * 78 + "*|n\n"
 
     # Title
-    title_text = f"|wJob #{job.sequence_number}: {job.title}|n"
-    title_len = len(f"Job #{job.sequence_number}: {job.title}")  # Calculate without color codes
+    title_text = f"|wJob {job.ref}: {job.title}|n"
+    title_len = len(f"Job {job.ref}: {job.title}")  # Calculate without color codes
     padding = 74 - title_len
     output += f"|c|||n {title_text}{' ' * padding} |c|||n\n"
     output += "|c*" + "=" * 78 + "*|n\n\n"
@@ -139,7 +185,10 @@ def format_job_view(job):
     output += f"{job.description}\n"
 
     # Comments
-    comments = job.comments.all()
+    comments = job.comments.select_related("author")
+    if not is_staff(viewer):
+        account = account_of(viewer)
+        comments = comments.filter(Q(public=True) | Q(author=account))
     if comments:
         output += "\n|wComments:|n\n"
         output += "-" * 60 + "\n"
@@ -175,8 +224,10 @@ def format_job_list(jobs, title="Jobs"):
         else:
             return f"No {title.lower()} found."
 
-    # Box border header
+    # Box border header, then the list's title
     output = "\n|c*" + "=" * 78 + "*|n\n"
+    output += f"|c|||n |w{title[:76]:<76}|n |c|||n\n"
+    output += "|c*" + "=" * 78 + "*|n\n"
 
     # Header row (ID=4, Title=28, Bucket=15, Status=8, Assigned=15 = 70 + 4 spaces = 74)
     header_content = "|w{:<4} {:<28} {:<15} {:<8} {:<15}|n".format(
@@ -192,10 +243,10 @@ def format_job_list(jobs, title="Jobs"):
             output += "|c|||n" + "-" * 78 + "|c|||n\n"
         first_job = False
 
-        # Get assigned players
-        players = job.players.all()
+        # Get assigned players (prefetched by the callers)
+        players = list(job.players.all())
         if players:
-            assigned = players.first().username[:14]
+            assigned = players[0].username[:14]
             if len(players) > 1:
                 assigned += " (+)"
         else:
@@ -263,55 +314,26 @@ def format_bucket_list(buckets):
 
 def can_view_job(caller, job):
     """
-    Checks if a caller can view a specific job.
-    
-    Args:
-        caller: The calling character
-        job: Job object
-    
-    Returns:
-        Boolean - True if caller can view the job
+    True if the caller may see a job: staff, its creator or an assignee.
     """
-    # Anyone can view public jobs or jobs they're involved with
-    return True  # For now, all jobs are viewable. Can be restricted later.
+    return is_staff(caller) or _is_party(account_of(caller), job)
 
 
 def can_modify_job(caller, job):
     """
-    Checks if a caller can modify a specific job.
-    
-    Args:
-        caller: The calling character
-        job: Job object
-    
-    Returns:
-        Boolean - True if caller can modify the job
+    True if the caller may modify a job (same rule as commenting).
     """
-    # Only admins, job creator, or assigned players can modify
     return check_job_permission(caller, job)
 
 
 def can_complete_job(caller, job):
     """
-    Checks if a caller can complete a specific job.
-    
-    Args:
-        caller: The calling character
-        job: Job object
-    
-    Returns:
-        Boolean - True if caller can complete the job
+    True if the caller may close a job: staff, or the creator withdrawing it.
+
+    Assignees who aren't staff can't close a job, so a player added to a job
+    can't close someone else's request.
     """
-    # Admins can always complete
-    if caller.check_permstring("Builder"):
+    if is_staff(caller):
         return True
-    
-    # Assigned players can complete
-    if caller.account in job.players.all():
-        return True
-    
-    # Job creator can complete their own job
-    if caller.account == job.creator:
-        return True
-    
-    return False
+    account = account_of(caller)
+    return bool(account) and job.creator_id == account.id

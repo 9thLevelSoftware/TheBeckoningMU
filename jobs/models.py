@@ -5,9 +5,17 @@ Provides a structured task/request management system with buckets,
 jobs, comments, and tags following BBS-style sequence numbering.
 """
 
-from django.db import models, transaction
+import threading
+
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, models, transaction
 from django.db.models import Max
 from evennia.accounts.models import AccountDB
+
+# Serializes sequence allocation within this process. Evennia runs the game
+# loop and the web views (Twisted's thread pool) in one process, so this
+# closes the race there; the savepoint retry in Job.save() covers the rest.
+_SEQUENCE_LOCK = threading.Lock()
 
 
 class Bucket(models.Model):
@@ -176,21 +184,46 @@ class Job(models.Model):
     def __str__(self):
         return f"Job {self.sequence_number}: {self.title}"
     
+    def clean(self):
+        """Reject a priority or status that isn't one of the model's choices."""
+        if self.priority not in dict(self.PRIORITY_CHOICES):
+            raise ValidationError({"priority": f"Unknown priority {self.priority!r}."})
+        if self.status not in dict(self.STATUS_CHOICES):
+            raise ValidationError({"status": f"Unknown status {self.status!r}."})
+
+    @property
+    def ref(self):
+        """The job's address, `<bucket>/<n>` (numbers are per bucket)."""
+        return f"{self.bucket.name}/{self.sequence_number}"
+
     def save(self, *args, **kwargs):
         """
-        Auto-increment sequence_number per bucket.
-        Uses atomic transaction to prevent race conditions.
+        Validate, then allocate the next per-bucket sequence number for a new job.
+
+        The max is read and the row inserted in one savepoint. If another
+        writer took the number first (IntegrityError), roll the savepoint
+        back and allocate again once.
         """
-        if not self.pk and not self.sequence_number:
-            # Use select_for_update to prevent race conditions
-            with transaction.atomic():
-                max_seq = Job.objects.filter(
-                    bucket=self.bucket
-                ).select_for_update().aggregate(
-                    Max('sequence_number')
-                )['sequence_number__max']
-                self.sequence_number = (max_seq or 0) + 1
-        super().save(*args, **kwargs)
+        self.clean()
+        if self.pk or self.sequence_number:
+            super().save(*args, **kwargs)
+            return
+
+        with _SEQUENCE_LOCK:
+            for attempt in range(2):
+                try:
+                    with transaction.atomic():
+                        max_seq = Job.objects.filter(bucket=self.bucket).aggregate(
+                            Max("sequence_number")
+                        )["sequence_number__max"]
+                        self.sequence_number = (max_seq or 0) + 1
+                        super().save(*args, **kwargs)
+                    return
+                except IntegrityError:
+                    self.sequence_number = 0
+                    self.pk = None
+                    if attempt:
+                        raise
 
 
 class Comment(models.Model):

@@ -4,13 +4,17 @@ Comprehensive Jobs system tests.
 Tests models, utilities, and commands following BBS test patterns.
 """
 
-import unittest
-from unittest.mock import Mock, patch
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 
-from django.db import transaction
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import connection, transaction
 from django.db.models.query import QuerySet
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from evennia.accounts.models import AccountDB
+from evennia.utils import create
 from evennia.utils.test_resources import EvenniaCommandTest
 
 from .commands import (
@@ -252,12 +256,9 @@ class JobRaceConditionTests(TestCase):
             created_by=self.account
         )
 
-    # F-097, fixed in PR 9: Job.save() computes max(sequence_number) and then
-    # inserts outside its atomic block, with no retry. Two concurrent creators
-    # that read the same max collide on unique_together and one job is lost.
+    # F-097: two creators that read the same max collide on unique_together.
     # This replays that interleaving deterministically: the second create sees
-    # the max as it was before the first create committed.
-    @unittest.expectedFailure
+    # the max as it was before the first create committed, and must retry.
     def test_stale_sequence_read_does_not_lose_job(self):
         Job.objects.create(
             bucket=self.bucket, title="Job 1", description="First", creator=self.account
@@ -277,6 +278,41 @@ class JobRaceConditionTests(TestCase):
             )
         self.assertEqual(job.sequence_number, 2)
         self.assertEqual(Job.objects.filter(bucket=self.bucket).count(), 2)
+
+
+class JobConcurrentCreateTests(TransactionTestCase):
+    """F-097: ten threads creating jobs in one bucket at once all succeed."""
+
+    def setUp(self):
+        self.account = AccountDB.objects.create_user(
+            username="Racer", email="racer@example.com", password="testpass123"
+        )
+        self.bucket = Bucket.objects.create(name="Race", description="Race bucket")
+
+    def test_concurrent_job_creation(self):
+        num_threads = 10
+        barrier = threading.Barrier(num_threads)
+
+        def create(n):
+            try:
+                barrier.wait(timeout=10)
+                return Job.objects.create(
+                    bucket=self.bucket,
+                    title=f"Job {n}",
+                    description=f"Description {n}",
+                    creator=self.account,
+                ).sequence_number
+            finally:
+                connection.close()
+
+        with ThreadPoolExecutor(max_workers=num_threads) as pool:
+            futures = [pool.submit(create, n) for n in range(num_threads)]
+            # .result() re-raises any exception from the thread, so a lost
+            # job shows up as its IntegrityError/OperationalError.
+            numbers = sorted(future.result() for future in futures)
+
+        self.assertEqual(numbers, list(range(1, num_threads + 1)))
+        self.assertEqual(Job.objects.filter(bucket=self.bucket).count(), num_threads)
 
 
 class CommentModelTests(TestCase):
@@ -357,201 +393,173 @@ class CommentModelTests(TestCase):
 
 
 class UtilityFunctionTests(TestCase):
-    """Test Jobs utility functions."""
-    
+    """Test Jobs utility functions with real (typeclassed) accounts as callers."""
+
     def setUp(self):
         """Set up test data."""
-        self.account1 = AccountDB.objects.create_user(
-            username="TestUser",
-            email="test@example.com",
-            password="testpass123"
+        self.account1 = create.create_account("TestUser", "test@example.com", "testpass123")
+        self.account2 = create.create_account("OtherUser", "other@example.com", "testpass123")
+        self.admin_account = create.create_account(
+            "AdminUser", "admin@example.com", "adminpass123", is_superuser=True
         )
-        self.account2 = AccountDB.objects.create_user(
-            username="OtherUser",
-            email="other@example.com",
-            password="testpass123"
-        )
-        self.admin_account = AccountDB.objects.create_superuser(
-            username="AdminUser",
-            email="admin@example.com",
-            password="adminpass123"
-        )
-        
+        self.builder = create.create_account("BuilderUser", "builder@example.com", "testpass123")
+        self.builder.permissions.add("Builder")
+
         self.bucket1 = Bucket.objects.create(
-            name="Bugs",
-            description="Bug reports",
-            created_by=self.account1
+            name="Bugs", description="Bug reports", created_by=self.account1
         )
         self.bucket2 = Bucket.objects.create(
-            name="Features",
-            description="Feature requests",
-            created_by=self.account1
+            name="Features", description="Feature requests", created_by=self.account1
         )
-        
+
         self.job1 = Job.objects.create(
             bucket=self.bucket1,
             title="Test Job",
             description="Test description",
             creator=self.account1,
-            status="OPEN"
+            status="OPEN",
         )
-        self.job1.players.add(self.account1)
-    
-    def _create_mock_caller(self, account, has_builder_perm=False):
-        """Create a mock caller (character) with account."""
-        caller = Mock()
-        caller.account = account
-        caller.msg = Mock()
-        caller.check_permstring = Mock(return_value=has_builder_perm)
-        return caller
-    
+
     def test_get_bucket_by_name(self):
-        """Test get_bucket by name."""
-        caller = self._create_mock_caller(self.account1)
-        bucket = get_bucket(caller, "Bugs")
-        self.assertEqual(bucket, self.bucket1)
-    
+        self.assertEqual(get_bucket(self.account1, "Bugs"), self.bucket1)
+
     def test_get_bucket_case_insensitive(self):
-        """Test get_bucket is case-insensitive."""
-        caller = self._create_mock_caller(self.account1)
-        bucket = get_bucket(caller, "BUGS")
-        self.assertEqual(bucket, self.bucket1)
-    
+        self.assertEqual(get_bucket(self.account1, "BUGS"), self.bucket1)
+
     def test_get_bucket_not_found(self):
-        """Test get_bucket returns None for non-existent bucket."""
-        caller = self._create_mock_caller(self.account1)
-        bucket = get_bucket(caller, "NonExistent")
-        self.assertIsNone(bucket)
-        caller.msg.assert_called()
-    
+        self.assertIsNone(get_bucket(self.account1, "NonExistent"))
+
     def test_get_job_by_sequence_number(self):
-        """Test get_job by sequence number."""
-        caller = self._create_mock_caller(self.account1)
-        job = get_job(caller, 1)
-        self.assertEqual(job, self.job1)
-    
+        self.assertEqual(get_job(self.account1, 1), self.job1)
+
     def test_get_job_with_bucket(self):
-        """Test get_job with specific bucket."""
-        caller = self._create_mock_caller(self.account1)
-        job = get_job(caller, 1, bucket=self.bucket1)
-        self.assertEqual(job, self.job1)
-    
+        self.assertEqual(get_job(self.account1, 1, bucket=self.bucket1), self.job1)
+
+    def test_get_job_by_bucket_ref(self):
+        self.assertEqual(get_job(self.account1, "bugs/1"), self.job1)
+
     def test_get_job_not_found(self):
-        """Test get_job returns None for non-existent job."""
-        caller = self._create_mock_caller(self.account1)
-        job = get_job(caller, 999)
-        self.assertIsNone(job)
-        caller.msg.assert_called()
-    
+        self.assertIsNone(get_job(self.account1, 999))
+
+    def test_get_job_bare_number_ambiguous_across_buckets(self):
+        """F-055: job 1 with a job 1 in two buckets is refused, not a traceback."""
+        feature = Job.objects.create(
+            bucket=self.bucket2, title="Feature", description="d", creator=self.account1
+        )
+        with patch.object(self.account1, "msg") as msg:
+            self.assertIsNone(get_job(self.account1, "1"))
+        self.assertIn("ambiguous", msg.call_args[0][0])
+        self.assertEqual(get_job(self.account1, "Features/1"), feature)
+
     def test_get_account_by_username(self):
-        """Test get_account by username."""
-        caller = self._create_mock_caller(self.account1)
-        account = get_account(caller, "OtherUser")
-        self.assertEqual(account, self.account2)
-    
+        self.assertEqual(get_account(self.account1, "OtherUser"), self.account2)
+
     def test_get_account_case_insensitive(self):
-        """Test get_account is case-insensitive."""
-        caller = self._create_mock_caller(self.account1)
-        account = get_account(caller, "OTHERUSER")
-        self.assertEqual(account, self.account2)
-    
+        self.assertEqual(get_account(self.account1, "OTHERUSER"), self.account2)
+
     def test_get_account_not_found(self):
-        """Test get_account returns None for non-existent account."""
-        caller = self._create_mock_caller(self.account1)
-        account = get_account(caller, "NonExistent")
-        self.assertIsNone(account)
-        caller.msg.assert_called()
-    
+        self.assertIsNone(get_account(self.account1, "NonExistent"))
+
     def test_check_job_permission_creator(self):
-        """Test check_job_permission for job creator."""
-        caller = self._create_mock_caller(self.account1)
-        self.assertTrue(check_job_permission(caller, self.job1))
-    
+        self.assertTrue(check_job_permission(self.account1, self.job1))
+
     def test_check_job_permission_assigned(self):
-        """Test check_job_permission for assigned player."""
-        caller = self._create_mock_caller(self.account1)
-        self.assertTrue(check_job_permission(caller, self.job1))
-    
-    def test_check_job_permission_admin(self):
-        """Test check_job_permission for admin."""
-        caller = self._create_mock_caller(self.admin_account, has_builder_perm=True)
-        self.assertTrue(check_job_permission(caller, self.job1))
-    
+        self.job1.players.add(self.account2)
+        self.assertTrue(check_job_permission(self.account2, self.job1))
+
+    def test_check_job_permission_staff(self):
+        self.assertTrue(check_job_permission(self.admin_account, self.job1))
+        self.assertTrue(check_job_permission(self.builder, self.job1))
+
     def test_check_job_permission_denied(self):
-        """Test check_job_permission denies unrelated user."""
-        caller = self._create_mock_caller(self.account2)
-        self.assertFalse(check_job_permission(caller, self.job1))
-    
+        self.assertFalse(check_job_permission(self.account2, self.job1))
+
     def test_format_job_list_empty(self):
-        """Test format_job_list with no jobs."""
-        output = format_job_list([], "All Open Jobs")
-        self.assertEqual(output, "There are no jobs.")
-    
+        self.assertEqual(format_job_list([], "All Open Jobs"), "There are no jobs.")
+
     def test_format_job_list_with_jobs(self):
-        """Test format_job_list with jobs."""
         output = format_job_list([self.job1], "All Open Jobs")
         self.assertIn("Test Job", output)
         self.assertIn("Bugs", output)
 
-    # F-062 (jobs title), fixed in PR 9: format_job_list ignores `title`
-    # unless the list is empty.
-    @unittest.expectedFailure
     def test_format_job_list_shows_title(self):
         """A non-empty job list is headed by the title it was given."""
         output = format_job_list([self.job1], "All Open Jobs")
         self.assertIn("All Open Jobs", output)
-    
+
     def test_format_bucket_list_empty(self):
-        """Test format_bucket_list with no buckets."""
-        output = format_bucket_list([])
-        self.assertEqual(output, "No buckets found.")
-    
+        self.assertEqual(format_bucket_list([]), "No buckets found.")
+
     def test_format_bucket_list_with_buckets(self):
-        """Test format_bucket_list with buckets."""
         output = format_bucket_list([self.bucket1, self.bucket2])
         self.assertIn("Bugs", output)
         self.assertIn("Features", output)
-    
+
     def test_format_job_view(self):
-        """Test format_job_view."""
-        output = format_job_view(self.job1)
+        output = format_job_view(self.job1, self.account1)
         self.assertIn("Test Job", output)
-        self.assertIn("Bugs", output)
+        self.assertIn("Bugs/1", output)
         self.assertIn("TestUser", output)
         self.assertIn("OPEN", output)
-    
+
+    def test_format_job_view_hides_private_comments_from_players(self):
+        """F-030: private comments are staff-only, except to their own author."""
+        Comment.objects.create(
+            job=self.job1, author=self.admin_account, content="STAFF ONLY NOTE", public=False
+        )
+        Comment.objects.create(
+            job=self.job1, author=self.account1, content="my own note", public=False
+        )
+        Comment.objects.create(
+            job=self.job1, author=self.admin_account, content="public reply", public=True
+        )
+        player_view = format_job_view(self.job1, self.account1)
+        self.assertNotIn("STAFF ONLY NOTE", player_view)
+        self.assertIn("my own note", player_view)
+        self.assertIn("public reply", player_view)
+
+        staff_view = format_job_view(self.job1, self.builder)
+        self.assertIn("STAFF ONLY NOTE", staff_view)
+        self.assertIn("my own note", staff_view)
+
     def test_can_view_job(self):
-        """Test can_view_job (currently allows all)."""
-        caller = self._create_mock_caller(self.account2)
-        self.assertTrue(can_view_job(caller, self.job1))
-    
+        """F-030: only staff, the creator and assignees can view a job."""
+        self.assertTrue(can_view_job(self.account1, self.job1))
+        self.assertTrue(can_view_job(self.builder, self.job1))
+        self.assertTrue(can_view_job(self.admin_account, self.job1))
+        self.assertFalse(can_view_job(self.account2, self.job1))
+        self.job1.players.add(self.account2)
+        self.assertTrue(can_view_job(self.account2, self.job1))
+
     def test_can_modify_job(self):
-        """Test can_modify_job."""
-        caller = self._create_mock_caller(self.account1)
-        self.assertTrue(can_modify_job(caller, self.job1))
-        
-        other_caller = self._create_mock_caller(self.account2)
-        self.assertFalse(can_modify_job(other_caller, self.job1))
-    
+        self.assertTrue(can_modify_job(self.account1, self.job1))
+        self.assertFalse(can_modify_job(self.account2, self.job1))
+
     def test_can_complete_job_creator(self):
-        """Test can_complete_job for creator."""
-        caller = self._create_mock_caller(self.account1)
-        self.assertTrue(can_complete_job(caller, self.job1))
-    
-    def test_can_complete_job_assigned(self):
-        """Test can_complete_job for assigned player."""
-        caller = self._create_mock_caller(self.account1)
-        self.assertTrue(can_complete_job(caller, self.job1))
-    
-    def test_can_complete_job_admin(self):
-        """Test can_complete_job for admin."""
-        caller = self._create_mock_caller(self.admin_account, has_builder_perm=True)
-        self.assertTrue(can_complete_job(caller, self.job1))
-    
+        """The creator may withdraw their own job."""
+        self.assertTrue(can_complete_job(self.account1, self.job1))
+
+    def test_can_complete_job_assigned_player_cannot(self):
+        """F-060: being added to a job doesn't let a player close it."""
+        self.job1.players.add(self.account2)
+        self.assertFalse(can_complete_job(self.account2, self.job1))
+
+    def test_can_complete_job_staff(self):
+        self.assertTrue(can_complete_job(self.admin_account, self.job1))
+        self.assertTrue(can_complete_job(self.builder, self.job1))
+
     def test_can_complete_job_denied(self):
-        """Test can_complete_job denies unrelated user."""
-        caller = self._create_mock_caller(self.account2)
-        self.assertFalse(can_complete_job(caller, self.job1))
+        self.assertFalse(can_complete_job(self.account2, self.job1))
+
+    def test_job_rejects_unknown_priority(self):
+        with self.assertRaises(ValidationError):
+            Job.objects.create(
+                bucket=self.bucket1,
+                title="Bad",
+                description="d",
+                creator=self.account1,
+                priority="NORMAL",
+            )
 
 
 class CommandTestBase(EvenniaCommandTest):
@@ -629,7 +637,7 @@ class CmdJobClaimTests(CommandTestBase):
     
     def test_claim_job(self):
         """Test job/claim claims a job."""
-        self.call(CmdJobClaim(), "1", "You have claimed job #1")
+        self.call(CmdJobClaim(), "1", "You have claimed job Bugs/1")
         
         # Verify job was claimed
         self.job1.refresh_from_db()
@@ -707,7 +715,7 @@ class CmdJobSubmitTests(CommandTestBase):
         self.call(
             CmdJobSubmit(),
             "Bugs New Bug = Found a new bug",
-            "Job #2 created"
+            "Job Bugs/2 created"
         )
         
         # Verify job was created
@@ -728,7 +736,7 @@ class CmdJobAssignTests(CommandTestBase):
         # Make char1 a builder
         self.char1.permissions.add("Builder")
         
-        self.call(CmdJobAssign(), "1 = TestAccount", "Job #1 assigned")
+        self.call(CmdJobAssign(), "1 = TestAccount", "Job Bugs/1 assigned")
 
 
 class CmdJobReopenTests(CommandTestBase):
@@ -834,3 +842,93 @@ class CmdBucketDeleteTests(CommandTestBase):
         self.char1.permissions.add("Builder")
         
         self.call(CmdBucketDelete(), "Bugs", "contains jobs")
+
+
+class JobAuthorizationCommandTests(CommandTestBase):
+    """F-030/F-055/F-060: two players (Alice, Bob) and one Builder."""
+
+    def _puppet(self, name, *perms):
+        account = create.create_account(name, email=f"{name}@example.com", password="pw123456")
+        for perm in perms:
+            account.permissions.add(perm)
+        char = create.create_object(
+            settings.BASE_CHARACTER_TYPECLASS, key=name, location=self.room1, home=self.room1
+        )
+        char.account = account
+        return account, char
+
+    def setUp(self):
+        super().setUp()
+        self.alice_account, self.alice = self._puppet("Alice")
+        self.bob_account, self.bob = self._puppet("Bob")
+        self.builder_account, self.builder = self._puppet("Wren", "Builder")
+        self.approval = Bucket.objects.create(name="Approval", description="Approvals")
+        self.alice_job = Job.objects.create(
+            bucket=self.approval,
+            title="Alice approval",
+            description="Please approve Alice",
+            creator=self.alice_account,
+        )
+        Comment.objects.create(
+            job=self.alice_job,
+            author=self.builder_account,
+            content="STAFF ONLY NOTE",
+            public=False,
+        )
+
+    def test_other_player_cannot_view_job(self):
+        output = self.call(CmdJobView(), "Approval/1", caller=self.bob)
+        self.assertIn("permission", output)
+        self.assertNotIn("STAFF ONLY NOTE", output)
+        self.assertNotIn("Please approve Alice", output)
+
+    def test_creator_sees_job_but_not_private_comment(self):
+        output = self.call(CmdJobView(), "Approval/1", caller=self.alice)
+        self.assertIn("Please approve Alice", output)
+        self.assertNotIn("STAFF ONLY NOTE", output)
+
+    def test_builder_sees_private_comment(self):
+        output = self.call(CmdJobView(), "Approval/1", caller=self.builder)
+        self.assertIn("STAFF ONLY NOTE", output)
+
+    def test_other_player_cannot_claim_job(self):
+        self.assertFalse(CmdJobClaim().access(self.bob, "cmd"))
+        self.assertTrue(CmdJobClaim().access(self.builder, "cmd"))
+        self.call(CmdJobClaim(), "Approval/1", "You have claimed", caller=self.builder)
+        self.assertIn(self.builder_account, self.alice_job.players.all())
+
+    def test_other_player_cannot_close_job(self):
+        output = self.call(CmdJobDone(), "Approval/1", caller=self.bob)
+        self.assertIn("permission", output)
+        self.alice_job.refresh_from_db()
+        self.assertEqual(self.alice_job.status, "OPEN")
+
+    def test_creator_can_withdraw_own_job(self):
+        self.call(CmdJobDone(), "Approval/1", "Job Approval/1", caller=self.alice)
+        self.alice_job.refresh_from_db()
+        self.assertEqual(self.alice_job.status, "CLOSED")
+
+    def test_builder_can_close_job(self):
+        self.call(CmdJobDone(), "Approval/1", "Job Approval/1", caller=self.builder)
+        self.alice_job.refresh_from_db()
+        self.assertEqual(self.alice_job.status, "CLOSED")
+
+    def test_jobs_list_shows_only_own_jobs_to_players(self):
+        bob_output = self.call(CmdJobs(), "", caller=self.bob)
+        self.assertNotIn("Alice approval", bob_output)
+        alice_output = self.call(CmdJobs(), "", caller=self.alice)
+        self.assertIn("Alice approval", alice_output)
+        builder_output = self.call(CmdJobs(), "", caller=self.builder)
+        self.assertIn("Alice approval", builder_output)
+        self.assertIn("Test Job", builder_output)
+
+    def test_bare_number_with_two_buckets_is_ambiguous(self):
+        """Bugs/1 and Approval/1 both exist."""
+        output = self.call(CmdJobView(), "1", caller=self.builder)
+        self.assertIn("ambiguous", output)
+
+    def test_myjobs_defaults_to_open(self):
+        self.alice_job.status = "CLOSED"
+        self.alice_job.save()
+        self.assertNotIn("Alice approval", self.call(CmdMyJobs(), "", caller=self.alice))
+        self.assertIn("Alice approval", self.call(CmdMyJobs(), "all", caller=self.alice))

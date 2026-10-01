@@ -165,7 +165,7 @@ To view character sheet: +sheet {caller.name}"""
                 description=description,
                 creator=caller.account,
                 bucket=hunt_bucket,
-                priority='NORMAL'
+                priority='MEDIUM'
             )
 
             job.players.add(caller.account)
@@ -178,10 +178,10 @@ To view character sheet: +sheet {caller.name}"""
             output.append(f"{DARK_RED}{BOX_BL}{BOX_H * 76}{BOX_BR}{RESET}")
             output.append("")
             output.append(f"{PALE_IVORY}Your hunt request has been submitted to staff.{RESET}")
-            output.append(f"{PALE_IVORY}Job #{job.sequence_number}:{RESET} Hunt Scene at {GOLD}{location.title()}{RESET}")
+            output.append(f"{PALE_IVORY}Job {job.ref}:{RESET} Hunt Scene at {GOLD}{location.title()}{RESET}")
             output.append("")
             output.append(f"{SHADOW_GREY}Staff will contact you when they're ready to run the scene.{RESET}")
-            output.append(f"{SHADOW_GREY}You can check the status with: |w+job {job.sequence_number}|x{RESET}")
+            output.append(f"{SHADOW_GREY}You can check the status with: |w+job {job.ref}|x{RESET}")
 
             caller.msg("\n".join(output))
 
