@@ -94,6 +94,9 @@ def _create_skills_dict(default_value=0):
 # merits and the same number of thin-blood flaws, and get Thin-Blood Alchemy
 # only through the Thin-blood Alchemist merit.
 #
+# "required_flaws" are flaws the clan must take at creation;
+# "excluded_merit_categories" are MERITS categories it may not buy.
+#
 # CORE BOOK ONLY. The owner chose "V5 core book exactly", so CLANS holds the
 # core-book clans. Clans from later books are in NON_CORE_CLANS below; they
 # are not offered to players, and the Character.clan setter rejects them.
@@ -123,6 +126,8 @@ CLANS = {
     },
     "Nosferatu": {
         "disciplines": ["Animalism", "Obfuscate", "Potence"],
+        "required_flaws": [{"name": "Repulsive", "dots": 2}],
+        "excluded_merit_categories": ["Looks"],
         "bane": ("Repulsiveness: you take the Repulsive flaw and can't buy Looks merits; any attempt "
                  "to pass as undeformed (even by Discipline) loses Bane Severity dice"),
         "compulsion": ("Cryptophilia: -2 dice to actions not aimed at learning a secret, until you "
@@ -151,9 +156,13 @@ CLANS = {
     },
     "Caitiff": {
         "disciplines": [],
+        "required_flaws": [{"name": "Suspect", "dots": 1}],
         "bane": None,
         "compulsion": None,
     },
+    # QR p.5 lists "(Thin-blood Alchemy)", but QR p.2 says thin-bloods have
+    # no starting or in-clan disciplines; Alchemy comes only through the
+    # Thin-blood Alchemist merit (QR p.11, core p.282).
     "Thin-Blood": {
         "disciplines": [],
         "bane": None,
@@ -242,7 +251,10 @@ NON_CORE_CLANS = {
 #   dice_pool  - the user's pool, "Attribute + Trait"; "A / B + C" means
 #                A or B plus C. None = no roll.
 #   opposed_by - the target's resistance pool, if the roll is contested
-#   duration   - short text
+#   duration   - a token the effect code understands: one of
+#                DURATION_TYPES (instant, turn, scene, night, permanent,
+#                passive)
+#   duration_text - the book's duration in words, for display
 #   amalgam    - "Discipline N" the character must also have, or None
 #   note       - optional rules detail the fields above can't express
 #
@@ -251,13 +263,43 @@ NON_CORE_CLANS = {
 # (XP: level x 3, QR p.1).
 
 
+DURATION_TYPES = ("instant", "turn", "scene", "night", "permanent", "passive")
+
+# Book duration wording -> the token the effect code tracks. Powers that
+# only modify another power ("as the power used") have no effect of their
+# own, so they are "instant".
+_DURATION_TOKENS = {
+    "instant": "instant",
+    "as the power used": "instant",
+    "as the amplified power": "instant",
+    "as the copied power": "instant",
+    "one turn": "turn",
+    "one attack": "turn",
+    "one action": "turn",
+    "one scene": "scene",
+    "up to one scene": "scene",
+    "until done or scene ends": "scene",
+    "until ended": "scene",
+    "as long as desired": "scene",
+    "one feeding": "scene",
+    "one hour": "scene",
+    "one scene or one night": "scene",
+    "one night": "night",
+    "up to one night": "night",
+    "a day or more": "night",
+    "permanent": "permanent",
+    "passive": "passive",
+}
+
+
 def _power(name, rouse, dice_pool, duration, description, *, opposed_by=None, amalgam=None, note=None):
     power = {
         "name": name,
         "description": description,
         "rouse": rouse,
         "dice_pool": dice_pool,
-        "duration": duration,
+        "duration": _DURATION_TOKENS[duration],
+        "duration_text": duration,
         "amalgam": amalgam,
     }
     if opposed_by:
@@ -267,10 +309,13 @@ def _power(name, rouse, dice_pool, duration, description, *, opposed_by=None, am
     return power
 
 
-def _ritual(name, level, description, *, dice_pool="Intelligence + Blood Sorcery", opposed_by=None, rouse=1):
+def _ritual(name, level, description, *, dice_pool="Intelligence + Blood Sorcery", opposed_by=None, rouse=1,
+            note=None):
     ritual = {"name": name, "level": level, "description": description, "rouse": rouse, "dice_pool": dice_pool}
     if opposed_by:
         ritual["opposed_by"] = opposed_by
+    if note:
+        ritual["note"] = note
     return ritual
 
 
@@ -295,10 +340,9 @@ DISCIPLINES = {
                        opposed_by="Composure + Subterfuge"),
             ],
             2: [
-                # UNVERIFIED: which use takes Manipulation and which Charisma.
                 _power("Feral Whispers", 1, "Manipulation / Charisma + Animalism", "one scene",
                        "Talk with animals and summon those nearby",
-                       note="1 Rouse per animal type per scene"),
+                       note="1 Rouse per animal type per scene; free on your famulus"),
             ],
             3: [
                 _power("Animal Succulence", 0, None, "passive",
@@ -312,7 +356,8 @@ DISCIPLINES = {
             ],
             4: [
                 _power("Subsume the Spirit", 1, "Manipulation + Animalism", "one scene",
-                       "Move your mind into an animal's body and control it"),
+                       "Move your mind into an animal's body and control it",
+                       note="Free on your famulus"),
             ],
             5: [
                 _power("Animal Dominion", 2, "Charisma + Animalism", "one scene",
@@ -378,7 +423,6 @@ DISCIPLINES = {
                        "Tasting a drop of blood reveals basic facts about its owner"),
             ],
             2: [
-                # UNVERIFIED: pool (3 sources Intelligence, 1 Resolve).
                 _power("Extinguish Vitae", 1, "Intelligence + Blood Sorcery", "instant",
                        "Spoil another vampire's blood, raising their Hunger",
                        opposed_by="Stamina + Composure"),
@@ -408,7 +452,7 @@ DISCIPLINES = {
             ],
         },
         # Rituals are learned separately from powers (XP: ritual level x 3).
-        # Each costs 1 Rouse check, takes 5 minutes per level and rolls
+        # Each costs 1 Rouse check unless noted, takes 5 minutes per level and rolls
         # Intelligence + Blood Sorcery at Difficulty level + 1 unless noted.
         # Source: V5 core p.275-282.
         "rituals": [
@@ -420,29 +464,28 @@ DISCIPLINES = {
             _ritual("Communicate with Kindred Sire", 2, "Talk mind to mind with your sire"),
             _ritual("Eyes of Babel", 2, "Gain a language from an eye and tongue"),
             _ritual("Illuminate the Trail of Prey", 2, "Make a known target's path glow"),
-            # UNVERIFIED: one source gives Resolve + Blood Sorcery.
-            _ritual("Truth of Blood", 2, "Your blood shows whether a statement is true"),
+            _ritual("Truth of Blood", 2, "Your blood shows whether a statement is true",
+                    dice_pool="Resolve + Blood Sorcery", opposed_by="Composure + Occult"),
             _ritual("Ward against Spirits", 2, "Ward an object against spirits"),
-            # UNVERIFIED: the Warding Circles' Rouse cost (one source says 3).
-            _ritual("Warding Circle against Ghouls", 2, "Ward an area against ghouls"),
+            _ritual("Warding Circle against Ghouls", 2, "Ward an area against ghouls", rouse=3),
             _ritual("Dagon's Call", 3, "Drown a target from afar through their blood",
                     dice_pool="Resolve + Blood Sorcery", opposed_by="Stamina + Resolve"),
             _ritual("Deflection of Wooden Doom", 3, "The first stake to strike you fails"),
             _ritual("Essence of Air", 3, "Become able to fly"),
             _ritual("Firewalker", 3, "Resist fire"),
             _ritual("Ward against Lupines", 3, "Ward an object against werewolves"),
-            _ritual("Warding Circle against Spirits", 3, "Ward an area against spirits"),
+            _ritual("Warding Circle against Spirits", 3, "Ward an area against spirits", rouse=3),
             _ritual("Defense of the Sacred Haven", 4, "Your haven's windows block sunlight"),
             _ritual("Eyes of the Nighthawk", 4, "See through a bird and use Disciplines through it"),
             _ritual("Incorporeal Passage", 4, "Become intangible"),
             _ritual("Ward against Cainites", 4, "Ward an object against vampires"),
-            _ritual("Warding Circle against Lupines", 4, "Ward an area against werewolves"),
-            # UNVERIFIED: cost (one source says 12 Rouse in total).
-            _ritual("Escape to True Sanctuary", 5, "Step between two prepared circles"),
+            _ritual("Warding Circle against Lupines", 4, "Ward an area against werewolves", rouse=3),
+            _ritual("Escape to True Sanctuary", 5, "Step between two prepared circles", rouse=12,
+                    note="12 Rouse checks in total, spread over the preparation"),
             _ritual("Heart of Stone", 5, "Your heart turns to stone: immune to staking and emotion"),
             _ritual("Shaft of Belated Dissolution", 5, "Make a rowan stake whose splinter seeks the heart",
                     rouse=2),
-            _ritual("Warding Circle against Cainites", 5, "Ward an area against vampires"),
+            _ritual("Warding Circle against Cainites", 5, "Ward an area against vampires", rouse=3),
         ],
     },
     "Celerity": {
@@ -499,10 +542,10 @@ DISCIPLINES = {
                 _power("Mesmerize", 1, "Manipulation + Dominate", "until done or scene ends",
                        "Implant a more complex command",
                        opposed_by="Intelligence + Resolve"),
-                # UNVERIFIED: 1 Rouse per scene, or per target per scene.
                 _power("Dementation", 1, "Manipulation + Dominate", "one scene",
                        "Push the target toward breakdown or madness",
-                       opposed_by="Composure + Intelligence", amalgam="Obfuscate 2"),
+                       opposed_by="Composure + Intelligence", amalgam="Obfuscate 2",
+                       note="1 Rouse per target per scene"),
             ],
             3: [
                 _power("The Forgetful Mind", 1, "Manipulation + Dominate", "permanent",
@@ -626,7 +669,8 @@ DISCIPLINES = {
                        "Drain a mortal completely within seconds"),
                 _power("Spark of Rage", 1, "Manipulation + Potence", "one scene",
                        "Stir onlookers to anger or frenzy",
-                       amalgam="Presence 3"),
+                       opposed_by="Intelligence + Composure", amalgam="Presence 3",
+                       note="Roll only against vampires; mortals get no resistance roll"),
                 _power("Uncanny Grip", 1, None, "one scene",
                        "Climb and hang from walls and ceilings"),
             ],
@@ -750,11 +794,11 @@ DISCIPLINES = {
                          resonance="Melancholy and Phlegmatic", opposed_by="Stamina + Survival"),
                 _formula("Counterfeit", 0, None, "as the copied power",
                          "Copy a Discipline power one level below your Alchemy rating",
-                         note=("Formula at levels 2-5; from level 3 needs vitae of a vampire who has "
-                               "the Discipline. Cost and pool are the copied power's.")),
+                         note=("Formula at levels 2-5; from level 4 (copying a 3-dot power) needs vitae "
+                               "of a vampire of a matching clan or who has the Discipline. Cost and pool "
+                               "are the copied power's.")),
             ],
             3: [
-                # UNVERIFIED: activation cost (sources split between 0 and 1 Rouse).
                 _formula("Defractionate", 0, None, "instant",
                          "Make bagged or treated blood drinkable and nourishing",
                          resonance="Melancholy and Sanguine"),
@@ -766,10 +810,10 @@ DISCIPLINES = {
             4: [
                 _formula("Airborne Momentum", 1, "Strength + Thin-Blood Alchemy", "one scene",
                          "Fly under your own power",
-                         resonance="Choleric and Sanguine"),
+                         resonance="Choleric and Sanguine", opposed_by="Strength + Athletics",
+                         note="The opposing pool applies only if a target resists"),
             ],
             5: [
-                # UNVERIFIED: activation cost (sources split between 0 and 1 Rouse).
                 _formula("Awaken the Sleeper", 1, None, "instant",
                          "Wake a vampire from day-sleep or torpor",
                          resonance="Choleric or Sanguine"),
@@ -863,7 +907,9 @@ ALL_DISCIPLINES = {**DISCIPLINES, **NON_CORE_DISCIPLINES}
 #   discipline_clans   - disciplines only some clans may pick, and which
 #   humanity, blood_potency - changes to the starting value
 #   merits, flaws, backgrounds - fixed grants: {"name", "dots", "note"}
-#   flaw_choices, advantage_choices - "spend N dots among these" grants
+#   flaw_choices, advantage_choices - "spend N dots among these" grants:
+#                        "from" names, "from_categories" MERITS/FLAWS categories
+#   excluded_clans, max_blood_potency - who may not take the type
 
 PREDATOR_TYPES = {
     "Alleycat": {
@@ -883,13 +929,15 @@ PREDATOR_TYPES = {
         "hunting_pool": "Intelligence + Streetwise",
         "specialties": [("Larceny", "Lock Picking"), ("Streetwise", "Black Market")],
         "disciplines": ["Blood Sorcery", "Obfuscate"],
-        # Core: Tremere only. The Players Guide p.107 adds Banu Haqim.
-        "discipline_clans": {"Blood Sorcery": ["Tremere", "Banu Haqim"]},
+        # Core: Tremere only. (The Players Guide p.107 adds Banu Haqim; add it
+        # here if that non-core clan is ever enabled.)
+        "discipline_clans": {"Blood Sorcery": ["Tremere"]},
         "humanity": 0,
         "blood_potency": 0,
         "merits": [{"name": "Iron Gullet", "dots": 3}],
         "flaws": [{"name": "Enemy", "dots": 2, "note": "someone who thinks you owe them"}],
         "backgrounds": [],
+        "excluded_clans": ["Ventrue"],
         "note": "Ventrue can't take this predator type",
     },
     "Blood Leech": {
@@ -940,6 +988,8 @@ PREDATOR_TYPES = {
         "merits": [],
         "flaws": [{"name": "Farmer", "dots": 2}],
         "backgrounds": [],
+        "excluded_clans": ["Ventrue"],
+        "max_blood_potency": 2,
         "note": "Ventrue and characters of Blood Potency 3+ can't take this predator type",
     },
     "Osiris": {
@@ -950,14 +1000,15 @@ PREDATOR_TYPES = {
         "alt_hunting_pool": "Intimidation + Fame",
         "specialties": [("Occult", "Specific tradition"), ("Performance", "Specific field")],
         "disciplines": ["Blood Sorcery", "Presence"],
-        # Core: Tremere only. The Players Guide p.107 adds Banu Haqim.
-        "discipline_clans": {"Blood Sorcery": ["Tremere", "Banu Haqim"]},
+        # Core: Tremere only. (The Players Guide p.107 adds Banu Haqim; add it
+        # here if that non-core clan is ever enabled.)
+        "discipline_clans": {"Blood Sorcery": ["Tremere"]},
         "humanity": 0,
         "blood_potency": 0,
         "merits": [],
         "flaws": [],
         "advantage_choices": [{"dots": 3, "from": ["Fame", "Herd"]}],
-        "flaw_choices": [{"dots": 2, "from": ["Enemy", "Mythic flaws"]}],
+        "flaw_choices": [{"dots": 2, "from": ["Enemy"], "from_categories": ["Mythical"]}],
         "backgrounds": [],
     },
     "Sandman": {
@@ -1218,18 +1269,34 @@ GENERATION_BY_AGE = {
 # Background flaws (Enemy, Adversary, Dark Secret, No Haven, ...) are here
 # because the character stores them with the other flaws. Domain flaws
 # (No Domain) belong to a coterie, not a character.
+#
+# Not modelled (owner decision, see the PR 11 sign-off table): Loresheets
+# (core p.382-406, one per character, each with its own five advantages)
+# and the coterie Domain advantages (Chasse, Lien, Portillon; QR p.8),
+# which belong to a coterie.
+#
+# Creation restrictions, for the chargen validator to read (the
+# descriptions say the same in words):
+#   excluded_clans - clans that may not take it
+#   excludes       - names that may not be taken together with it
+#   requires       - [{"kind": "backgrounds"|"merits"|"flaws", "name", "dots"}]
+#                    that the character must also have
+#   requires_by_clan - {clan: [names]}: extra requirements by Clan Curse clan
 
 MERITS = {
     # Linguistics (QR p.9 "Language (•)"): one dot per extra language.
     "Linguistics": {"category": "Linguistics", "dots": (1, 2, 3, 4, 5),
                     "description": "Fluent and literate in one additional language per dot"},
     "Beautiful": {"category": "Looks", "dots": (2,),
+                  "excluded_clans": ["Nosferatu"],
                   "description": "+1 die to relevant Social pools"},
     "Stunning": {"category": "Looks", "dots": (4,),
+                 "excluded_clans": ["Nosferatu"],
                  "description": "+2 dice to relevant Social pools"},
     "Bloodhound": {"category": "Feeding", "dots": (1,),
                    "description": "Smell the Resonance of mortal blood"},
     "Iron Gullet": {"category": "Feeding", "dots": (3,),
+                    "excluded_clans": ["Ventrue"],
                     "description": "Feed on cold, rancid or preserved blood (no Resonance); not for Ventrue"},
     "Bond Resistance": {"category": "Bonding", "dots": (1,),
                         "description": "+1 die to resist a Blood Bond"},
@@ -1241,8 +1308,28 @@ MERITS = {
                                 "description": "+1 die when your last feeding included your drug"},
     "Eat Food": {"category": "Mythical", "dots": (2,),
                  "description": "Eat food, though you must purge it before day-sleep"},
+    # Mask merits (QR p.10; core p.190): need Mask 2.
+    "Zeroed": {"category": "Mask", "dots": (1,),
+               "requires": [{"kind": "backgrounds", "name": "Mask", "dots": 2}],
+               "description": "Your real identity has been erased from every record"},
+    "Cobbler": {"category": "Mask", "dots": (1,),
+                "requires": [{"kind": "backgrounds", "name": "Mask", "dots": 2}],
+                "description": "You can make or source Masks for others"},
+    # Haven merits (core p.188 per vtm.paradoxwikis.com; QR p.9 points to
+    # them). UNVERIFIED: their ratings; the sources give "•+" with no cap.
+    "Hidden Armory": {"category": "Haven", "dots": (1, 2, 3),
+                      "description": "Weapons and armor hidden in your haven"},
+    "Cell": {"category": "Haven", "dots": (1, 2, 3),
+             "description": "A cell in your haven that can hold a prisoner"},
+    "Watchmen": {"category": "Haven", "dots": (1, 2, 3),
+                 "description": "Mortal guards watch over your haven"},
+    "Laboratory": {"category": "Haven", "dots": (1, 2, 3),
+                   "description": "A laboratory in your haven for science or alchemy"},
+    "Library": {"category": "Haven", "dots": (1, 2, 3),
+                "description": "A library in your haven for research"},
     # Thin-blood merits (QR p.11). No point cost; pair each with a flaw.
     "Anarch Comrades": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                        "excludes": ["Shunned by the Anarchs"],
                         "description": "An Anarch coterie treats you as a mascot (Mawla 1)"},
     "Camarilla Contact": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
                           "description": "A Camarilla recruiter keeps you around (Mawla 1)"},
@@ -1254,10 +1341,12 @@ MERITS = {
     "Discipline Affinity": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
                             "description": "A permanent dot in one Discipline, never more than one"},
     "Lifelike": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                 "excludes": ["Dead Flesh"],
                  "description": "You have a heartbeat and can eat food"},
     "Thin-blood Alchemist": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
                              "description": "One dot of Thin-Blood Alchemy and one formula"},
     "Vampiric Resilience": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                            "excludes": ["Mortal Frailty"],
                             "description": "You take damage like a full vampire"},
 }
 
@@ -1269,7 +1358,9 @@ FLAWS = {
              "description": "-1 die to relevant Social pools"},
     "Repulsive": {"category": "Looks", "dots": (2,),
                   "description": "-2 dice to relevant Social pools"},
-    "Anachronism": {"category": "Archaic", "dots": (2,),
+    # "Archaic" is the core name (core p.179-182 per paradoxwikis and
+    # fandom); the QR calls it "Anachronism".
+    "Archaic": {"category": "Archaic", "dots": (2,),
                     "description": "Your Technology rating is permanently 0"},
     "Living in the Past": {"category": "Archaic", "dots": (1,),
                            "description": "You hold one or more outdated Convictions"},
@@ -1294,6 +1385,7 @@ FLAWS = {
     "Farmer": {"category": "Feeding", "dots": (2,),
                "description": "You feed only on animals; feeding on humans costs 2 Willpower; not for Ventrue"},
     "Organovore": {"category": "Feeding", "dots": (2,),
+                   "excluded_clans": ["Ventrue"],
                    "description": "You must eat your victim's organs when you feed"},
     "Stake Bait": {"category": "Mythical", "dots": (2,),
                    "description": "A stake through the heart brings Final Death"},
@@ -1311,13 +1403,18 @@ FLAWS = {
     "Branded by the Camarilla": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
                                  "description": "A magical brand marks you as a thin-blood"},
     "Clan Curse": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                   "requires_by_clan": {"Brujah": ["Bestial Temper"], "Gangrel": ["Bestial Temper"],
+                                        "Tremere": ["Catenating Blood"]},
                    "description": ("A clan Bane at severity 1 (Brujah/Gangrel need Bestial Temper, "
                                    "Tremere need Catenating Blood)")},
     "Dead Flesh": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                   "excludes": ["Lifelike"],
                    "description": "You are slowly decaying; can't take Lifelike"},
     "Mortal Frailty": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                       "excludes": ["Vampiric Resilience"],
                        "description": "You can't Rouse the Blood to mend; can't take Vampiric Resilience"},
     "Shunned by the Anarchs": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                               "excludes": ["Anarch Comrades"],
                                "description": "The Anarchs treat you as an enemy; can't take Anarch Comrades"},
     "Vitae Dependency": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
                          "description": "You must drink vampire blood to use any Discipline"},

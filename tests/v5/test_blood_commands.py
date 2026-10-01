@@ -85,6 +85,23 @@ class CmdFeedTestCase(BloodCommandTestBase):
         self.assertIn("Choleric", output)
         self.assertIn("Fleeting", output)
 
+    def test_feed_melancholy_sets_the_book_name(self):
+        """'melancholy' (QR p.12) is accepted and stored as "Melancholy"."""
+        self.char.hunger = 3
+        with fixed_dice(7, 7, 7, 7, 7):
+            output = self.call(CmdFeed(), "mortal melancholy")
+        self.assertEqual(blood_utils.get_resonance(self.char)["type"], "Melancholy")
+        self.assertIn("Melancholy", output)
+
+    def test_feed_rejects_unknown_resonance_before_feeding(self):
+        """An invalid resonance is refused before Hunger changes."""
+        self.char.hunger = 3
+        with fixed_dice(7, 7, 7, 7, 7):
+            output = self.call(CmdFeed(), "mortal melancholic")
+        self.assertIn("Invalid resonance", output)
+        self.assertEqual(blood_utils.get_hunger_level(self.char), 3)
+        self.assertIsNone(blood_utils.get_resonance(self.char))
+
     def test_feed_failure_keeps_hunger(self):
         self.char.hunger = 3
         with fixed_dice(2, 2, 2, 2, 2):

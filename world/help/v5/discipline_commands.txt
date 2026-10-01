@@ -71,7 +71,7 @@ If you have the right resonance from feeding, you gain
 |g+1 die|n to powers that match:
 
   |ycholeric|n - Celerity, Potence powers
-  |ymelancholic|n - Fortitude, Obfuscate powers
+  |ymelancholy|n - Fortitude, Obfuscate powers
   |yphlegmatic|n - Auspex, Dominate powers
   |ysanguine|n - Blood Sorcery, Presence powers
 

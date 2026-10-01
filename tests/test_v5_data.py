@@ -38,6 +38,24 @@ ERRATA_BLOOD_POTENCY = {
 }
 
 
+# The feeding-penalty column of the same errata table, as its structured
+# parts: (animal/bagged blood effect, less Hunger slaked per human, Hunger
+# a human kill is needed to go below or None).
+ERRATA_FEEDING_PENALTY = {
+    0: (None, 0, None),
+    1: (None, 0, None),
+    2: ("half", 0, None),
+    3: ("no", 0, None),
+    4: ("no", 1, None),
+    5: ("no", 1, 2),
+    6: ("no", 2, 2),
+    7: ("no", 2, 2),
+    8: ("no", 2, 3),
+    9: ("no", 2, 3),
+    10: ("no", 3, 3),
+}
+
+
 def _parse_amalgam(text):
     name, _, level = text.rpartition(" ")
     return name, int(level)
@@ -53,7 +71,20 @@ class BloodPotencyTableTests(TestCase):
                 (surge, mend, bonus, reroll, bane),
                 f"BP {bp}",
             )
-            self.assertTrue(row["feeding_penalty"])
+            animal, less, kill_below = ERRATA_FEEDING_PENALTY[bp]
+            text = row["feeding_penalty"]
+            if animal is None:
+                self.assertEqual(text, "No effect", f"BP {bp}")
+                continue
+            self.assertIn(f"Animal and bagged blood slake {animal} Hunger", text, f"BP {bp}")
+            if less:
+                self.assertIn(f"slake {less} less Hunger per human", text, f"BP {bp}")
+            else:
+                self.assertNotIn("less Hunger per human", text, f"BP {bp}")
+            if kill_below:
+                self.assertIn(f"reduce Hunger below {kill_below}", text, f"BP {bp}")
+            else:
+                self.assertNotIn("drain and kill", text, f"BP {bp}")
 
     def test_no_other_module_hardcodes_a_bp_table(self):
         """dice/ and commands/ read BLOOD_POTENCY; they don't carry their own ladder."""
@@ -161,6 +192,13 @@ class DisciplineTests(TestCase):
             pool = power["dice_pool"]
             if pool is not None:
                 self.assertNotIn(" vs ", pool, f"{label}: put the opposing pool in 'opposed_by'")
+            self.assertIn(power["duration"], v5_data.DURATION_TYPES, label)
+            self.assertTrue(power["duration_text"], label)
+
+    def test_formula_durations_are_tokens(self):
+        for entries in v5_data.DISCIPLINES["Thin-Blood Alchemy"]["formulas"].values():
+            for formula in entries:
+                self.assertIn(formula["duration"], v5_data.DURATION_TYPES, formula["name"])
 
     def test_amalgams_resolve(self):
         for discipline, _level, power in self._all_powers():
@@ -215,6 +253,19 @@ class PredatorTypeTests(TestCase):
             for grant in data["backgrounds"]:
                 self.assertIn(grant["name"], v5_data.BACKGROUNDS, name)
                 self.assertIn(grant["dots"], range(1, 6), name)
+            every_name = set(v5_data.MERITS) | set(v5_data.FLAWS) | set(v5_data.BACKGROUNDS)
+            categories = {d["category"] for t in (v5_data.MERITS, v5_data.FLAWS) for d in t.values()}
+            for choice in data.get("advantage_choices", []) + data.get("flaw_choices", []):
+                self.assertIn(choice["dots"], range(1, 6), name)
+                self.assertTrue(choice.get("from") or choice.get("from_categories"), name)
+                for option in choice.get("from", []):
+                    self.assertIn(option, every_name, f"{name} choice")
+                for category in choice.get("from_categories", []):
+                    self.assertIn(category, categories, f"{name} choice")
+            for clan in data.get("excluded_clans", []):
+                self.assertIn(clan, v5_data.CLANS, name)
+            if "max_blood_potency" in data:
+                self.assertIn(data["max_blood_potency"], v5_data.BLOOD_POTENCY, name)
 
 
 class AdvantageTests(TestCase):
@@ -228,11 +279,49 @@ class AdvantageTests(TestCase):
         for name in thin_flaws:
             self.assertEqual(v5_data.FLAWS[name]["cost"], 0, name)
 
+    def test_restriction_fields_resolve(self):
+        tables = {"merits": v5_data.MERITS, "flaws": v5_data.FLAWS, "backgrounds": v5_data.BACKGROUNDS}
+        both = set(v5_data.MERITS) | set(v5_data.FLAWS)
+        for table in (v5_data.MERITS, v5_data.FLAWS):
+            for name, data in table.items():
+                for clan in data.get("excluded_clans", []):
+                    self.assertIn(clan, v5_data.CLANS, name)
+                for other in data.get("excludes", []):
+                    self.assertIn(other, both, name)
+                    # Exclusions go both ways.
+                    other_data = v5_data.MERITS.get(other) or v5_data.FLAWS[other]
+                    self.assertIn(name, other_data.get("excludes", []), name)
+                for req in data.get("requires", []):
+                    self.assertIn(req["name"], tables[req["kind"]], name)
+                for clan, names in data.get("requires_by_clan", {}).items():
+                    self.assertIn(clan, v5_data.CLANS, name)
+                    for other in names:
+                        self.assertIn(other, both, name)
+        categories = {d["category"] for d in v5_data.MERITS.values()}
+        for clan, data in v5_data.CLANS.items():
+            for flaw in data.get("required_flaws", []):
+                self.assertIn(flaw["dots"], v5_data.FLAWS[flaw["name"]]["dots"], clan)
+            for category in data.get("excluded_merit_categories", []):
+                self.assertIn(category, categories, clan)
+
     def test_every_other_advantage_costs_its_dots(self):
         for table in (v5_data.MERITS, v5_data.FLAWS):
             for name, data in table.items():
                 if not data.get("thin_blood"):
                     self.assertNotIn("cost", data, name)
+
+
+class MelancholyRenameTests(TestCase):
+    def test_no_melancholic_outside_the_archive(self):
+        """The humour is "Melancholy" (QR p.12); nothing live may use "Melancholic"."""
+        offenders = []
+        for folder in ("commands", "dice", "typeclasses", "traits", "world", "web/static", "web/templates"):
+            for path in (REPO_ROOT / folder).rglob("*"):
+                if path.suffix not in (".py", ".txt", ".js", ".html") or path.name == "test_v5_data.py":
+                    continue
+                if "melancholic" in path.read_text(encoding="utf-8", errors="ignore").lower():
+                    offenders.append(str(path.relative_to(REPO_ROOT)))
+        self.assertEqual(offenders, [])
 
 
 class MiscTableTests(TestCase):
@@ -256,3 +345,27 @@ class MiscTableTests(TestCase):
         for data in v5_data.FRENZY_PROVOCATIONS.values():
             for difficulty in data["provocations"].values():
                 self.assertIn(difficulty, range(2, 5))
+
+
+class ParkedClanTests(EvenniaTest):
+    """A character stored with a clan that is no longer offered doesn't crash."""
+
+    def setUp(self):
+        super().setUp()
+        self.char1.db.vampire["clan"] = "Lasombra"  # stored before the clan was parked
+
+    def test_no_in_clan_disciplines(self):
+        from commands.v5.utils.clan_utils import format_clan_display, get_inclan_disciplines
+
+        self.assertEqual(get_inclan_disciplines(self.char1), [])
+        self.assertIn("not available", format_clan_display(self.char1))
+
+    def test_discipline_spend_is_refused_without_charge(self):
+        from commands.v5.utils import xp_utils
+
+        spent = self.char1.xp_spent
+        ok, message = xp_utils.spend_xp_on_discipline(self.char1, "Potence")
+        self.assertFalse(ok)
+        self.assertIn("not available", message)
+        self.assertEqual(self.char1.xp_spent, spent)
+        self.assertEqual(self.char1.get_trait("Potence"), 0)

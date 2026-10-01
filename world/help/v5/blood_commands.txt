@@ -20,7 +20,7 @@ Blood Surge, and Hunger tracking.
 
 |yResonances:|n
   - |ycholeric|n - Anger, passion, aggression
-  - |ymelancholic|n - Sadness, introspection, artists
+  - |ymelancholy|n - Sadness, introspection, artists
   - |yphlegmatic|n - Calm, apathy, laziness
   - |ysanguine|n - Joy, pleasure, desire
 
