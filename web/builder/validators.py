@@ -105,6 +105,20 @@ def validate_project(map_data):
 CONNECTION_DIRECTIONS = ("n", "s", "e", "w", "ne", "nw", "se", "sw", "u", "d")
 
 
+def is_live_room(obj):
+    """A Room (or Room subclass) that isn't part of a sandbox build."""
+    return obj.is_typeclass("typeclasses.rooms.Room", exact=False) and not (
+        obj.tags.has("sandbox")
+    )
+
+
+def live_rooms():
+    """All live rooms a build may connect to, by typeclass family (not key)."""
+    from typeclasses.rooms import Room
+
+    return [room for room in Room.objects.all_family() if is_live_room(room)]
+
+
 def validate_connection(connection_room_id, connection_direction):
     """
     Validate the live attachment point a project is submitted with.
@@ -138,7 +152,7 @@ def validate_connection(connection_room_id, connection_direction):
         room = ObjectDB.objects.filter(pk=room_id).first()
         if room is None or not room.is_typeclass("typeclasses.rooms.Room", exact=False):
             errors.append(f"Connection room #{room_id} is not a room")
-        elif room.tags.has("sandbox"):
+        elif not is_live_room(room):
             errors.append(f"Connection room #{room_id} is a sandbox room, not a live one")
 
     return errors, room_id, direction

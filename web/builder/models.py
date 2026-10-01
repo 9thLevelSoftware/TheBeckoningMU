@@ -2,9 +2,14 @@ import copy
 
 from django.conf import settings
 from django.db import models
+from django.db.models import F
 from django.utils import timezone
 
 from web.permissions import has_perm
+
+
+class StaleReviewError(ValueError):
+    """The project changed (status or version) since the reviewer saw it."""
 
 
 class BuildProject(models.Model):
@@ -158,39 +163,64 @@ class BuildProject(models.Model):
             ]
         )
 
-    def approve(self, user):
+    def _review_update(self, version, **fields):
+        """
+        Apply a review transition only if the project is still submitted at
+        the version the reviewer saw. Raises StaleReviewError otherwise.
+        """
+        updated = BuildProject.objects.filter(
+            pk=self.pk, status="submitted", version=version
+        ).update(**fields)
+        if not updated:
+            raise StaleReviewError(
+                "Project changed since you loaded it. Reload and review again."
+            )
+        self.refresh_from_db()
+
+    def approve(self, user, version):
         """
         Approve a submitted project.
         Transitions: submitted -> approved
-        Records reviewer and timestamp, and snapshots the reviewed map and
-        connection point into approved_map_data in the same save.
+        `version` is the version the reviewer looked at; the approval only
+        lands if the project is still submitted at that version. Records
+        reviewer and timestamp, and snapshots the reviewed map and connection
+        point into approved_map_data in the same write.
         """
         if not self.can_be_reviewed_by(user):
             raise PermissionError("You cannot review your own project")
         if not self.can_transition_to("approved"):
             raise ValueError(f"Cannot approve project in '{self.status}' status")
-        self.status = "approved"
-        self.reviewed_by = user
-        self.reviewed_at = timezone.now()
-        self.approved_map_data = {
-            "map_data": copy.deepcopy(self.map_data),
-            "connection_room_id": self.connection_room_id,
-            "connection_direction": self.connection_direction,
-        }
-        self.save(
-            update_fields=[
-                "status",
-                "reviewed_by",
-                "reviewed_at",
-                "approved_map_data",
-                "updated_at",
-            ]
+        # Snapshot what is stored at that version. The map can't change while
+        # the project is submitted (saves need draft), and a reject, edit and
+        # resubmit bumps the version, which the conditional update catches.
+        current = (
+            BuildProject.objects.filter(pk=self.pk, version=version)
+            .values("map_data", "connection_room_id", "connection_direction")
+            .first()
+        )
+        if current is None:
+            raise StaleReviewError(
+                "Project changed since you loaded it. Reload and review again."
+            )
+        now = timezone.now()
+        self._review_update(
+            version,
+            status="approved",
+            reviewed_by=user,
+            reviewed_at=now,
+            approved_map_data={
+                "map_data": copy.deepcopy(current["map_data"]),
+                "connection_room_id": current["connection_room_id"],
+                "connection_direction": current["connection_direction"],
+            },
+            updated_at=now,
         )
 
-    def reject(self, user, notes):
+    def reject(self, user, notes, version):
         """
         Reject a submitted project, returning it to draft.
         Transitions: submitted -> draft
+        Only lands if the project is still submitted at `version`.
         Increments rejection count and stores notes.
         """
         if not self.can_be_reviewed_by(user):
@@ -199,20 +229,15 @@ class BuildProject(models.Model):
             raise ValueError(f"Cannot reject project in '{self.status}' status")
         if not notes or not notes.strip():
             raise ValueError("Rejection notes are required")
-        self.status = "draft"
-        self.rejection_notes = notes
-        self.rejection_count += 1
-        self.reviewed_by = user
-        self.reviewed_at = timezone.now()
-        self.save(
-            update_fields=[
-                "status",
-                "rejection_notes",
-                "rejection_count",
-                "reviewed_by",
-                "reviewed_at",
-                "updated_at",
-            ]
+        now = timezone.now()
+        self._review_update(
+            version,
+            status="draft",
+            rejection_notes=notes,
+            rejection_count=F("rejection_count") + 1,
+            reviewed_by=user,
+            reviewed_at=now,
+            updated_at=now,
         )
 
     def mark_built(self):

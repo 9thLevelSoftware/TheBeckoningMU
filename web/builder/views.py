@@ -10,13 +10,13 @@ from django.views.generic import TemplateView, View
 
 from web.permissions import has_perm
 
-from .models import BuildProject, RoomTemplate
+from .models import BuildProject, RoomTemplate, StaleReviewError
 from .promotion import promote_project_to_live
 from .sandbox_bridge import create_sandbox_from_project
 from .trigger_actions import ACTION_REGISTRY, list_actions
 from .trigger_engine import validate_trigger
 from .v5_conditions import list_condition_types
-from .validators import validate_connection, validate_project
+from .validators import live_rooms, validate_connection, validate_project
 
 # V5 Room Template Presets
 V5_ROOM_TEMPLATES = {
@@ -123,7 +123,7 @@ class BuilderRequiredMixin(LoginRequiredMixin):
             return self.handle_no_permission()
         if not has_perm(request.user, "Builder"):
             return HttpResponseForbidden(
-                "Builder access requires the in-game Builder permission."
+                "Builder access requires the in-game Builder permission on your account (perm *<account> = Builder)."
             )
         return super().dispatch(request, *args, **kwargs)
 
@@ -336,10 +336,25 @@ class DeleteProjectView(BuilderRequiredMixin, View):
 
     def delete(self, request, pk, *args, **kwargs):
         project = get_object_or_404(BuildProject, pk=pk)
+        is_admin = has_perm(request.user, "Admin")
 
-        if project.user != request.user:
+        if project.user != request.user and not is_admin:
             return JsonResponse(
                 {"status": "error", "error": "Not authorized"}, status=403
+            )
+
+        # Once submitted, the row carries the review record (reviewer,
+        # snapshot, connection) and may own built rooms; only Admins remove it.
+        if project.status != "draft" and not is_admin:
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "error": (
+                        f"Project is '{project.status}': only drafts can be "
+                        "deleted. Ask an Admin."
+                    ),
+                },
+                status=409,
             )
 
         project.delete()
@@ -477,6 +492,7 @@ class BuildReviewView(BuilderRequiredMixin, View):
                     "exit_count": len(exits),
                     "connection": _connection_info(project),
                     "can_review": project.can_be_reviewed_by(request.user),
+                    "version": project.version,
                 }
             )
 
@@ -502,6 +518,7 @@ class BuildReviewView(BuilderRequiredMixin, View):
                     project.reviewed_at.isoformat() if project.reviewed_at else None
                 ),
                 "self_reviewed": project.reviewed_by_id == project.user_id,
+                "outcome": "rejected" if project.status == "draft" else "approved",
                 "connection": _connection_info(project),
             }
             for project in reviewed
@@ -548,10 +565,29 @@ class ApproveRejectProjectView(BuilderRequiredMixin, View):
                 status=400,
             )
 
+        try:
+            data = json.loads(request.body) if request.body else {}
+        except json.JSONDecodeError:
+            return JsonResponse(
+                {"status": "error", "error": "Invalid JSON"}, status=400
+            )
+        if not isinstance(data, dict):
+            return JsonResponse(
+                {"status": "error", "error": "Expected a JSON object"}, status=400
+            )
+
+        # The version the reviewer looked at; the review only lands if the
+        # project is still submitted at that version.
+        version = data.get("version")
+        if type(version) is not int:
+            return JsonResponse(
+                {"status": "error", "error": "version is required"}, status=400
+            )
+
         if is_approve:
             # Approve the project
             try:
-                project.approve(request.user)
+                project.approve(request.user, version)
                 return JsonResponse(
                     {
                         "status": "success",
@@ -565,19 +601,16 @@ class ApproveRejectProjectView(BuilderRequiredMixin, View):
                         },
                     }
                 )
+            except PermissionError as e:
+                return JsonResponse({"status": "error", "error": str(e)}, status=403)
+            except StaleReviewError as e:
+                return JsonResponse({"status": "error", "error": str(e)}, status=409)
             except ValueError as e:
                 return JsonResponse({"status": "error", "error": str(e)}, status=400)
 
         else:  # is_reject
-            # Parse rejection notes from request body
-            try:
-                data = json.loads(request.body) if request.body else {}
-            except json.JSONDecodeError:
-                return JsonResponse(
-                    {"status": "error", "error": "Invalid JSON"}, status=400
-                )
-
-            notes = data.get("notes", "").strip()
+            notes = data.get("notes", "")
+            notes = notes.strip() if isinstance(notes, str) else ""
             if not notes:
                 return JsonResponse(
                     {"status": "error", "error": "Rejection notes are required"},
@@ -586,7 +619,7 @@ class ApproveRejectProjectView(BuilderRequiredMixin, View):
 
             # Reject the project
             try:
-                project.reject(request.user, notes)
+                project.reject(request.user, notes, version)
                 return JsonResponse(
                     {
                         "status": "success",
@@ -599,6 +632,10 @@ class ApproveRejectProjectView(BuilderRequiredMixin, View):
                         },
                     }
                 )
+            except PermissionError as e:
+                return JsonResponse({"status": "error", "error": str(e)}, status=403)
+            except StaleReviewError as e:
+                return JsonResponse({"status": "error", "error": str(e)}, status=409)
             except ValueError as e:
                 return JsonResponse({"status": "error", "error": str(e)}, status=400)
 
@@ -715,20 +752,10 @@ class ListConnectionRoomsView(BuilderRequiredMixin, View):
         For now, returns all non-sandbox rooms. Future enhancement could filter by
         ownership or builder permissions.
         """
-        from evennia.utils import search
-
-        # Search for all rooms
-        all_rooms = search.search_object(
-            "", typeclass="typeclasses.rooms.Room"
-        )
-
-        # Filter out sandbox rooms
+        # Same rule as validate_connection: Room family, not sandbox-tagged.
+        # (search_object("") matches on an empty key and returns nothing.)
         connection_rooms = []
-        for room in all_rooms:
-            # Skip rooms tagged as sandbox
-            if room.tags.get("sandbox"):
-                continue
-
+        for room in live_rooms():
             connection_rooms.append(
                 {
                     "id": room.id,

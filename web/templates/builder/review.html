@@ -275,6 +275,7 @@ const csrftoken = getCookie('csrftoken');
 
 // ── Reject Modal ───────────────────────────────────
 let currentProjectId = null;
+let currentProjectVersion = null;
 const rejectModal = new bootstrap.Modal(document.getElementById('rejectModal'));
 const rejectionNotes = document.getElementById('rejection-notes');
 const charCount = document.getElementById('char-count');
@@ -286,8 +287,9 @@ rejectionNotes.addEventListener('input', function() {
     confirmReject.disabled = len < 10;
 });
 
-function showRejectModal(id, name) {
+function showRejectModal(id, name, version) {
     currentProjectId = id;
+    currentProjectVersion = version;
     document.getElementById('reject-project-name').textContent = name;
     rejectionNotes.value = '';
     charCount.textContent = '0';
@@ -313,7 +315,7 @@ confirmReject.addEventListener('click', async function() {
         const response = await fetch(`/builder/api/review/${currentProjectId}/reject/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
-            body: JSON.stringify({ notes: notes })
+            body: JSON.stringify({ notes: notes, version: currentProjectVersion })
         });
         const data = await response.json();
         if (data.status === 'success') {
@@ -332,13 +334,16 @@ confirmReject.addEventListener('click', async function() {
 });
 
 // ── Approve ────────────────────────────────────────
-async function approveProject(id, name) {
+async function approveProject(id, name, version) {
     if (!confirm(`Approve "${name}"? This will allow the builder to proceed to sandbox testing.`)) return;
 
     try {
+        // Send the version this card showed: the approval is refused (409)
+        // if the project changed since.
         const response = await fetch(`/builder/api/review/${id}/approve/`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken }
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+            body: JSON.stringify({ version: version })
         });
         const data = await response.json();
         if (data.status === 'success') {
@@ -545,13 +550,13 @@ async function loadProjects() {
         container.querySelectorAll('.js-approve').forEach(btn => {
             btn.addEventListener('click', () => {
                 const p = byId.get(btn.dataset.id);
-                if (p) approveProject(p.id, p.name);
+                if (p) approveProject(p.id, p.name, p.version);
             });
         });
         container.querySelectorAll('.js-reject').forEach(btn => {
             btn.addEventListener('click', () => {
                 const p = byId.get(btn.dataset.id);
-                if (p) showRejectModal(p.id, p.name);
+                if (p) showRejectModal(p.id, p.name, p.version);
             });
         });
 
@@ -606,7 +611,7 @@ function renderReviewed(reviewed) {
     const table = document.createElement('table');
     table.className = 'table table-sm';
     const head = table.createTHead().insertRow();
-    ['Project', 'Builder', 'Status', 'Reviewed by', 'Connects to', 'When'].forEach(h => {
+    ['Project', 'Builder', 'Outcome', 'Now', 'Reviewed by', 'Connects to', 'When'].forEach(h => {
         const th = document.createElement('th');
         th.textContent = h;
         head.appendChild(th);
@@ -620,8 +625,9 @@ function renderReviewed(reviewed) {
         const cells = [
             r.name,
             r.user.username,
+            r.outcome,
             r.status,
-            r.reviewed_by + (r.self_reviewed ? ' (self-approved)' : ''),
+            r.reviewed_by + (r.self_reviewed ? ' (self-reviewed)' : ''),
             conn,
             r.reviewed_at ? new Date(r.reviewed_at).toLocaleString() : '',
         ];
