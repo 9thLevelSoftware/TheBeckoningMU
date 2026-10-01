@@ -918,69 +918,90 @@ PREDATOR_TYPES = {
 # ============================================================================
 # BACKGROUNDS (Advantages with mechanical benefits)
 # ============================================================================
+# Source: the core book's Backgrounds (V5 core p.184-194), as summarized in
+# the V5 Quick Reference 2.0 pp.8-11, cross-checked against
+# vtm.paradoxwikis.com/Advantages_and_Flaws (cites core pages). These are
+# the core book's eleven backgrounds. "max_dots" is the highest rating the
+# QR lists. Background flaws (Enemy, Adversary, ...) are in FLAWS.
+#
+# "benefit" and "uses_per_session" drive the in-game +background command.
+# They are a game convention, not book rules (UNVERIFIED), except Herd:
+# you may slake Hunger up to your Herd rating each week without a hunting
+# roll (core p.189 per vtm.paradoxwikis.com).
 
 BACKGROUNDS = {
     "Allies": {
         "instanced": True,
-        "description": "Mortal or supernatural allies who can provide aid",
+        "max_dots": 5,  # effectiveness 1-4 + reliability 1-3, capped at 5 like other backgrounds
+        "description": "Mortal associates, usually family or friends",
         "benefit": "Can call for help. +[dots] to Social rolls when relevant",
-        "uses_per_session": "dots"
+        "uses_per_session": "dots",
     },
     "Contacts": {
         "instanced": True,
-        "description": "Information sources in various areas",
+        "max_dots": 3,
+        "description": "People who can get you information or items",
         "benefit": "+[dots] to Investigation when using contacts for information",
-        "uses_per_session": "dots * 2"
+        "uses_per_session": "dots * 2",
     },
     "Fame": {
-        "description": "Recognition in mortal society",
+        "max_dots": 5,
+        "description": "How well known you are among mortals, from a subculture (1) to worldwide (5)",
         "benefit": "+[dots] to Social rolls with those who recognize you",
-        "uses_per_session": "unlimited"
+        "uses_per_session": "unlimited",
     },
     "Haven": {
-        "description": "Quality and security of your haven",
+        "max_dots": 3,
+        "description": "A place to sleep safely by day, from small and likely secure (1) to large and private (3)",
         "benefit": "Security rating: +[dots] to defend against intrusion",
-        "uses_per_session": "passive"
+        "uses_per_session": "passive",
     },
     "Herd": {
-        "description": "Regular feeding sources",
-        "benefit": "Reduce Hunger by [dots] per week without hunting. No risk",
-        "uses_per_session": "1 per week"
+        "max_dots": 5,
+        "description": "Mortals you can feed from freely and safely, from 1-3 (1) to 31-60 (5)",
+        "benefit": "Slake up to [dots] Hunger per week from your herd without a hunting roll",
+        "uses_per_session": "1 per week",
     },
     "Influence": {
         "instanced": True,
-        "description": "Sway over mortal institutions",
+        "max_dots": 5,
+        "description": "Political power in mortal society, from well-connected (1) to dominant (5)",
         "benefit": "+[dots] to Leadership/Politics in domain. Can requisition resources",
-        "uses_per_session": "dots"
+        "uses_per_session": "dots",
     },
     "Mask": {
-        "description": "Strength of your mortal identity",
+        "max_dots": 2,
+        "description": "A false identity: a fake ID (1) or one that passes an in-depth check (2)",
         "benefit": "+[dots] to maintain Masquerade and resist investigation",
-        "uses_per_session": "passive"
-    },
-    "Resources": {
-        "description": "Wealth and material assets",
-        "benefit": "Can acquire items of [dots] rating or less. Income level",
-        "uses_per_session": "dots"
-    },
-    "Retainers": {
-        "instanced": True,
-        "description": "Loyal servants (ghouls, etc.)",
-        "benefit": "[dots] loyal servants who can perform tasks",
-        "uses_per_session": "unlimited"
-    },
-    "Status": {
-        "instanced": True,
-        "description": "Standing in vampire society",
-        "benefit": "+[dots] to Social rolls with Kindred. Access to Elysium",
-        "uses_per_session": "unlimited"
+        "uses_per_session": "passive",
     },
     "Mawla": {
         "instanced": True,
-        "description": "A Kindred mentor or patron who advises and protects you",
+        "max_dots": 5,
+        "description": "A Kindred mentor, patron or confederate, from a neonate (1) to a prince or baron (5)",
         "benefit": "Advice, protection and introductions from an elder",
-        "uses_per_session": "dots"
-    }
+        "uses_per_session": "dots",
+    },
+    "Resources": {
+        "max_dots": 5,
+        "description": "Wealth and income, from living paycheck to paycheck (1) to ultra rich (5)",
+        "benefit": "Can acquire items of [dots] rating or less. Income level",
+        "uses_per_session": "dots",
+    },
+    "Retainers": {
+        "instanced": True,
+        "max_dots": 3,
+        "description": "Followers, guards and servants, from a weak mortal (1) to a gifted ghoul (3)",
+        "benefit": "[dots] loyal servants who can perform tasks",
+        "uses_per_session": "unlimited",
+    },
+    "Status": {
+        "instanced": True,
+        "max_dots": 5,
+        "description": "Standing in a sect, from known (1) to a position of power such as primogen (5)",
+        "benefit": "+[dots] to Social rolls with Kindred. Access to Elysium",
+        "uses_per_session": "unlimited",
+    },
 }
 
 # ============================================================================
@@ -1034,103 +1055,160 @@ BLOOD_POTENCY = {
 # ============================================================================
 # MERITS & FLAWS
 # ============================================================================
-# Core-book merits and flaws (V5 core rulebook, "Advantages" chapter), plus
-# the flaws attached to Backgrounds. "dots" lists the ratings a character may
-# take. OWNER SIGN-OFF PENDING: these names and dot ratings follow the core
-# book but have not been checked line by line against the owner's copy.
+# Source: V5 Quick Reference 2.0 pp.8-11 (Advantages & Flaws, compiled from
+# V5 core p.179-197), cross-checked against vtm.paradoxwikis.com/
+# Advantages_and_Flaws. "category" is the QR heading. "dots" lists the
+# ratings a character may take; the cost is the dots, except:
+#
+# Thin-blood merits and flaws (QR p.11) have no point value: "cost": 0. A
+# thin-blood takes one to three of each, and must take one flaw for each
+# merit and vice versa (QR p.2). They are stored with dots 1 because a
+# rating of 0 means "not taken" on the character.
+#
+# Background flaws (Enemy, Adversary, Dark Secret, No Haven, ...) are here
+# because the character stores them with the other flaws. Domain flaws
+# (No Domain) belong to a coterie, not a character.
 
 MERITS = {
+    # Linguistics (QR p.9 "Language (•)"): one dot per extra language.
     "Linguistics": {"category": "Linguistics", "dots": (1, 2, 3, 4, 5),
-                    "description": "One additional language per dot"},
+                    "description": "Fluent and literate in one additional language per dot"},
     "Beautiful": {"category": "Looks", "dots": (2,),
-                  "description": "+1 die to appropriate Social pools"},
+                  "description": "+1 die to relevant Social pools"},
     "Stunning": {"category": "Looks", "dots": (4,),
-                 "description": "+2 dice to appropriate Social pools"},
+                 "description": "+2 dice to relevant Social pools"},
     "Bloodhound": {"category": "Feeding", "dots": (1,),
                    "description": "Smell the Resonance of mortal blood"},
     "Iron Gullet": {"category": "Feeding", "dots": (3,),
-                    "description": "Feed on rancid, cold or otherwise spoiled blood"},
-    "Anarch Comrades": {"category": "Thin-blood", "dots": (1,),
-                        "description": "An Anarch group treats you as a mascot (Mawla 1)"},
-    "Camarilla Contact": {"category": "Thin-blood", "dots": (1,),
-                          "description": "A Camarilla Kindred contact (Mawla 1)"},
-    "Catenating Blood": {"category": "Thin-blood", "dots": (1,),
-                         "description": "Your blood can create blood bonds and ghouls"},
-    "Day Drinker": {"category": "Thin-blood", "dots": (1,),
-                    "description": "Sunlight only causes Superficial damage, halved"},
-    "Discipline Affinity": {"category": "Thin-blood", "dots": (1,),
-                            "description": "Learn one Discipline as in-clan"},
-    "Lifelike": {"category": "Thin-blood", "dots": (1,),
-                 "description": "Your body works like a mortal's"},
-    "Thin-Blood Alchemist": {"category": "Thin-blood", "dots": (1,),
-                             "description": "One dot of Thin-Blood Alchemy and a formula"},
-    "Vampiric Resilience": {"category": "Thin-blood", "dots": (1,),
-                            "description": "Suffer Superficial damage as a full vampire"},
+                    "description": "Feed on cold, rancid or preserved blood (no Resonance); not for Ventrue"},
+    "Bond Resistance": {"category": "Bonding", "dots": (1,),
+                        "description": "+1 die to resist a Blood Bond"},
+    "Short Bond": {"category": "Bonding", "dots": (2,),
+                   "description": "Blood Bonds on you must be reinforced twice a month"},
+    "Unbondable": {"category": "Bonding", "dots": (5,),
+                   "description": "You can never be Blood Bound"},
+    "High-functioning Addict": {"category": "Substance Use", "dots": (1,),
+                                "description": "+1 die when your last feeding included your drug"},
+    "Eat Food": {"category": "Mythical", "dots": (2,),
+                 "description": "Eat food, though you must purge it before day-sleep"},
+    # Thin-blood merits (QR p.11). No point cost; pair each with a flaw.
+    "Anarch Comrades": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                        "description": "An Anarch coterie treats you as a mascot (Mawla 1)"},
+    "Camarilla Contact": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                          "description": "A Camarilla recruiter keeps you around (Mawla 1)"},
+    "Catenating Blood": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                         "description": "You can create Blood Bonds and Embrace"},
+    "Day Drinker": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                    "description": ("Sunlight only halves your Health (rounded up) and stops your "
+                                    "Disciplines; it does no other damage")},
+    "Discipline Affinity": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                            "description": "A permanent dot in one Discipline, never more than one"},
+    "Lifelike": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                 "description": "You have a heartbeat and can eat food"},
+    "Thin-blood Alchemist": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                             "description": "One dot of Thin-Blood Alchemy and one formula"},
+    "Vampiric Resilience": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                            "description": "You take damage like a full vampire"},
 }
 
 FLAWS = {
     "Illiterate": {"category": "Linguistics", "dots": (2,),
-                   "description": "You cannot read or write"},
+                   "description": ("You can't read or write; Academics and Science stay at 1 or "
+                                   "below with no specialties")},
     "Ugly": {"category": "Looks", "dots": (1,),
-             "description": "-1 die to appropriate Social pools"},
+             "description": "-1 die to relevant Social pools"},
     "Repulsive": {"category": "Looks", "dots": (2,),
-                  "description": "-2 dice to appropriate Social pools"},
+                  "description": "-2 dice to relevant Social pools"},
+    "Anachronism": {"category": "Archaic", "dots": (2,),
+                    "description": "Your Technology rating is permanently 0"},
+    "Living in the Past": {"category": "Archaic", "dots": (1,),
+                           "description": "You hold one or more outdated Convictions"},
+    "Bondslave": {"category": "Bonding", "dots": (2,),
+                  "description": "You are Blood Bound at the first taste of another vampire's blood"},
+    "Bond Junkie": {"category": "Bonding", "dots": (1,),
+                    "description": "-1 die to act against a Blood Bond"},
+    "Long Bond": {"category": "Bonding", "dots": (1,),
+                  "description": "Blood Bonds on you need reinforcing only every three months"},
     "Addiction": {"category": "Substance Use", "dots": (1,),
-                  "description": "-1 die unless you fed on the drug this scene"},
+                  "description": "-1 die unless your last feeding included your drug"},
     "Hopeless Addiction": {"category": "Substance Use", "dots": (2,),
-                           "description": "-2 dice unless you fed on the drug this scene"},
-    "Prey Exclusion": {"category": "Feeding", "dots": (1,),
-                       "description": "You refuse to feed from one kind of prey"},
+                           "description": "-2 dice unless your last feeding included your drug"},
+    # Prey Exclusion is (•) in the QR; the Blood Leech predator type grants a
+    # 2-dot version (mortals).
+    "Prey Exclusion": {"category": "Feeding", "dots": (1, 2),
+                       "description": "You refuse to feed on one class of prey"},
     "Methuselah's Thirst": {"category": "Feeding", "dots": (1,),
-                            "description": "Only supernatural blood fully slakes your Hunger"},
+                            "description": "Your Hunger can't drop below 1 except on supernatural blood"},
+    # "Farmer" is the errata'd core name; the QR (and older printings) call
+    # it "Vegan".
     "Farmer": {"category": "Feeding", "dots": (2,),
-               "description": "You feed only from animals"},
+               "description": "You feed only on animals; feeding on humans costs 2 Willpower; not for Ventrue"},
     "Organovore": {"category": "Feeding", "dots": (2,),
-                   "description": "You must eat flesh and organs to slake Hunger"},
-    "Baby Teeth": {"category": "Thin-blood", "dots": (1,),
-                   "description": "Your fangs never grew in"},
-    "Bestial Temper": {"category": "Thin-blood", "dots": (1,),
+                   "description": "You must eat your victim's organs when you feed"},
+    "Stake Bait": {"category": "Mythical", "dots": (2,),
+                   "description": "A stake through the heart brings Final Death"},
+    "Folkloric Bane": {"category": "Mythical", "dots": (1,),
+                       "description": "A traditional anti-vampire object deals you Aggravated damage on touch"},
+    "Folkloric Block": {"category": "Mythical", "dots": (1,),
+                        "description": "You must shrink from a traditional ward or spend Willpower"},
+    "Stigmata": {"category": "Mythical", "dots": (1,),
+                 "description": "At Hunger 4 you bleed from parts of your body"},
+    # Thin-blood flaws (QR p.11). No point cost; pair each with a merit.
+    "Baby Teeth": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                   "description": "You have no fangs, or useless ones"},
+    "Bestial Temper": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
                        "description": "You frenzy like a full vampire"},
-    "Branded by the Camarilla": {"category": "Thin-blood", "dots": (1,),
-                                 "description": "The Camarilla has marked you"},
-    "Clan Curse": {"category": "Thin-blood", "dots": (1,),
-                   "description": "You carry a clan's Bane at severity 1"},
-    "Dead Flesh": {"category": "Thin-blood", "dots": (1,),
-                   "description": "Your flesh is visibly dead"},
-    "Mortal Frailty": {"category": "Thin-blood", "dots": (1,),
-                       "description": "You cannot Rouse to mend damage"},
-    "Shunned by the Anarchs": {"category": "Thin-blood", "dots": (1,),
-                               "description": "The Anarchs want nothing to do with you"},
-    "Vitae Dependency": {"category": "Thin-blood", "dots": (1,),
-                         "description": "You must drink vampire vitae weekly or lose Disciplines"},
-    "Enemy": {"category": "Allies", "dots": (1, 2, 3, 4, 5),
+    "Branded by the Camarilla": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                                 "description": "A magical brand marks you as a thin-blood"},
+    "Clan Curse": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                   "description": ("A clan Bane at severity 1 (Brujah/Gangrel need Bestial Temper, "
+                                   "Tremere need Catenating Blood)")},
+    "Dead Flesh": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                   "description": "You are slowly decaying; can't take Lifelike"},
+    "Mortal Frailty": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                       "description": "You can't Rouse the Blood to mend; can't take Vampiric Resilience"},
+    "Shunned by the Anarchs": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                               "description": "The Anarchs treat you as an enemy; can't take Anarch Comrades"},
+    "Vitae Dependency": {"category": "Thin-blood", "dots": (1,), "cost": 0, "thin_blood": True,
+                         "description": "You must drink vampire blood to use any Discipline"},
+    # Background flaws (QR pp.8-11).
+    # Enemy (QR p.8): rated two less than the equivalent Allies, so an
+    # effectiveness of 1-2 plus a reliability of 0-1.
+    "Enemy": {"category": "Allies", "dots": (1, 2, 3),
               "description": "Mortals who want to harm you"},
     "Infamy": {"category": "Fame", "dots": (1, 2, 3, 4, 5),
-               "description": "You are known for something terrible"},
+               "description": "You are infamous, from within a subculture (1) to worldwide (5)"},
     "Dark Secret": {"category": "Fame", "dots": (1, 2),
-                    "description": "A secret that would ruin you if revealed"},
+                    "description": "A secret that would harm you if it came out"},
     "No Haven": {"category": "Haven", "dots": (1,),
                  "description": "You have no fixed haven"},
-    "Compromised Haven": {"category": "Haven", "dots": (2,),
-                          "description": "Your haven has been raided or exposed"},
+    "Compromised": {"category": "Haven", "dots": (2,),
+                    "description": "Your haven has been raided before; invaders get +2 dice to get in"},
+    "Creepy": {"category": "Haven", "dots": (1,),
+               "description": "Your haven looks like a serial killer's home"},
+    # UNVERIFIED: the upper rating. QR p.9 gives "[•+]" with no maximum.
+    "Haunted": {"category": "Haven", "dots": (1, 2, 3),
+                "description": "Something supernatural haunts your haven"},
+    "Obvious Predator": {"category": "Herd", "dots": (2,),
+                         "description": "Mortals fear you: no Herd, and -1 die to put mortals at ease"},
     "Disliked": {"category": "Influence", "dots": (1,),
-                 "description": "-1 die to Social tests with mortal groups"},
+                 "description": "-1 die to Social pools with everyone but your contacts, allies and coterie"},
     "Despised": {"category": "Influence", "dots": (2,),
-                 "description": "A group works against you"},
+                 "description": "A group or region works against you; -2 dice to Social pools with them"},
     "Known Corpse": {"category": "Mask", "dots": (1,),
-                     "description": "Others know you are dead"},
+                     "description": "You died recently and people will recognize you"},
     "Known Blankbody": {"category": "Mask", "dots": (2,),
-                        "description": "Your identity is flagged in government databases"},
+                        "description": "Intelligence databases flag you as a potential terrorist"},
     "Adversary": {"category": "Mawla", "dots": (1, 2, 3, 4, 5),
-                  "description": "A Kindred who wants to harm you"},
+                  "description": "A Kindred enemy, from a neonate (1) to a prince or baron (5)"},
     "Destitute": {"category": "Resources", "dots": (1,),
                   "description": "You have no money and no home"},
     "Stalkers": {"category": "Retainers", "dots": (1,),
-                 "description": "Someone keeps attaching themselves to you"},
+                 "description": "People tend to become irrationally interested in you"},
     "Suspect": {"category": "Status", "dots": (1,),
-                "description": "You have broken the rules and are watched"},
+                "description": "Not in good standing with a sect; -2 dice to Social tests with it (Caitiff)"},
     "Shunned": {"category": "Status", "dots": (2,),
-                "description": "A sect despises you"},
+                "description": "A sect considers you an enemy"},
 }
 
 # ============================================================================
