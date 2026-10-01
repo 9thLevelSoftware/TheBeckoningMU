@@ -15,7 +15,7 @@ from world.v5_data import BLOOD_POTENCY
 
 RESONANCE_DISCIPLINES = {
     'Choleric': ['Potence', 'Celerity'],
-    'Melancholic': ['Fortitude', 'Obfuscate'],
+    'Melancholy': ['Fortitude', 'Obfuscate'],
     'Phlegmatic': ['Auspex', 'Dominate'],
     'Sanguine': ['Presence', 'Blood Sorcery']
 }
@@ -178,12 +178,12 @@ def set_resonance(character, resonance_type: str, intensity: int = 1, duration: 
     """
     Set character's blood resonance from feeding.
 
-    Resonance types: Choleric, Melancholic, Phlegmatic, Sanguine
+    Resonance types: Choleric, Melancholy, Phlegmatic, Sanguine
     Intensity: 1 (Fleeting), 2 (Intense), 3 (Dyscrasia)
 
     Args:
         character: Character object
-        resonance_type: Type of resonance (Choleric, Melancholic, Phlegmatic, Sanguine)
+        resonance_type: Type of resonance (Choleric, Melancholy, Phlegmatic, Sanguine)
         intensity: Intensity level (1-3, default 1)
         duration: Duration in seconds (default 3600 = 1 hour)
 
@@ -218,7 +218,7 @@ def get_resonance_bonus(character, discipline_name: str) -> int:
 
     Resonance provides bonus dice to matching disciplines:
     - Choleric → Potence, Celerity
-    - Melancholic → Fortitude, Obfuscate
+    - Melancholy → Fortitude, Obfuscate
     - Phlegmatic → Auspex, Dominate
     - Sanguine → Presence, Blood Sorcery
 
@@ -298,7 +298,7 @@ def format_resonance_display(character) -> Optional[str]:
     # Color code by resonance type
     color_map = {
         'Choleric': '|r',    # Red
-        'Melancholic': '|c',  # Cyan
+        'Melancholy': '|c',  # Cyan
         'Phlegmatic': '|g',   # Green
         'Sanguine': '|y'      # Yellow
     }

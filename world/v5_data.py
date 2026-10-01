@@ -2,19 +2,21 @@
 V5 Vampire: The Masquerade rules data.
 
 This module is the only source of V5 rules data in the game (attributes,
-skills, clans, disciplines and their powers, predator types, backgrounds,
-merits and flaws, the Blood Potency and XP tables). Game code imports from
-here; nothing reads rules data from the database. The `traits` app's
-legacy reference tables are seeded from these constants by `seed_traits`
-for the web chargen API.
+skills, clans, disciplines with their powers, rituals and formulas,
+predator types, backgrounds, merits and flaws, the Blood Potency table,
+generation tables, resonances and frenzy provocations). Game code imports
+from here; nothing reads rules data from the database, and no other module
+may hardcode these values. The `traits` app's legacy reference tables are
+seeded from these constants by `seed_traits` for the web chargen API.
 
-WARNING - CONTENT NOT YET VERIFIED. The structure here is authoritative, but
-several content tables are known to disagree with the V5 core book and are
-being corrected in a follow-up: the Blood Potency table, discipline powers
-(levels, Rouse costs, rituals mixed in with powers), clan banes and
-compulsions, predator types, merits and flaws, frenzy triggers and the
-resonance names and dyscrasias. Don't treat their values as rules until that
-correction lands.
+The content follows the V5 core book (2018) with Renegade's official
+errata. Each table's comment cites its source: a core-book page, the V5
+Quick Reference 2.0 (web/website/VampSite/references/, whose Blood Potency
+Surge/Bane columns are pre-errata and are not used) or a public reference
+that cites the book. Values that could not be checked against a source are
+marked "UNVERIFIED" where they appear. Content from books other than the
+core book is kept apart (NON_CORE_CLANS, NON_CORE_DISCIPLINES) and is not
+offered to players.
 
 It also builds the trait registry (`TRAIT_REGISTRY`, `resolve_trait`) that
 `typeclasses.characters.Character.get_trait`/`set_trait` use to map a trait
@@ -1131,6 +1133,70 @@ BLOOD_POTENCY = {
 }
 
 # ============================================================================
+# GENERATION, AGE AND BLOOD POTENCY
+# ============================================================================
+# Source: V5 Quick Reference 2.0 p.15 (Generation / minimum and maximum Blood
+# Potency table). Thin-bloods (14th-16th) have Blood Potency 0.
+
+GENERATION_BLOOD_POTENCY = {
+    4: {"min": 5, "max": 10},
+    5: {"min": 4, "max": 9},
+    6: {"min": 3, "max": 8},
+    7: {"min": 3, "max": 7},
+    8: {"min": 2, "max": 6},
+    9: {"min": 2, "max": 5},
+    10: {"min": 1, "max": 4},
+    11: {"min": 1, "max": 4},
+    12: {"min": 1, "max": 3},
+    13: {"min": 1, "max": 3},
+    14: {"min": 0, "max": 0},
+    15: {"min": 0, "max": 0},
+    16: {"min": 0, "max": 0},
+}
+
+# Source: V5 Quick Reference 2.0 p.3 ("Sea of Time"; core book "Sea of
+# Time" in the character creation chapter). Each age category lists the
+# generations a starting character may have and the Blood Potency that goes
+# with them, plus the XP to spend and the extra advantage/flaw dots and
+# Humanity change on top of normal creation. The core book's Elder rows are
+# not in the Quick Reference and are left out (elders aren't player
+# characters at creation).
+
+GENERATION_BY_AGE = {
+    "Childer": {
+        "embraced": "Within the last 15 years",
+        "options": [
+            {"generations": (14, 15, 16), "blood_potency": 0, "thin_blood": True},
+            {"generations": (12, 13), "blood_potency": 1, "thin_blood": False},
+        ],
+        "xp": 0,
+        "extra_advantage_dots": 0,
+        "extra_flaw_dots": 0,
+        "humanity_change": 0,
+    },
+    "Neonate": {
+        "embraced": "Between 1940 and a decade ago",
+        "options": [
+            {"generations": (12, 13), "blood_potency": 1, "thin_blood": False},
+        ],
+        "xp": 15,
+        "extra_advantage_dots": 0,
+        "extra_flaw_dots": 0,
+        "humanity_change": 0,
+    },
+    "Ancilla": {
+        "embraced": "Between 1780 and 1940",
+        "options": [
+            {"generations": (10, 11), "blood_potency": 2, "thin_blood": False},
+        ],
+        "xp": 35,
+        "extra_advantage_dots": 2,
+        "extra_flaw_dots": 2,
+        "humanity_change": -1,
+    },
+}
+
+# ============================================================================
 # MERITS & FLAWS
 # ============================================================================
 # Source: V5 Quick Reference 2.0 pp.8-11 (Advantages & Flaws, compiled from
@@ -1292,33 +1358,86 @@ FLAWS = {
 # ============================================================================
 # RESONANCES (for Blood Potency/Feeding)
 # ============================================================================
+# Source: V5 core p.226-231 (Resonance); humours, emotions and disciplines
+# as in the V5 Quick Reference 2.0 p.12, which spells the humour
+# "Melancholy". Dyscrasias: the core book's sample dyscrasia table,
+# as transcribed by chartopia.d12dev.com chart 12112 and the
+# cftarbay/VTM-V5-Resonance-Generator data (the two agree); effects are
+# paraphrased. The dyscrasia names and effects are not in the QR.
+#
+# Animal blood carries no humour but counts as resonant for Animalism and
+# Protean; bagged blood has none (QR p.12). They are in BLOOD_WITHOUT_HUMOUR,
+# not RESONANCES, because a character's resonance is always one of the four.
 
 RESONANCES = {
     "Choleric": {
-        "emotion": "Anger, rage, violence",
+        "emotion": "Angry, violent, bullying, passionate, envious",
         "disciplines": ["Celerity", "Potence"],
-        "dyscrasia": "Hot-blooded: +1 die to Physical feats for one scene"
+        "dyscrasias": {
+            "Bully": "+1 damage, social or physical, against weaker foes",
+            "Cycle of Violence": "Next choleric feeding slakes 1 extra Hunger; other blood slakes 1 less",
+            "Envy": "+1 damage, social or physical, against foes who are better off",
+            "Principled": "Re-roll one roll against an ideological enemy (not Hunger dice)",
+            "Vengeful": "+2 dice against the kind of target the vessel wanted revenge on",
+            "Vicious": "Re-roll Intimidation rolls (not Hunger dice)",
+            "Driving": "1 free XP toward Celerity or Potence; used up when spent",
+        },
     },
-    "Melancholic": {
-        "emotion": "Sadness, depression, fear",
+    "Melancholy": {
+        "emotion": "Sad, scared, intellectual, depressed, grounded",
         "disciplines": ["Fortitude", "Obfuscate"],
-        "dyscrasia": "Icy: +1 die to Composure and Wits for one scene"
+        "dyscrasias": {
+            "In Mourning": "+1 die to Remorse tests",
+            "Lost Love": "+1 die to resist seduction, including Presence",
+            "Lost Relative": "Slake 1 extra Hunger from the vessel's remaining family",
+            "Massive Failure": "Re-roll tests that echo the vessel's failure (not Hunger dice)",
+            "Nostalgic": "+1 die to rolls tied to the vessel's nostalgic subject",
+            "Recalling": "1 free XP toward Fortitude or Obfuscate; used up when spent",
+        },
     },
     "Phlegmatic": {
-        "emotion": "Calm, apathy, laziness",
+        "emotion": "Lazy, apathetic, calm, controlling, sentimental",
         "disciplines": ["Auspex", "Dominate"],
-        "dyscrasia": "Apathetic: +1 die to resist Dominate/Presence for one scene"
+        "dyscrasias": {
+            "Chill": "+2 dice to resist frenzy",
+            "Comfortably Numb": "Ignore physical and social pain penalties",
+            "Eating Your Emotions": "Eat and digest food without nausea (slakes no Hunger)",
+            "Given Up": "Next phlegmatic feeding slakes 1 extra Hunger; other blood slakes 1 less",
+            "Lone Wolf": "+1 die acting alone, -1 die when helping others, for a scene",
+            "Procrastinate": "Regain 1 Willpower by putting off something important; once a session",
+            "Reflection": "1 free XP toward Auspex or Dominate; used up when spent",
+        },
     },
     "Sanguine": {
-        "emotion": "Joy, lust, passion",
+        "emotion": "Horny, happy, addicted, active, flighty, enthusiastic",
         "disciplines": ["Blood Sorcery", "Presence"],
-        "dyscrasia": "Passionate: +1 die to Persuasion and Performance for one scene"
+        "dyscrasias": {
+            "Contagious Enthusiasm": "+3 dice to convince someone you are touching skin to skin",
+            "Smell Game": "+3 dice to detect other sanguine vessels",
+            "High on Life": "Blush of Life without a Rouse check",
+            "Manic High": "+1 die on all tests until you fail one, then -2 dice",
+            "True Love": "Slake 1 extra Hunger from the vessel's true love",
+            "Stirring": "1 free XP toward Blood Sorcery or Presence; used up when spent",
+        },
     },
-    "Animal": {
-        "emotion": "Bestial (from animals)",
-        "disciplines": ["Animalism", "Protean"],
-        "dyscrasia": "Feral: +1 die to Survival and Animalism for one scene"
-    }
+}
+
+# Source: QR p.12 ("N/A" humour rows).
+BLOOD_WITHOUT_HUMOUR = {
+    "Animal": {"disciplines": ["Animalism", "Protean"], "dyscrasia": False},
+    "Bagged": {"disciplines": [], "dyscrasia": False},
+}
+
+# Resonance intensity. Source: V5 core p.226-231 (per whitewolf.fandom.com
+# "Blood Resonance" and vtm.paradoxwikis.com/Resonance, which agree):
+# Fleeting gives no dice but lets you spend XP on the matching disciplines;
+# Intense adds 1 die to matching Discipline pools; Acute adds the same die
+# and carries a dyscrasia. The bonus lasts until you feed again or reach
+# Hunger 5. Intensity 0 ("balanced") means no resonance.
+RESONANCE_INTENSITIES = {
+    1: {"name": "Fleeting", "discipline_dice": 0, "dyscrasia": False},
+    2: {"name": "Intense", "discipline_dice": 1, "dyscrasia": False},
+    3: {"name": "Acute", "discipline_dice": 1, "dyscrasia": True},
 }
 
 # ============================================================================
@@ -1538,14 +1657,43 @@ def resolve_trait(name, category=None):
 
 
 # ============================================================================
-# FRENZY TRIGGERS
+# FRENZY PROVOCATIONS
 # ============================================================================
+# Source: V5 Quick Reference 2.0 p.13 (Fury, Hunger and Terror Provocation
+# tables) and p.4 (frenzy test: Willpower + Humanity / 3; Hunger 4+ makes a
+# vampire prone to hunger frenzy); core p.219-220 per whitewolf.fandom.com
+# "Frenzy (VTM)". The difficulty is set by the provocation, so each frenzy
+# type lists its provocations rather than one difficulty. "goal" is what
+# the frenzying vampire does (QR p.4).
 
-FRENZY_TRIGGERS = {
-    "hunger": {"difficulty": 3, "compulsion": "Feed"},
-    "humiliation": {"difficulty": 2, "compulsion": "Fight"},
-    "rage": {"difficulty": 3, "compulsion": "Fight"},
-    "fear": {"difficulty": 3, "compulsion": "Flight"},
-    "fire": {"difficulty": 4, "compulsion": "Flight"},
-    "sunlight": {"difficulty": 5, "compulsion": "Flight"},
+FRENZY_PROVOCATIONS = {
+    "fury": {
+        "goal": "Destroy the source of the provocation",
+        "provocations": {
+            "Friend killed": 2,
+            "Lover or Touchstone hurt": 3,
+            "Lover or Touchstone killed": 4,
+            "Physical provocation or harassment": 2,
+            "Insulted by inferior": 2,
+            "Public humiliation": 2,
+        },
+    },
+    "hunger": {
+        "goal": "Feed on fresh human blood from the closest source",
+        "provocations": {
+            "Sight of open wound or overpowering smell of blood at Hunger 4+": 2,
+            "Taste of blood at Hunger 4+": 3,
+            "Fail a Rouse check at Hunger 5": 4,
+        },
+    },
+    "terror": {
+        "goal": "Flee the source of danger (Rotschreck)",
+        "provocations": {
+            "Bonfire": 2,
+            "Being burned": 2,
+            "Inside a burning building": 3,
+            "Obscured sunlight (through a window, etc.)": 3,
+            "Fully exposed to direct sunlight": 4,
+        },
+    },
 }

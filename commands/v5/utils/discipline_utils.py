@@ -256,7 +256,7 @@ def check_resonance_bonus(character, discipline_name):
 
     Resonance mappings:
     - Sanguine (enthusiastic): Celerity, Presence
-    - Melancholic (sad): Fortitude, Obfuscate
+    - Melancholy (sad): Fortitude, Obfuscate
     - Choleric (angry): Potence, Presence
     - Phlegmatic (calm): Auspex, Dominate
     - Animal: Animalism, Protean

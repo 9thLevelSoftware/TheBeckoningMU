@@ -220,11 +220,10 @@ The blood you last drank carries a Resonance (V5 core p.226-231). Intense or
 Acute Resonance adds one die to the matching disciplines' pools; Fleeting
 Resonance adds no dice but lets you spend XP on them:
 
-- **Choleric** (anger, rage, violence): Celerity, Potence
-- **Melancholic** (sadness, depression, fear): Fortitude, Obfuscate
-- **Phlegmatic** (calm, apathy, laziness): Auspex, Dominate
-- **Sanguine** (joy, lust, passion): Blood Sorcery, Presence
-- **Animal** (bestial (from animals)): Animalism, Protean
+- **Choleric** (angry, violent, bullying, passionate, envious): Celerity, Potence
+- **Melancholy** (sad, scared, intellectual, depressed, grounded): Fortitude, Obfuscate
+- **Phlegmatic** (lazy, apathetic, calm, controlling, sentimental): Auspex, Dominate
+- **Sanguine** (horny, happy, addicted, active, flighty, enthusiastic): Blood Sorcery, Presence
 - **Animal blood**: Animalism, Protean (bagged blood: none)
 
 ## Learning Disciplines
