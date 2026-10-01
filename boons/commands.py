@@ -4,32 +4,41 @@ Boons System Commands
 Commands for managing political favors and debts (Prestation) in Kindred society.
 """
 
-from evennia import Command, default_cmds
+from evennia import default_cmds
+
+from world.ansi_theme import (
+    BLOOD_RED,
+    BOX_BL,
+    BOX_BR,
+    BOX_H,
+    BOX_TL,
+    BOX_TR,
+    BOX_V,
+    DARK_RED,
+    GOLD,
+    PALE_IVORY,
+    RESET,
+    SHADOW_GREY,
+)
+
+from .models import Boon
 from .utils import (
-    get_or_create_ledger,
-    offer_boon,
     accept_boon,
-    decline_boon,
-    call_in_boon,
-    fulfill_boon,
-    cancel_boon,
-    dispute_boon,
     acknowledge_boon,
-    get_boons_owed_by,
-    get_boons_held_by,
-    get_boons_between,
-    get_pending_boons_for,
-    get_net_boon_position,
-    check_harpy_permissions,
-    update_ledger,
+    call_in_boon,
+    cancel_boon,
+    decline_boon,
+    force_fulfill_boon,
     format_boon_ledger,
     format_boons_with_character,
-    format_pending_boons
-)
-from .models import Boon
-from world.ansi_theme import (
-    BLOOD_RED, DARK_RED, PALE_IVORY, SHADOW_GREY,
-    GOLD, RESET, BOX_H, BOX_V, BOX_TL, BOX_TR, BOX_BL, BOX_BR
+    format_pending_boons,
+    fulfill_boon,
+    get_boon_totals,
+    get_boons_between,
+    get_net_boon_position,
+    get_pending_boons_for,
+    is_character,
+    offer_boon,
 )
 
 
@@ -73,14 +82,16 @@ class CmdBoon(default_cmds.MuxCommand):
 
     def _show_summary(self):
         """Show boon summary."""
-        ledger = get_or_create_ledger(self.caller)
-        output = format_boon_ledger(self.caller, ledger)
+        output = format_boon_ledger(self.caller, get_boon_totals(self.caller))
         self.caller.msg(output)
 
     def _show_with_character(self):
         """Show boons with a specific character."""
         target = self.caller.search(self.args.strip())
         if not target:
+            return
+        if not is_character(target):
+            self.caller.msg("|rBoons are only owed between characters.|n")
             return
 
         boons = get_boons_between(self.caller, target)
@@ -97,14 +108,16 @@ class CmdBoon(default_cmds.MuxCommand):
 
 class CmdBoonGive(default_cmds.MuxCommand):
     """
-    Offer a boon to someone.
+    Offer to owe someone a boon.
 
     Usage:
         +boongive <character> <type> = <description>
 
     Types: trivial, minor, major, blood, life
 
-    Creates a boon offer that the other character must accept.
+    You offer to owe <character> a boon. Once they accept it with
+    +boonaccept, you are in their debt until they call it in and you both
+    confirm it repaid with +boonfulfill.
 
     Examples:
         +boongive Marcus minor = Saved me from a hunter
@@ -136,6 +149,9 @@ class CmdBoonGive(default_cmds.MuxCommand):
         target = caller.search(target_name)
         if not target:
             return
+        if not is_character(target):
+            caller.msg("|rBoons are only owed between characters.|n")
+            return
 
         description = self.rhs.strip()
 
@@ -150,7 +166,7 @@ class CmdBoonGive(default_cmds.MuxCommand):
             if target.sessions.all():
                 target.msg(
                     f"\n{GOLD}[New Boon Offer]{RESET}\n"
-                    f"{caller.key} has offered you a {PALE_IVORY}{boon.get_boon_type_display()}{RESET} boon.\n"
+                    f"{caller.key} offers to owe you a {PALE_IVORY}{boon.get_boon_type_display()}{RESET} boon.\n"
                     f"Reason: {description}\n\n"
                     f"Use |w+boonaccept {boon.id}|n to accept or |w+boondecline {boon.id}|n to decline."
                 )
@@ -165,7 +181,7 @@ class CmdBoonAccept(default_cmds.MuxCommand):
     Usage:
         +boonaccept <boon #>
 
-    Accepts a boon that has been offered to you, formalizing the debt.
+    Accepts a boon someone has offered to owe you, formalizing the debt.
     """
 
     key = "+boonaccept"
@@ -191,11 +207,11 @@ class CmdBoonAccept(default_cmds.MuxCommand):
         if success:
             caller.msg(f"|g{message}|n")
 
-            # Notify creditor
+            # Notify the debtor who offered it
             try:
                 boon = Boon.objects.get(id=boon_id)
-                if boon.creditor.sessions.all():
-                    boon.creditor.msg(
+                if boon.debtor.sessions.all():
+                    boon.debtor.msg(
                         f"\n{GOLD}[Boon Accepted]{RESET}\n"
                         f"{caller.key} has accepted the {boon.get_boon_type_display()} boon you offered."
                     )
@@ -241,11 +257,11 @@ class CmdBoonDecline(default_cmds.MuxCommand):
         if success:
             caller.msg(f"|g{message}|n")
 
-            # Notify creditor
+            # Notify the debtor who offered it
             try:
                 boon = Boon.objects.get(id=boon_id)
-                if boon.creditor.sessions.all():
-                    boon.creditor.msg(
+                if boon.debtor.sessions.all():
+                    boon.debtor.msg(
                         f"\n{GOLD}[Boon Declined]{RESET}\n"
                         f"{caller.key} has declined the {boon.get_boon_type_display()} boon you offered."
                         + (f"\nReason: {reason}" if reason else "")
@@ -299,7 +315,7 @@ class CmdBoonCall(default_cmds.MuxCommand):
                         f"\n{BLOOD_RED}[Boon Called In]{RESET}\n"
                         f"{caller.key} has called in the {boon.get_boon_type_display()} boon you owe.\n"
                         f"Request: {description}\n\n"
-                        f"Use |w+boonfulfill {boon_id} = <description>|n when fulfilled."
+                        f"When it is repaid, you both confirm with |w+boonfulfill {boon_id} = <description>|n."
                     )
             except Boon.DoesNotExist:
                 pass
@@ -309,12 +325,13 @@ class CmdBoonCall(default_cmds.MuxCommand):
 
 class CmdBoonFulfill(default_cmds.MuxCommand):
     """
-    Mark a boon as fulfilled.
+    Confirm that a called-in boon has been repaid.
 
     Usage:
-        +boonfulfill <boon #> = <description of how you fulfilled it>
+        +boonfulfill <boon #> = <description of how it was repaid>
 
-    Marks a boon as fulfilled after you've completed the requested favor.
+    Both the debtor and the creditor must confirm. The boon is fulfilled
+    when the second of them does.
     """
 
     key = "+boonfulfill"
@@ -346,10 +363,16 @@ class CmdBoonFulfill(default_cmds.MuxCommand):
             try:
                 boon = Boon.objects.get(id=boon_id)
                 other_party = boon.creditor if boon.debtor == caller else boon.debtor
+                if boon.status == "fulfilled":
+                    note = f"The {boon.get_boon_type_display()} boon with {caller.key} is fulfilled."
+                else:
+                    note = (
+                        f"{caller.key} confirms the {boon.get_boon_type_display()} boon was repaid. "
+                        f"Use |w+boonfulfill {boon_id} = <description>|n to confirm it too."
+                    )
                 if other_party.sessions.all():
                     other_party.msg(
-                        f"\n{GOLD}[Boon Fulfilled]{RESET}\n"
-                        f"The {boon.get_boon_type_display()} boon with {caller.key} has been marked as fulfilled.\n"
+                        f"\n{GOLD}[Boon Fulfilment]{RESET}\n{note}\n"
                         f"Description: {description}"
                     )
             except Boon.DoesNotExist:
@@ -365,21 +388,21 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
     Usage:
         +boonadmin/acknowledge <boon #>
         +boonadmin/cancel <boon #> = <reason>
+        +boonadmin/fulfill <boon #> = <reason>
         +boonadmin/list
-        +boonadmin/refresh <character>
 
     Switches:
         /acknowledge - Officially acknowledge a boon (Harpy only)
         /cancel - Cancel a boon
+        /fulfill - Mark an outstanding boon fulfilled without both confirmations
         /list - List all public boons
-        /refresh - Refresh a character's boon ledger
 
     Harpies can acknowledge boons to make them official in Kindred society.
     """
 
     key = "+boonadmin"
     aliases = ["boonadmin"]
-    locks = "cmd:perm(Builder) or cmd:pperm(Harpy)"
+    locks = "cmd:perm(Builder) or pperm(Harpy)"
     help_category = "Admin"
 
     def func(self):
@@ -389,10 +412,10 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
             self._acknowledge_boon()
         elif "cancel" in self.switches:
             self._cancel_boon()
+        elif "fulfill" in self.switches:
+            self._force_fulfill()
         elif "list" in self.switches:
             self._list_boons()
-        elif "refresh" in self.switches:
-            self._refresh_ledger()
         else:
             caller.msg("Usage: +boonadmin/<switch>. See help for switches.")
 
@@ -440,6 +463,24 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
         else:
             caller.msg(f"|r{message}|n")
 
+    def _force_fulfill(self):
+        """Staff override: fulfil an outstanding boon."""
+        caller = self.caller
+
+        if not self.lhs:
+            caller.msg("Usage: +boonadmin/fulfill <boon #> = <reason>")
+            return
+
+        try:
+            boon_id = int(self.lhs.strip())
+        except ValueError:
+            caller.msg("|rBoon ID must be a number.|n")
+            return
+
+        reason = self.rhs.strip() if self.rhs else f"Fulfilled by staff ({caller.key})"
+        success, message = force_fulfill_boon(boon_id, reason)
+        caller.msg(f"|g{message}|n" if success else f"|r{message}|n")
+
     def _list_boons(self):
         """List all public boons."""
         from .utils import get_all_public_boons
@@ -461,19 +502,3 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
             output.append("")
 
         caller.msg("\n".join(output))
-
-    def _refresh_ledger(self):
-        """Refresh a character's boon ledger."""
-        caller = self.caller
-
-        if not self.args:
-            caller.msg("Usage: +boonadmin/refresh <character>")
-            return
-
-        target = caller.search(self.args.strip())
-        if not target:
-            return
-
-        ledger = update_ledger(target)
-        caller.msg(f"|gRefreshed boon ledger for {target.key}.|n")
-        caller.msg(f"Debts: {ledger.total_debt_weight} | Credits: {ledger.total_credit_weight} | Net: {ledger.net_weight}")

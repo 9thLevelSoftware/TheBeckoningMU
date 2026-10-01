@@ -342,25 +342,21 @@ def _format_status_section(character):
 
 
 def _format_boons_section(character):
-    """Format boons owed and owed by."""
-    from boons.models import Boon
+    """Format outstanding boons owed by and owed to the character."""
+    from boons.utils import BOON_TYPES, get_boon_totals
 
-    try:
-        boons_owed = Boon.objects.filter(debtor=character, status='active')
-        boons_owing = Boon.objects.filter(creditor=character, status='active')
-
-        if not boons_owed.exists() and not boons_owing.exists():
-            return None
-
-        output = "\n"
-        if boons_owed.exists():
-            output += f" Boons Owed: {boons_owed.count()}\n"
-        if boons_owing.exists():
-            output += f" Boons Owed To You: {boons_owing.count()}\n"
-
-        return output
-    except:
+    totals = get_boon_totals(character)
+    owed = sum(getattr(totals, f"{t}_owed") for t in BOON_TYPES)
+    held = sum(getattr(totals, f"{t}_held") for t in BOON_TYPES)
+    if not owed and not held:
         return None
+
+    output = "\n"
+    if owed:
+        output += f" Boons Owed: {owed}\n"
+    if held:
+        output += f" Boons Owed To You: {held}\n"
+    return output
 
 
 def _format_coterie_section(character):

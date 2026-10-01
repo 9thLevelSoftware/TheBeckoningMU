@@ -4,57 +4,50 @@ Boons System Utility Functions
 Helper functions for managing boons (Prestation) in Kindred society.
 """
 
-from .models import Boon, BoonLedger
+from types import SimpleNamespace
+
+from django.db.models import Count
+
+from .models import BOON_WEIGHTS, OUTSTANDING_STATUSES, Boon
+
+BOON_TYPES = tuple(BOON_WEIGHTS)
 
 
-def get_or_create_ledger(character):
+def get_boon_totals(character):
     """
-    Get or create a boon ledger for a character.
+    A character's outstanding boons, counted per type and weighted.
 
-    Args:
-        character: Character object
+    Outstanding means accepted or called in: a called-in boon is still owed
+    until it is fulfilled. Computed from the Boon rows on every read.
 
     Returns:
-        BoonLedger: Character's boon ledger
+        SimpleNamespace with <type>_owed / <type>_held counts for each boon
+        type, total_debt_weight, total_credit_weight and net_weight.
     """
-    ledger, created = BoonLedger.objects.get_or_create(
-        character=character,
-        defaults={
-            'trivial_owed': 0,
-            'minor_owed': 0,
-            'major_owed': 0,
-            'blood_owed': 0,
-            'life_owed': 0,
-            'trivial_held': 0,
-            'minor_held': 0,
-            'major_held': 0,
-            'blood_held': 0,
-            'life_held': 0,
-            'total_debt_weight': 0,
-            'total_credit_weight': 0,
-            'net_weight': 0
-        }
+    totals = {}
+    for role, side in (("debtor", "owed"), ("creditor", "held")):
+        counts = dict(
+            Boon.objects.filter(**{role: character}, status__in=OUTSTANDING_STATUSES)
+            .values_list("boon_type")
+            .annotate(n=Count("id"))
+        )
+        for boon_type in BOON_TYPES:
+            totals[f"{boon_type}_{side}"] = counts.get(boon_type, 0)
+    totals["total_debt_weight"] = sum(
+        totals[f"{t}_owed"] * weight for t, weight in BOON_WEIGHTS.items()
     )
+    totals["total_credit_weight"] = sum(
+        totals[f"{t}_held"] * weight for t, weight in BOON_WEIGHTS.items()
+    )
+    totals["net_weight"] = totals["total_credit_weight"] - totals["total_debt_weight"]
+    return SimpleNamespace(**totals)
 
-    if created:
-        ledger.recalculate()
 
-    return ledger
+def is_character(obj):
+    """Boons are between Characters only."""
+    from evennia.utils.utils import inherits_from
 
-
-def update_ledger(character):
-    """
-    Update a character's boon ledger.
-
-    Args:
-        character: Character object
-
-    Returns:
-        BoonLedger: Updated ledger
-    """
-    ledger = get_or_create_ledger(character)
-    ledger.recalculate()
-    return ledger
+    return inherits_from(obj, "typeclasses.characters.Character")
 
 
 def offer_boon(debtor, creditor, boon_type, description, witnesses=None, is_public=True):
@@ -80,6 +73,9 @@ def offer_boon(debtor, creditor, boon_type, description, witnesses=None, is_publ
     # Can't owe a boon to yourself
     if debtor == creditor:
         return (False, None, "You cannot owe a boon to yourself.")
+
+    if not (is_character(debtor) and is_character(creditor)):
+        return (False, None, "Boons can only be owed between characters.")
 
     # Create boon
     boon = Boon.objects.create(
@@ -117,18 +113,11 @@ def accept_boon(boon_id, character=None):
     except Boon.DoesNotExist:
         return (False, "Boon not found.")
 
-    # Validate acceptance (debtor accepts their debt)
-    if character and boon.debtor != character:
-        return (False, "Only the debtor can accept this boon.")
+    # The debtor offered; the creditor accepts the debt owed to them.
+    if character and boon.creditor != character:
+        return (False, "Only the character the boon is owed to can accept it.")
 
-    success, message = boon.accept()
-
-    if success:
-        # Update both ledgers
-        update_ledger(boon.debtor)
-        update_ledger(boon.creditor)
-
-    return (success, message)
+    return boon.accept()
 
 
 def decline_boon(boon_id, reason="", character=None):
@@ -148,9 +137,9 @@ def decline_boon(boon_id, reason="", character=None):
     except Boon.DoesNotExist:
         return (False, "Boon not found.")
 
-    # Validate decline (debtor declines)
-    if character and boon.debtor != character:
-        return (False, "Only the debtor can decline this boon.")
+    # The creditor declines an offer made to them.
+    if character and boon.creditor != character:
+        return (False, "Only the character the boon is owed to can decline it.")
 
     return boon.decline(reason)
 
@@ -179,14 +168,16 @@ def call_in_boon(boon_id, description, character=None):
     return boon.call_in(description)
 
 
-def fulfill_boon(boon_id, description, character=None):
+def fulfill_boon(boon_id, description, character):
     """
-    Mark a boon as fulfilled.
+    Confirm, as the debtor or the creditor, that a called-in boon was repaid.
+
+    The boon is fulfilled once both parties have confirmed.
 
     Args:
         boon_id (int): Boon ID
         description (str): Description of how it was fulfilled
-        character (optional): Character fulfilling (for validation)
+        character: The confirming party
 
     Returns:
         tuple: (success: bool, message: str)
@@ -196,18 +187,22 @@ def fulfill_boon(boon_id, description, character=None):
     except Boon.DoesNotExist:
         return (False, "Boon not found.")
 
-    # Validate fulfillment (debtor fulfills, or creditor acknowledges)
-    if character and character not in [boon.debtor, boon.creditor]:
-        return (False, "Only the debtor or creditor can mark this boon as fulfilled.")
+    return boon.confirm_fulfilled(character, description)
 
-    success, message = boon.fulfill(description)
 
-    if success:
-        # Update both ledgers
-        update_ledger(boon.debtor)
-        update_ledger(boon.creditor)
+def force_fulfill_boon(boon_id, description=""):
+    """
+    Staff override: mark an outstanding boon fulfilled without confirmations.
 
-    return (success, message)
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        boon = Boon.objects.get(id=boon_id)
+    except Boon.DoesNotExist:
+        return (False, "Boon not found.")
+
+    return boon.fulfill(description)
 
 
 def cancel_boon(boon_id, reason="", character=None):
@@ -227,14 +222,7 @@ def cancel_boon(boon_id, reason="", character=None):
     except Boon.DoesNotExist:
         return (False, "Boon not found.")
 
-    success, message = boon.cancel(reason)
-
-    if success:
-        # Update both ledgers
-        update_ledger(boon.debtor)
-        update_ledger(boon.creditor)
-
-    return (success, message)
+    return boon.cancel(reason)
 
 
 def dispute_boon(boon_id, reason, character=None):
@@ -253,6 +241,9 @@ def dispute_boon(boon_id, reason, character=None):
         boon = Boon.objects.get(id=boon_id)
     except Boon.DoesNotExist:
         return (False, "Boon not found.")
+
+    if character and character not in (boon.debtor, boon.creditor):
+        return (False, "Only the debtor or creditor can dispute this boon.")
 
     return boon.dispute(reason)
 
@@ -276,40 +267,36 @@ def acknowledge_boon(boon_id, harpy_character):
     return boon.acknowledge_by_harpy(harpy_character)
 
 
-def get_boons_owed_by(character, status='accepted'):
+def get_boons_owed_by(character, status=None):
     """
     Get all boons owed by a character.
 
     Args:
         character: Character object
-        status (str, optional): Filter by status
+        status (str, optional): Filter by status (default: outstanding)
 
     Returns:
         QuerySet: Boons owed by this character
     """
     boons = Boon.objects.filter(debtor=character)
-
-    if status:
-        boons = boons.filter(status=status)
+    boons = boons.filter(status=status) if status else boons.filter(status__in=OUTSTANDING_STATUSES)
 
     return boons.order_by('-created_date')
 
 
-def get_boons_held_by(character, status='accepted'):
+def get_boons_held_by(character, status=None):
     """
     Get all boons held by a character (owed to them).
 
     Args:
         character: Character object
-        status (str, optional): Filter by status
+        status (str, optional): Filter by status (default: outstanding)
 
     Returns:
         QuerySet: Boons held by this character
     """
     boons = Boon.objects.filter(creditor=character)
-
-    if status:
-        boons = boons.filter(status=status)
+    boons = boons.filter(status=status) if status else boons.filter(status__in=OUTSTANDING_STATUSES)
 
     return boons.order_by('-created_date')
 
@@ -342,12 +329,12 @@ def get_pending_boons_for(character):
 
     Returns:
         dict: Pending boons categorized
-            - to_accept: Offered boons where character is debtor
+            - to_accept: Offered boons owed to the character (creditor)
             - called_in_on_you: Boons called in where character is debtor
             - awaiting_fulfillment: Boons called in where character is creditor
     """
     return {
-        'to_accept': Boon.objects.filter(debtor=character, status='offered'),
+        'to_accept': Boon.objects.filter(creditor=character, status='offered'),
         'called_in_on_you': Boon.objects.filter(debtor=character, status='called_in'),
         'awaiting_fulfillment': Boon.objects.filter(creditor=character, status='called_in')
     }
@@ -381,7 +368,7 @@ def get_net_boon_position(char1, char2):
     boons_1_to_2 = Boon.objects.filter(
         debtor=char1,
         creditor=char2,
-        status='accepted'
+        status__in=OUTSTANDING_STATUSES
     )
 
     weight_1_to_2 = sum([boon.get_boon_weight() for boon in boons_1_to_2])
@@ -390,7 +377,7 @@ def get_net_boon_position(char1, char2):
     boons_2_to_1 = Boon.objects.filter(
         debtor=char2,
         creditor=char1,
-        status='accepted'
+        status__in=OUTSTANDING_STATUSES
     )
 
     weight_2_to_1 = sum([boon.get_boon_weight() for boon in boons_2_to_1])
@@ -412,7 +399,7 @@ def format_boon_summary(character):
     Returns:
         str: Formatted boon summary
     """
-    ledger = get_or_create_ledger(character)
+    ledger = get_boon_totals(character)
 
     lines = []
 
@@ -492,13 +479,13 @@ def format_boon_ledger(caller, ledger):
 
     Args:
         caller: Character viewing the ledger
-        ledger: BoonLedger object
+        ledger: Totals from get_boon_totals()
 
     Returns:
         str: Formatted boon ledger display
     """
     from world.ansi_theme import (
-        GOLD, PALE_IVORY, RESET, BLOOD_RED, SHADOW_GREY
+        BLOOD_RED, DARK_RED, GOLD, PALE_IVORY, RESET, SHADOW_GREY
     )
 
     output = []
@@ -600,7 +587,7 @@ def format_boons_with_character(caller, target, boons, net_position):
         else:
             direction = f"{GOLD}{target.key} owes you{RESET}"
 
-        status_color = GOLD if boon.status == 'accepted' else SHADOW_GREY
+        status_color = GOLD if boon.status in OUTSTANDING_STATUSES else SHADOW_GREY
         output.append(f"\n#{boon.id} - {direction} - {PALE_IVORY}{boon.get_boon_type_display()}{RESET}")
         output.append(f"  Status: {status_color}{boon.status.title()}{RESET}")
         output.append(f"  {SHADOW_GREY}{boon.description[:60]}{'...' if len(boon.description) > 60 else ''}{RESET}")
@@ -638,18 +625,18 @@ def format_pending_boons(caller, pending):
         has_pending = True
         output.append(f"\n{GOLD}To Accept (offered to you):{RESET}")
         for boon in pending['to_accept']:
-            output.append(f"  #{boon.id} - {boon.get_boon_type_display()} from {boon.creditor.key}")
+            output.append(f"  #{boon.id} - {boon.get_boon_type_display()} from {boon.debtor.key}")
             output.append(f"    {SHADOW_GREY}{boon.description[:60]}{RESET}")
             output.append(f"    {SHADOW_GREY}Use: +boonaccept {boon.id} or +boondecline {boon.id}{RESET}")
 
     # Called in on you
     if pending['called_in_on_you'].exists():
         has_pending = True
-        output.append(f"\n{BLOOD_RED}Called In (you must fulfill):{RESET}")
+        output.append(f"\n{BLOOD_RED}Called In (you must repay):{RESET}")
         for boon in pending['called_in_on_you']:
             output.append(f"  #{boon.id} - {boon.get_boon_type_display()} to {boon.creditor.key}")
             output.append(f"    {SHADOW_GREY}Request: {boon.called_in_description[:55]}{RESET}")
-            output.append(f"    {SHADOW_GREY}Use: +boonfulfill {boon.id} = <description>{RESET}")
+            output.append(f"    {SHADOW_GREY}When done, both of you confirm: +boonfulfill {boon.id} = <description>{RESET}")
 
     # Awaiting fulfillment
     if pending['awaiting_fulfillment'].exists():
@@ -658,6 +645,7 @@ def format_pending_boons(caller, pending):
         for boon in pending['awaiting_fulfillment']:
             output.append(f"  #{boon.id} - {boon.get_boon_type_display()} from {boon.debtor.key}")
             output.append(f"    {SHADOW_GREY}Request: {boon.called_in_description[:55]}{RESET}")
+            output.append(f"    {SHADOW_GREY}When repaid, confirm: +boonfulfill {boon.id} = <description>{RESET}")
 
     if not has_pending:
         output.append(f"\n{SHADOW_GREY}No boons pending action.{RESET}")
