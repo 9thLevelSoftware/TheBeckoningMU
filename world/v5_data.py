@@ -1812,11 +1812,11 @@ def find_power(power_name):
 # Storage keys are lower_snake_case ("animal_ken", "blood_sorcery").
 
 
-class UnknownTrait(LookupError):
+class UnknownTrait(LookupError):  # noqa: N818 (name fixed by the plan, KD-3)
     """The name is not an attribute, skill, discipline or background."""
 
 
-class WrongCategory(ValueError):
+class WrongCategory(ValueError):  # noqa: N818 (name fixed by the plan, KD-3)
     """The trait exists, but not in the category the caller asked for."""
 
 

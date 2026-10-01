@@ -23,97 +23,93 @@ class HungerManagementTests(EvenniaTest):
         self.char = self.char1
 
     def test_get_hunger_level_default(self):
-        """Test getting default Hunger level when not set."""
-        # Clear any existing hunger
-        if hasattr(self.char.db, 'hunger'):
-            del self.char.db.hunger
-
+        """A fresh character starts at Hunger 1."""
         hunger = blood_utils.get_hunger_level(self.char)
         self.assertEqual(hunger, 1, "Default Hunger should be 1")
 
     def test_get_hunger_level_set(self):
         """Test getting explicitly set Hunger level."""
-        self.char.db.hunger = 3
+        self.char.hunger = 3
         hunger = blood_utils.get_hunger_level(self.char)
         self.assertEqual(hunger, 3)
 
     def test_get_hunger_level_clamping(self):
         """Test Hunger level clamping on get."""
         # Test values within valid range
-        self.char.db.hunger = 0
+        self.char.hunger = 0
         self.assertEqual(blood_utils.get_hunger_level(self.char), 0)
 
-        self.char.db.hunger = 5
+        self.char.hunger = 5
         self.assertEqual(blood_utils.get_hunger_level(self.char), 5)
 
     def test_set_hunger_level_normal(self):
         """Test setting Hunger level within valid range."""
         new_hunger = blood_utils.set_hunger_level(self.char, 4)
         self.assertEqual(new_hunger, 4)
-        self.assertEqual(self.char.db.hunger, 4)
+        self.assertEqual(self.char.hunger, 4)
 
     def test_set_hunger_level_clamps_upper(self):
         """Test Hunger level clamping at upper bound."""
         hunger = blood_utils.set_hunger_level(self.char, 10)
         self.assertEqual(hunger, 5, "Hunger should be clamped to 5")
-        self.assertEqual(self.char.db.hunger, 5)
+        self.assertEqual(self.char.hunger, 5)
 
     def test_set_hunger_level_clamps_lower(self):
         """Test Hunger level clamping at lower bound."""
         hunger = blood_utils.set_hunger_level(self.char, -5)
         self.assertEqual(hunger, 0, "Hunger should be clamped to 0")
-        self.assertEqual(self.char.db.hunger, 0)
+        self.assertEqual(self.char.hunger, 0)
 
     def test_reduce_hunger_normal(self):
         """Test reducing Hunger by specified amount."""
-        self.char.db.hunger = 4
+        self.char.hunger = 4
         new_hunger = blood_utils.reduce_hunger(self.char, 2)
         self.assertEqual(new_hunger, 2)
-        self.assertEqual(self.char.db.hunger, 2)
+        self.assertEqual(self.char.hunger, 2)
 
     def test_reduce_hunger_default_amount(self):
         """Test reducing Hunger by default amount (1)."""
-        self.char.db.hunger = 3
+        self.char.hunger = 3
         new_hunger = blood_utils.reduce_hunger(self.char)
         self.assertEqual(new_hunger, 2)
 
     def test_reduce_hunger_clamps_to_zero(self):
         """Test Hunger reduction clamps to 0, not negative."""
-        self.char.db.hunger = 1
+        self.char.hunger = 1
         new_hunger = blood_utils.reduce_hunger(self.char, 5)
         self.assertEqual(new_hunger, 0, "Hunger should not go below 0")
-        self.assertEqual(self.char.db.hunger, 0)
+        self.assertEqual(self.char.hunger, 0)
 
     def test_increase_hunger_normal(self):
         """Test increasing Hunger by specified amount."""
-        self.char.db.hunger = 2
+        self.char.hunger = 2
         new_hunger = blood_utils.increase_hunger(self.char, 1)['hunger_after']
         self.assertEqual(new_hunger, 3)
-        self.assertEqual(self.char.db.hunger, 3)
+        self.assertEqual(self.char.hunger, 3)
 
     def test_increase_hunger_default_amount(self):
         """Test increasing Hunger by default amount (1)."""
-        self.char.db.hunger = 2
+        self.char.hunger = 2
         new_hunger = blood_utils.increase_hunger(self.char)['hunger_after']
         self.assertEqual(new_hunger, 3)
 
     def test_increase_hunger_clamps_to_five(self):
         """Test Hunger increase clamps to 5, not higher."""
-        self.char.db.hunger = 4
+        self.char.hunger = 4
         new_hunger = blood_utils.increase_hunger(self.char, 5)['hunger_after']
         self.assertEqual(new_hunger, 5, "Hunger should not exceed 5")
-        self.assertEqual(self.char.db.hunger, 5)
+        self.assertEqual(self.char.hunger, 5)
 
     def test_hunger_edge_case_zero_to_five(self):
         """Test full range transition from 0 to 5."""
-        self.char.db.hunger = 0
+        self.char.hunger = 0
         for expected in range(1, 6):
             new_hunger = blood_utils.increase_hunger(self.char, 1)['hunger_after']
             self.assertEqual(new_hunger, expected)
 
     def test_hunger_edge_case_five_to_zero(self):
         """Test full range transition from 5 to 0."""
-        self.char.db.hunger = 5
+        self.char.hunger = 5
         for expected in range(4, -1, -1):
             new_hunger = blood_utils.reduce_hunger(self.char, 1)
             self.assertEqual(new_hunger, expected)
@@ -128,7 +124,7 @@ class HungerDisplayTests(EvenniaTest):
 
     def test_format_hunger_display_zero(self):
         """Test Hunger display at level 0."""
-        self.char.db.hunger = 0
+        self.char.hunger = 0
         display = blood_utils.format_hunger_display(self.char)
         self.assertIn("0/5", display)
         self.assertIn("□□□□□", display)  # All empty boxes
@@ -136,7 +132,7 @@ class HungerDisplayTests(EvenniaTest):
 
     def test_format_hunger_display_three(self):
         """Test Hunger display at level 3."""
-        self.char.db.hunger = 3
+        self.char.hunger = 3
         display = blood_utils.format_hunger_display(self.char)
         self.assertIn("3/5", display)
         self.assertIn("■■■", display)  # Three filled boxes
@@ -144,7 +140,7 @@ class HungerDisplayTests(EvenniaTest):
 
     def test_format_hunger_display_five(self):
         """Test Hunger display at level 5 (max)."""
-        self.char.db.hunger = 5
+        self.char.hunger = 5
         display = blood_utils.format_hunger_display(self.char)
         self.assertIn("5/5", display)
         self.assertIn("■■■■■", display)  # All filled boxes
@@ -153,22 +149,22 @@ class HungerDisplayTests(EvenniaTest):
     def test_format_hunger_display_color_coding(self):
         """Test color coding changes by Hunger level."""
         # Low Hunger (0-1) - Green
-        self.char.db.hunger = 1
+        self.char.hunger = 1
         display = blood_utils.format_hunger_display(self.char)
         self.assertIn("|g", display)
 
         # Moderate Hunger (2-3) - Yellow
-        self.char.db.hunger = 2
+        self.char.hunger = 2
         display = blood_utils.format_hunger_display(self.char)
         self.assertIn("|y", display)
 
         # High Hunger (4) - Red
-        self.char.db.hunger = 4
+        self.char.hunger = 4
         display = blood_utils.format_hunger_display(self.char)
         self.assertIn("|r", display)
 
         # Max Hunger (5) - Bright Red
-        self.char.db.hunger = 5
+        self.char.hunger = 5
         display = blood_utils.format_hunger_display(self.char)
         self.assertIn("|r|h", display)
 
@@ -237,8 +233,6 @@ class ResonanceManagementTests(EvenniaTest):
 
     def test_get_resonance_not_set(self):
         """Test getting resonance when none is set."""
-        if hasattr(self.char.db, 'resonance'):
-            del self.char.db.resonance
         resonance = blood_utils.get_resonance(self.char)
         self.assertIsNone(resonance)
 
@@ -303,8 +297,7 @@ class ResonanceDisplayTests(EvenniaTest):
     def test_format_resonance_display_expired(self):
         """Test resonance display returns None when expired."""
         # Set resonance with past expiration
-        resonance = blood_utils.set_resonance(self.char, 'Sanguine', intensity=1, duration=0)
-        self.char.db.resonance['expires'] = time.time() - 1  # Expired 1 second ago
+        blood_utils.set_resonance(self.char, 'Sanguine', intensity=1, duration=-1)  # Expired 1 second ago
 
         display = blood_utils.format_resonance_display(self.char)
         self.assertIsNone(display, "Expired resonance should not display")
@@ -392,11 +385,7 @@ class BloodSurgeManagementTests(EvenniaTest):
         surge = blood_utils.get_blood_surge(self.char)
         self.assertIsNone(surge)
 
-    # F-022, fixed in PR 4: Blood Potency is read through
-    # trait_utils.get_trait_value (and a traits.models row in rouse_checker),
-    # neither of which looks at db.vampire, so it is always 0 and Rouse
-    # re-rolls never apply. PR 4 rewrites both read paths.
-    @unittest.expectedFailure
+    # F-022: Blood Potency is read from db.vampire through Character.blood_potency.
     def test_blood_potency_is_read_from_character(self):
         self.char.db.vampire['blood_potency'] = 3
         self.assertEqual(blood_utils.get_blood_potency(self.char), 3)
@@ -442,7 +431,7 @@ class EdgeCaseTests(EvenniaTest):
 
     def test_multiple_hunger_operations_sequence(self):
         """Test sequence of Hunger operations."""
-        self.char.db.hunger = 3
+        self.char.hunger = 3
 
         # Increase then decrease
         blood_utils.increase_hunger(self.char, 2)  # 3 -> 5

@@ -395,13 +395,12 @@ class CmdHealth(Command):
             target = caller
 
         # Verify target has health
-        if not hasattr(target.db, 'pools'):
+        if not target.attributes.has("pools"):
             caller.msg(f"{BLOOD_RED}Error:{RESET} {target.name} has no health tracker.")
             return
 
         # Get health status
         health_status = get_health_status(target)
-        pools = target.db.pools
 
         # Build output
         output = f"\n{BOX_TL}{BOX_H * 76}{BOX_TR}\n"
@@ -413,10 +412,10 @@ class CmdHealth(Command):
         output += f"{GOLD}Health:{RESET} {health_status}\n\n"
 
         # Detailed breakdown
-        max_health = pools.get("health", 3)
-        current_health = pools.get("current_health", max_health)
-        superficial = pools.get("superficial_damage", 0)
-        aggravated = pools.get("aggravated_damage", 0)
+        max_health = target.health_max
+        current_health = target.current_health
+        superficial = target.damage["health"]["superficial"]
+        aggravated = target.damage["health"]["aggravated"]
 
         output += f"{GOLD}Details:{RESET}\n"
         output += f"  Maximum Health: {max_health}\n"

@@ -4,6 +4,8 @@ Humanity System Utility Functions for V5
 Handles Stains, Remorse rolls, Humanity tracking, Convictions, and Touchstones.
 """
 
+from collections.abc import Mapping
+
 from world.v5_dice import roll_pool, format_dice_result
 
 
@@ -17,10 +19,7 @@ def get_humanity(character):
     Returns:
         int: Humanity level (0-10)
     """
-    vampire = character.db.vampire
-    if not vampire:
-        return 7  # Default humanity for non-vampires
-    return vampire.get("humanity", 7)
+    return character.humanity
 
 
 def set_humanity(character, value):
@@ -34,9 +33,8 @@ def set_humanity(character, value):
     Returns:
         int: Actual Humanity value set (after clamping)
     """
-    value = max(0, min(10, value))
-    character.db.vampire["humanity"] = value
-    return value
+    character.humanity = value
+    return character.humanity
 
 
 def get_humanity_data(character):
@@ -49,7 +47,7 @@ def get_humanity_data(character):
     Returns:
         dict: humanity_data with convictions, touchstones, stains
     """
-    if not hasattr(character.db, 'humanity_data') or not character.db.humanity_data:
+    if not isinstance(character.db.humanity_data, Mapping):
         character.db.humanity_data = {
             'convictions': [],
             'touchstones': [],
@@ -68,8 +66,7 @@ def get_stains(character):
     Returns:
         int: Stain count (0-10)
     """
-    hum_data = get_humanity_data(character)
-    return hum_data.get('stains', 0)
+    return character.stains
 
 
 def add_stain(character, count=1):
@@ -86,10 +83,8 @@ def add_stain(character, count=1):
             'message': narrative message
         }
     """
-    hum_data = get_humanity_data(character)
-    old_stains = hum_data.get('stains', 0)
-    new_stains = min(10, old_stains + count)
-    hum_data['stains'] = new_stains
+    character.stains = character.stains + count
+    new_stains = character.stains
 
     stain_word = "Stain" if count == 1 else "Stains"
 
@@ -123,9 +118,8 @@ def clear_stains(character):
     Returns:
         int: Number of stains that were cleared
     """
-    hum_data = get_humanity_data(character)
-    old_stains = hum_data.get('stains', 0)
-    hum_data['stains'] = 0
+    old_stains = character.stains
+    character.stains = 0
     return old_stains
 
 
@@ -554,10 +548,9 @@ def resist_frenzy(character, difficulty):
     """
     from .blood_utils import get_hunger
 
-    # Get Willpower and Composure from character stats
-    stats = character.db.stats if hasattr(character.db, 'stats') else {}
-    willpower = stats.get('willpower', {}).get('permanent', 5)
-    composure = stats.get('attributes', {}).get('composure', 2)
+    # Get Willpower and Composure from the character
+    willpower = character.current_willpower
+    composure = character.get_trait("composure")
 
     pool = willpower + composure
     hunger = get_hunger(character)

@@ -9,113 +9,49 @@ with proper error handling and validation.
 """
 
 
+from world.v5_data import TRAIT_RANGES, UnknownTrait, find_power, resolve_trait
+
 # ============================================================================
-# Internal Bridge Functions
+# Lenient wrappers over the Character accessors
 # ============================================================================
-# These provide a unified interface for accessing character traits,
-# whether stored in character.db.stats or in Django models (future).
+# Character.get_trait/set_trait raise UnknownTrait for a name that is not an
+# attribute, skill, discipline or background. These helpers keep the older
+# contract: an unknown name reads as 0 and a write to it returns False.
 # ============================================================================
 
 def _db_get_trait(character, trait_name):
-    """
-    Internal function to get a trait value from character.db.stats.
-
-    Args:
-        character: Character object
-        trait_name (str): Name of the trait (normalized)
-
-    Returns:
-        int: Trait value, or 0 if not found
-    """
-    trait_name = trait_name.lower().replace(" ", "_")
-
-    if not hasattr(character.db, 'stats') or not character.db.stats:
+    """Rating of a trait via Character.get_trait, or 0 if the name is unknown."""
+    try:
+        return character.get_trait(trait_name)
+    except UnknownTrait:
         return 0
-
-    stats = character.db.stats
-
-    # Check attributes (physical, social, mental)
-    for category in ['physical', 'social', 'mental']:
-        attrs = stats.get('attributes', {}).get(category, {})
-        if trait_name in attrs:
-            return attrs[trait_name]
-
-    # Check skills
-    for category in ['physical', 'social', 'mental']:
-        skills = stats.get('skills', {}).get(category, {})
-        if trait_name in skills:
-            return skills[trait_name]
-
-    # Check disciplines
-    disciplines = stats.get('disciplines', {})
-    if trait_name in disciplines:
-        return disciplines[trait_name].get('level', 0)
-
-    # Check advantages/backgrounds
-    if hasattr(character.db, 'advantages'):
-        backgrounds = character.db.advantages.get('backgrounds', {})
-        if trait_name in backgrounds:
-            return backgrounds[trait_name]
-
-    return 0
 
 
 def _db_set_trait(character, trait_name, value):
-    """
-    Internal function to set a trait value in character.db.stats.
-
-    Args:
-        character: Character object
-        trait_name (str): Name of the trait (normalized)
-        value (int): New value for the trait
-
-    Returns:
-        bool: True if trait was found and updated, False otherwise
-    """
-    trait_name = trait_name.lower().replace(" ", "_")
-
-    if not hasattr(character.db, 'stats') or not character.db.stats:
+    """Set a trait via Character.set_trait; False if the name is unknown."""
+    try:
+        character.set_trait(trait_name, value)
+    except UnknownTrait:
         return False
-
-    stats = character.db.stats
-
-    # Try to set in attributes
-    for category in ['physical', 'social', 'mental']:
-        attrs = stats.get('attributes', {}).get(category, {})
-        if trait_name in attrs:
-            attrs[trait_name] = value
-            return True
-
-    # Try to set in skills
-    for category in ['physical', 'social', 'mental']:
-        skills = stats.get('skills', {}).get(category, {})
-        if trait_name in skills:
-            skills[trait_name] = value
-            return True
-
-    # Try to set in disciplines
-    disciplines = stats.get('disciplines', {})
-    if trait_name in disciplines:
-        disciplines[trait_name]['level'] = value
-        return True
-
-    return False
+    return True
 
 
 def get_trait_value(character, trait_name, category=None):
     """
     Get the value of a trait from a character.
 
-    Uses the bridge function from traits.utils to ensure compatibility
-    with both web imports (Django models) and in-game chargen (char.db.stats).
+    Reads through Character.get_trait, so names resolve case-insensitively
+    through world.v5_data.TRAIT_REGISTRY.
 
     Args:
         character: Character object
-        trait_name (str): Name of the trait (lowercase, e.g., 'strength', 'athletics')
-        category (str, optional): Category hint ('attribute', 'skill', 'discipline', etc.)
+        trait_name (str): Name of the trait (e.g. 'strength', 'Animal Ken')
+        category (str, optional): 'attribute', 'skill', 'discipline' or
+            'background'. If given and the trait is in another category,
+            WrongCategory is raised.
 
     Returns:
-        int: Trait value, or 0 if not found
+        int: Trait value, or 0 if the name is not a known trait
 
     Examples:
         >>> get_trait_value(char, 'strength')
@@ -123,87 +59,33 @@ def get_trait_value(character, trait_name, category=None):
         >>> get_trait_value(char, 'brawl', 'skill')
         2
     """
-    # Use the existing bridge function which checks both Django models and char.db.stats
-    value = _db_get_trait(character, trait_name)
-
-    if value > 0:
-        return value
-
-    # Fallback for disciplines (which are stored differently in char.db.stats)
-    trait_name = trait_name.lower().replace(" ", "_")
-
-    if category in [None, 'discipline', 'disciplines']:
-        if hasattr(character.db, 'stats') and character.db.stats:
-            disciplines = character.db.stats.get("disciplines", {})
-            if trait_name in disciplines:
-                return disciplines[trait_name].get("level", 0)
-
-    # Try backgrounds (might not be in Django models yet)
-    if category in [None, 'background', 'backgrounds']:
-        if hasattr(character.db, 'advantages') and character.db.advantages:
-            backgrounds = character.db.advantages.get("backgrounds", {})
-            if trait_name in backgrounds:
-                return backgrounds[trait_name]
-
-    return 0
+    try:
+        return character.get_trait(trait_name, category)
+    except UnknownTrait:
+        return 0
 
 
 def set_trait_value(character, trait_name, value, category=None):
     """
-    Set the value of a trait on a character.
-
-    Uses the bridge function from traits.utils to update BOTH the Django models
-    and char.db.stats, ensuring compatibility with web imports.
+    Set the value of a trait on a character, through Character.set_trait.
 
     Args:
         character: Character object
         trait_name (str): Name of the trait
         value (int): New value for the trait
-        category (str, optional): Category hint
+        category (str, optional): Category hint; a mismatch raises WrongCategory
 
     Returns:
-        bool: True if successful, False if trait not found
+        bool: True if set, False if the name is not a known trait
 
     Raises:
-        ValueError: If value is out of valid range
+        ValueError: If value is out of the trait's range
     """
-    trait_name = trait_name.lower().replace(" ", "_")
-
-    # Validate value range
-    if value < 0 or value > 5:
-        raise ValueError(f"Trait value must be between 0 and 5, got {value}")
-
-    # Use the bridge function to update both Django models and char.db.stats
-    success = _db_set_trait(character, trait_name, value)
-
-    # Special handling for disciplines (stored differently)
-    if category in [None, 'discipline', 'disciplines']:
-        if not hasattr(character.db, 'stats') or not character.db.stats:
-            return False
-
-        disciplines = character.db.stats.get("disciplines", {})
-        if trait_name in disciplines:
-            disciplines[trait_name]["level"] = value
-            success = True
-        elif category == 'discipline':
-            # Create new discipline entry
-            disciplines[trait_name] = {"level": value, "powers": []}
-            success = True
-
-    # Special handling for backgrounds (might not be in Django models)
-    if category in [None, 'background', 'backgrounds']:
-        if not hasattr(character.db, 'advantages'):
-            character.db.advantages = {"backgrounds": {}, "merits": {}, "flaws": {}}
-
-        backgrounds = character.db.advantages.get("backgrounds", {})
-        backgrounds[trait_name] = value
-        success = True
-
-    # Recalculate derived stats if attributes changed
-    if category in ['attribute', 'attributes']:
-        character.update_derived_stats()
-
-    return success
+    try:
+        character.set_trait(trait_name, value, category)
+    except UnknownTrait:
+        return False
+    return True
 
 
 def add_trait_dots(character, trait_name, dots=1, category=None):
@@ -246,19 +128,10 @@ def remove_trait_dots(character, trait_name, dots=1, category=None):
         int: New trait value
 
     Raises:
-        ValueError: If new value goes below minimum (0 for skills, 1 for attributes)
+        ValueError: If new value goes below minimum (1 for attributes, else 0)
     """
-    current = get_trait_value(character, trait_name, category)
-    new_value = current - dots
-
-    # Determine minimum value based on category
-    min_value = 0
-    if category in ['attribute', 'attributes']:
-        # Check if this is actually an attribute
-        for cat_name, attrs in character.db.stats.get("attributes", {}).items():
-            if trait_name in attrs:
-                min_value = 1  # Attributes minimum is 1
-                break
+    min_value = TRAIT_RANGES[resolve_trait(trait_name, category).category][0]
+    new_value = get_trait_value(character, trait_name, category) - dots
 
     if new_value < min_value:
         raise ValueError(f"Cannot decrease {trait_name} below {min_value} (would be {new_value})")
@@ -278,8 +151,8 @@ def get_specialty(character, skill_name):
     Returns:
         str or None: Specialty name, or None if no specialty
     """
-    skill_name = skill_name.lower().replace(" ", "_")
-    return character.db.stats.get("specialties", {}).get(skill_name, None)
+    key = resolve_trait(skill_name, "skills").key
+    return character.specialties.get(key)
 
 
 def set_specialty(character, skill_name, specialty_name):
@@ -292,16 +165,13 @@ def set_specialty(character, skill_name, specialty_name):
         specialty_name (str): Name of the specialty
 
     Returns:
-        bool: True if successful
+        bool: True if successful, False if the skill has no dots
     """
-    skill_name = skill_name.lower().replace(" ", "_")
-
-    # Verify the skill exists and has dots
-    skill_value = get_trait_value(character, skill_name, 'skill')
-    if skill_value < 1:
+    key = resolve_trait(skill_name, "skills").key
+    if character.get_trait(key) < 1:
         return False
 
-    character.db.stats["specialties"][skill_name] = specialty_name
+    character.db.stats["specialties"][key] = specialty_name
     return True
 
 
@@ -316,18 +186,14 @@ def get_discipline_powers(character, discipline_name):
     Returns:
         list: List of power names
     """
-    discipline_name = discipline_name.lower().replace(" ", "_")
-    disciplines = character.db.stats.get("disciplines", {})
-
-    if discipline_name in disciplines:
-        return disciplines[discipline_name].get("powers", [])
-
-    return []
+    key = resolve_trait(discipline_name, "disciplines").key
+    entry = character.db.stats["disciplines"].get(key)
+    return list(entry.get("powers", [])) if entry else []
 
 
 def add_discipline_power(character, discipline_name, power_name):
     """
-    Add a power to a discipline.
+    Add a power to a discipline the character has.
 
     Args:
         character: Character object
@@ -335,20 +201,17 @@ def add_discipline_power(character, discipline_name, power_name):
         power_name (str): Name of the power to add
 
     Returns:
-        bool: True if successful, False if already known or discipline not found
+        bool: True if added; False if the power is unknown, belongs to another
+        discipline, is already known, or the character lacks the discipline
     """
-    discipline_name = discipline_name.lower().replace(" ", "_")
-    disciplines = character.db.stats.get("disciplines", {})
-
-    if discipline_name not in disciplines:
+    discipline = resolve_trait(discipline_name, "disciplines")
+    power = find_power(power_name)
+    if power is None or power["discipline"] != discipline.name:
+        return False
+    if character.get_trait(discipline.key) < 1 or power["name"] in character.known_powers:
         return False
 
-    powers = disciplines[discipline_name].get("powers", [])
-    if power_name in powers:
-        return False  # Already known
-
-    powers.append(power_name)
-    disciplines[discipline_name]["powers"] = powers
+    character.learn_power(power["name"])
     return True
 
 
@@ -363,13 +226,7 @@ def has_discipline_power(character, power_name):
     Returns:
         bool: True if character knows the power
     """
-    disciplines = character.db.stats.get("disciplines", {})
-
-    for disc_name, disc_data in disciplines.items():
-        if power_name in disc_data.get("powers", []):
-            return True
-
-    return False
+    return power_name in character.known_powers
 
 
 def get_total_attribute_dots(character, category=None):

@@ -17,8 +17,7 @@ PREDATOR_BONUSES = {
 
 def get_feeding_pool(character):
     """Get dice pool for feeding based on predator type."""
-    stats = character.db.stats or {}
-    predator_type = stats.get('predator_type', '').lower()
+    predator_type = (character.predator_type or '').lower().replace(' ', '_')
 
     if predator_type not in PREDATOR_BONUSES:
         # Default pool if no/unknown predator type

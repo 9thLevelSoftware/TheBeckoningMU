@@ -4,6 +4,10 @@ XP System Utility Functions for V5
 Handles experience point costs, spending, and tracking.
 """
 
+from collections.abc import Mapping
+
+from world.v5_data import resolve_trait
+
 from .trait_utils import get_trait_value, set_trait_value
 from .clan_utils import get_clan, get_inclan_disciplines
 
@@ -73,8 +77,7 @@ def get_xp_cost_specialty(character, skill_name):
         return None
 
     # Check if already has specialty
-    specialties = character.db.stats.get('specialties', {})
-    if skill_name in specialties:
+    if resolve_trait(skill_name, 'skills').key in character.specialties:
         return None  # Already has specialty
 
     return 3
@@ -96,8 +99,7 @@ def get_xp_cost_discipline(character, discipline_name):
         tuple: (cost: int, new_rating: int, is_in_clan: bool)
     """
     # Get current level
-    disciplines = character.db.stats.get('disciplines', {})
-    current = disciplines.get(discipline_name, {}).get('level', 0)
+    current = character.get_trait(discipline_name, 'disciplines')
     new_rating = current + 1
 
     if new_rating > 5:
@@ -129,10 +131,7 @@ def get_xp_cost_background(character, background_name):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    advantages = character.db.advantages if hasattr(character.db, 'advantages') else {}
-    backgrounds = advantages.get('backgrounds', {})
-
-    current = backgrounds.get(background_name, 0)
+    current = character.get_trait(background_name, 'backgrounds')
     new_rating = current + 1
 
     if new_rating > 5:
@@ -155,10 +154,7 @@ def get_xp_cost_merit(character, merit_name):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    advantages = character.db.advantages if hasattr(character.db, 'advantages') else {}
-    merits = advantages.get('merits', {})
-
-    current = merits.get(merit_name, 0)
+    current = character.advantages['merits'].get(merit_name, 0)
     new_rating = current + 1
 
     if new_rating > 5:
@@ -180,8 +176,7 @@ def get_xp_cost_humanity(character):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    vamp = character.db.vampire if hasattr(character.db, 'vampire') else {}
-    current = vamp.get('humanity', 7)
+    current = character.humanity
     new_rating = current + 1
 
     if new_rating > 10:
@@ -203,8 +198,7 @@ def get_xp_cost_willpower(character):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    pools = character.db.pools if hasattr(character.db, 'pools') else {}
-    current = pools.get('willpower', 0)
+    current = character.willpower_max
     new_rating = current + 1
 
     if new_rating > 10:
@@ -224,8 +218,7 @@ def get_current_xp(character):
     Returns:
         int: Current XP
     """
-    exp = character.db.experience if hasattr(character.db, 'experience') else {}
-    return exp.get('current', 0)
+    return character.xp
 
 
 def get_total_earned_xp(character):
@@ -238,8 +231,7 @@ def get_total_earned_xp(character):
     Returns:
         int: Total earned XP
     """
-    exp = character.db.experience if hasattr(character.db, 'experience') else {}
-    return exp.get('total_earned', 0)
+    return character.xp_earned
 
 
 def get_total_spent_xp(character):
@@ -252,8 +244,7 @@ def get_total_spent_xp(character):
     Returns:
         int: Total spent XP
     """
-    exp = character.db.experience if hasattr(character.db, 'experience') else {}
-    return exp.get('total_spent', 0)
+    return character.xp_spent
 
 
 def award_xp(character, amount, reason="", awarded_by=None):
@@ -272,7 +263,7 @@ def award_xp(character, amount, reason="", awarded_by=None):
     if amount <= 0:
         return (False, "XP amount must be positive.")
 
-    if not hasattr(character.db, 'experience'):
+    if not isinstance(character.db.experience, Mapping):
         character.db.experience = {
             'total_earned': 0,
             'total_spent': 0,
@@ -333,10 +324,6 @@ def spend_xp_on_attribute(character, attribute_name, reason=""):
     # Deduct XP
     _deduct_xp(character, cost, f"Raised {attribute_name} to {new_rating}" + (f" - {reason}" if reason else ""))
 
-    # Update derived stats
-    if hasattr(character, 'update_derived_stats'):
-        character.update_derived_stats()
-
     return (True, f"Raised {attribute_name} to {new_rating} for {cost} XP.")
 
 
@@ -393,13 +380,7 @@ def spend_xp_on_specialty(character, skill_name, specialty_name, reason=""):
         return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
 
     # Add specialty
-    if not hasattr(character.db, 'stats'):
-        return (False, "Character stats not initialized.")
-
-    if 'specialties' not in character.db.stats:
-        character.db.stats['specialties'] = {}
-
-    character.db.stats['specialties'][skill_name] = specialty_name
+    character.db.stats['specialties'][resolve_trait(skill_name, 'skills').key] = specialty_name
 
     # Deduct XP
     _deduct_xp(character, cost, f"Added specialty: {skill_name} ({specialty_name})" + (f" - {reason}" if reason else ""))
@@ -429,16 +410,7 @@ def spend_xp_on_discipline(character, discipline_name, reason=""):
         return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
 
     # Raise discipline
-    if not hasattr(character.db, 'stats'):
-        return (False, "Character stats not initialized.")
-
-    if 'disciplines' not in character.db.stats:
-        character.db.stats['disciplines'] = {}
-
-    if discipline_name not in character.db.stats['disciplines']:
-        character.db.stats['disciplines'][discipline_name] = {'level': 0, 'powers': []}
-
-    character.db.stats['disciplines'][discipline_name]['level'] = new_rating
+    character.set_trait(discipline_name, new_rating, 'disciplines')
 
     # Deduct XP
     clan_str = " (in-clan)" if is_in_clan else " (out-of-clan)"
@@ -468,10 +440,7 @@ def spend_xp_on_humanity(character, reason=""):
         return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
 
     # Raise Humanity
-    if not hasattr(character.db, 'vampire'):
-        return (False, "Character vampire data not initialized.")
-
-    character.db.vampire['humanity'] = new_rating
+    character.humanity = new_rating
 
     # Deduct XP
     _deduct_xp(character, cost, f"Raised Humanity to {new_rating}" + (f" - {reason}" if reason else ""))
@@ -481,35 +450,18 @@ def spend_xp_on_humanity(character, reason=""):
 
 def spend_xp_on_willpower(character, reason=""):
     """
-    Spend XP to raise permanent Willpower.
+    Refuse: Willpower is Composure + Resolve and is never bought directly.
+
+    Raise Composure or Resolve instead. (PR 6 removes this spend type.)
 
     Args:
         character: Character object
-        reason (str): Reason for purchase
+        reason (str): Unused
 
     Returns:
-        tuple: (success: bool, message: str)
+        tuple: (False, message)
     """
-    cost, new_rating = get_xp_cost_willpower(character)
-
-    if cost is None:
-        return (False, "Cannot raise Willpower further (max 10).")
-
-    current_xp = get_current_xp(character)
-    if current_xp < cost:
-        return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
-
-    # Raise Willpower
-    if not hasattr(character.db, 'pools'):
-        return (False, "Character pools not initialized.")
-
-    character.db.pools['willpower'] = new_rating
-    character.db.pools['current_willpower'] = new_rating  # Also restore to full
-
-    # Deduct XP
-    _deduct_xp(character, cost, f"Raised permanent Willpower to {new_rating}" + (f" - {reason}" if reason else ""))
-
-    return (True, f"Raised permanent Willpower to {new_rating} for {cost} XP.")
+    return (False, "Willpower is Composure + Resolve. Raise one of those attributes instead.")
 
 
 def _deduct_xp(character, amount, reason):
@@ -554,7 +506,7 @@ def get_xp_log(character, limit=10):
     Returns:
         list: XP log entries
     """
-    exp = character.db.experience if hasattr(character.db, 'experience') else {}
+    exp = character.db.experience if isinstance(character.db.experience, Mapping) else {}
     log = exp.get('log', [])
 
     return log[-limit:] if limit else log

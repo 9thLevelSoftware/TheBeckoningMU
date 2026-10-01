@@ -15,9 +15,7 @@ from world.ansi_theme import (
     BOX_H, BOX_V, BOX_TL, BOX_TR, BOX_BL, BOX_BR, BOX_L, BOX_R
 )
 
-from .clan_utils import get_clan, get_clan_info
-from .blood_utils import get_hunger, get_blood_potency
-from . import social_utils
+from collections.abc import Mapping
 
 
 # V5 Skills organized by category (matching WoD pattern)
@@ -78,7 +76,7 @@ def format_character_sheet(character):
     Format V5 character sheet matching WoD style with dot leaders.
 
     Args:
-        character: Character object with character.db.vampire data
+        character: Character object (read only through its accessors)
 
     Returns:
         str: Formatted character sheet
@@ -90,6 +88,7 @@ def format_character_sheet(character):
 
     # Bio Section
     output += _format_bio_section(character)
+    output += _format_vitals_section(character)
 
     # Attributes Section
     output += "\n" + ANSIString("|w Attributes |n").center(78, ANSIString("|R=|n"))
@@ -147,24 +146,24 @@ def format_character_sheet(character):
 
 def _format_bio_section(character):
     """Format bio section with two-column space-padded layout."""
-    v5 = character.db.vampire if (hasattr(character.db, 'vampire') and character.db.vampire) else {}
+    bio_record = character.bio
     bio = []
 
-    # Get clan
-    clan = get_clan(character) or ""
+    def bio_text(field):
+        return getattr(bio_record, field, "") if bio_record else ""
 
     # Build bio items
     bio_data = {
-        'full_name': v5.get('full_name', ''),
-        'birthdate': v5.get('birthdate', ''),
-        'concept': v5.get('concept', ''),
+        'full_name': bio_text('full_name'),
+        'birthdate': '',
+        'concept': bio_text('concept'),
         'splat': 'Vampire',  # V5 is vampire-focused
-        'ambition': v5.get('ambition', ''),
-        'sire': v5.get('sire', ''),
-        'desire': v5.get('desire', ''),
-        'predator': v5.get('predator_type', ''),
-        'clan': clan,
-        'generation': str(v5.get('generation', ''))
+        'ambition': bio_text('ambition'),
+        'sire': bio_text('sire'),
+        'desire': bio_text('desire'),
+        'predator': character.predator_type or '',
+        'clan': character.clan or '',
+        'generation': str(character.generation),
     }
 
     for field in BIO_FIELDS:
@@ -185,45 +184,21 @@ def _format_bio_section(character):
     return output
 
 
+def _format_vitals_section(character):
+    """Hunger, Blood Potency, Humanity and the derived Health/Willpower tracks."""
+    return (
+        f"\n\n Hunger: {character.hunger}  Blood Potency: {character.blood_potency}"
+        f"  Humanity: {character.humanity}"
+        f"  Health: {character.current_health}/{character.health_max}"
+        f"  Willpower: {character.current_willpower}/{character.willpower_max}"
+    )
+
+
 def _format_attributes_section(character):
     """Format attributes in three columns with dot leaders."""
-    v5 = character.db.vampire if (hasattr(character.db, 'vampire') and character.db.vampire) else {}
-    attrs = v5.get('attributes', {})
-
-    # Get Physical attributes
-    phys = attrs.get('physical', {})
-    strength = phys.get('strength', 1)
-    dexterity = phys.get('dexterity', 1)
-    stamina = phys.get('stamina', 1)
-
-    # Get Mental attributes
-    ment = attrs.get('mental', {})
-    intelligence = ment.get('intelligence', 1)
-    wits = ment.get('wits', 1)
-    resolve = ment.get('resolve', 1)
-
-    # Get Social attributes
-    soc = attrs.get('social', {})
-    charisma = soc.get('charisma', 1)
-    manipulation = soc.get('manipulation', 1)
-    composure = soc.get('composure', 1)
-
-    # Build lists
-    physical = [
-        format("Strength", strength),
-        format("Dexterity", dexterity),
-        format("Stamina", stamina)
-    ]
-    mental = [
-        format("Intelligence", intelligence),
-        format("Wits", wits),
-        format("Resolve", resolve)
-    ]
-    social = [
-        format("Charisma", charisma),
-        format("Manipulation", manipulation),
-        format("Composure", composure)
-    ]
+    physical = [format(name, character.get_trait(name)) for name in ("Strength", "Dexterity", "Stamina")]
+    mental = [format(name, character.get_trait(name)) for name in ("Intelligence", "Wits", "Resolve")]
+    social = [format(name, character.get_trait(name)) for name in ("Charisma", "Manipulation", "Composure")]
 
     # Format output
     output = "\n" + "Physical".center(26) + "Mental".center(26) + "Social".center(26) + "\n"
@@ -235,33 +210,9 @@ def _format_attributes_section(character):
 
 def _format_skills_section(character):
     """Format skills in three columns with dot leaders, showing ALL skills."""
-    v5 = character.db.vampire if (hasattr(character.db, 'vampire') and character.db.vampire) else {}
-    skills = v5.get('skills', {})
-
-    # Build lists for all skills
-    physical = []
-    mental = []
-    social = []
-
-    # Get skill values
-    phys_skills = skills.get('physical', {})
-    ment_skills = skills.get('mental', {})
-    soc_skills = skills.get('social', {})
-
-    # Build physical skills list
-    for skill in PHYSICAL_SKILLS:
-        val = phys_skills.get(skill, 0)
-        physical.append(format(skill.replace('_', ' '), val))
-
-    # Build mental skills list
-    for skill in MENTAL_SKILLS:
-        val = ment_skills.get(skill, 0)
-        mental.append(format(skill.replace('_', ' '), val))
-
-    # Build social skills list
-    for skill in SOCIAL_SKILLS:
-        val = soc_skills.get(skill, 0)
-        social.append(format(skill.replace('_', ' '), val))
+    physical = [format(skill.replace('_', ' '), character.get_trait(skill)) for skill in PHYSICAL_SKILLS]
+    mental = [format(skill.replace('_', ' '), character.get_trait(skill)) for skill in MENTAL_SKILLS]
+    social = [format(skill.replace('_', ' '), character.get_trait(skill)) for skill in SOCIAL_SKILLS]
 
     # Pad lists to same length
     max_len = max(len(physical), len(mental), len(social))
@@ -282,41 +233,33 @@ def _format_skills_section(character):
 
 def _format_experience_section(character):
     """Format experience points section."""
-    v5 = character.db.vampire if (hasattr(character.db, 'vampire') and character.db.vampire) else {}
-    xp = v5.get('xp', {})
-
-    earned = xp.get('earned', 0)
-    spent = xp.get('spent', 0)
-    current = earned - spent
-
-    output = f"\n Earned XP: {earned}\n Spent XP: {spent}\n Current XP: {current}\n"
-    return output
+    return (
+        f"\n Earned XP: {character.xp_earned}"
+        f"\n Spent XP: {character.xp_spent}"
+        f"\n Current XP: {character.xp}\n"
+    )
 
 
 def _format_disciplines_section(character):
     """Format disciplines section (V5 powers)."""
-    v5 = character.db.vampire if (hasattr(character.db, 'vampire') and character.db.vampire) else {}
-    disciplines = v5.get('disciplines', {})
+    disciplines = character.discipline_levels
 
-    if not disciplines or all(val == 0 for val in disciplines.values()):
+    if not disciplines:
         return None
 
     output = "\n"
     for disc, level in sorted(disciplines.items()):
-        if level > 0:
-            output += f" {disc.capitalize()}: {'●' * level} ({level})\n"
+        output += f" {disc}: {'●' * level} ({level})\n"
 
     return output
 
 
 def _format_humanity_section(character):
     """Format humanity, touchstones, and convictions."""
-    v5 = character.db.vampire if (hasattr(character.db, 'vampire') and character.db.vampire) else {}
-
-    humanity = v5.get('humanity', 7)
-    stains = v5.get('stains', 0)
-    touchstones = v5.get('touchstones', [])
-    convictions = v5.get('convictions', [])
+    humanity = character.humanity
+    stains = character.stains
+    touchstones = character.touchstones
+    convictions = character.convictions
 
     output = f"\n Humanity: {humanity}  Stains: {stains}\n"
 
@@ -328,18 +271,18 @@ def _format_humanity_section(character):
     if touchstones:
         output += "\n Touchstones:\n"
         for touchstone in touchstones:
-            output += f"  - {touchstone}\n"
+            name = touchstone.get('name', touchstone) if isinstance(touchstone, Mapping) else touchstone
+            output += f"  - {name}\n"
 
     return output if (convictions or touchstones or humanity != 7 or stains > 0) else None
 
 
 def _format_advantages_section(character):
     """Format backgrounds, merits, and flaws."""
-    v5 = character.db.vampire if (hasattr(character.db, 'vampire') and character.db.vampire) else {}
-
-    backgrounds = v5.get('backgrounds', {})
-    merits = v5.get('merits', {})
-    flaws = v5.get('flaws', {})
+    advantages = character.advantages
+    backgrounds = advantages['backgrounds']
+    merits = advantages['merits']
+    flaws = advantages['flaws']
 
     has_content = False
     output = "\n"
@@ -348,23 +291,23 @@ def _format_advantages_section(character):
         output += " Backgrounds:\n"
         for bg, level in sorted(backgrounds.items()):
             if level > 0:
-                output += f"  {bg.capitalize()}: {'●' * level} ({level})\n"
+                output += f"  {bg.replace('_', ' ').title()}: {'●' * level} ({level})\n"
         has_content = True
 
     if merits:
         if has_content:
             output += "\n"
         output += " Merits:\n"
-        for merit in merits:
-            output += f"  - {merit}\n"
+        for merit, dots in sorted(merits.items()):
+            output += f"  - {merit} ({dots})\n"
         has_content = True
 
     if flaws:
         if has_content:
             output += "\n"
         output += " Flaws:\n"
-        for flaw in flaws:
-            output += f"  - {flaw}\n"
+        for flaw, dots in sorted(flaws.items()):
+            output += f"  - {flaw} ({dots})\n"
         has_content = True
 
     return output if has_content else None
@@ -410,36 +353,22 @@ def _format_boons_section(character):
 
 
 def _format_coterie_section(character):
-    """Format coterie membership."""
-    # Coterie functionality uses character.db.coterie, not Django models
-    v5 = character.db.vampire if (hasattr(character.db, 'vampire') and character.db.vampire) else {}
-    coterie_data = v5.get('coterie', None)
-
-    if coterie_data:
-        coterie_name = coterie_data.get('name', 'Unknown')
-        role = coterie_data.get('role', 'Member')
-        output = f"\n Coterie: {coterie_name}\n"
-        if role:
-            output += f" Role: {role}\n"
-        return output
-
+    """Format coterie membership (there is no coterie store yet)."""
     return None
 
 
 def format_short_sheet(character):
     """Compact one-line status display."""
     name = character.key
-    clan = get_clan(character) or "Unknown"
-    vamp = character.db.vampire or {}
-    generation = vamp.get('generation', 13)
-    hunger = vamp.get('hunger', 0)
+    clan = character.clan or "Unknown"
+    generation = character.generation
+    hunger = character.hunger
 
     hunger_color = get_hunger_color(hunger)
     hunger_dots = f"{hunger_color}{'●' * hunger}{SHADOW_GREY}{'○' * (5 - hunger)}{RESET}"
 
-    pools = character.db.pools or {}
-    health = pools.get('current_health', pools.get('health', 0))
-    willpower = pools.get('current_willpower', pools.get('willpower', 0))
+    health = f"{character.current_health}/{character.health_max}"
+    willpower = f"{character.current_willpower}/{character.willpower_max}"
 
     return (
         f"{BONE_WHITE}{name}{RESET} "

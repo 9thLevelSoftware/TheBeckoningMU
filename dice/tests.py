@@ -39,7 +39,6 @@ from dice.rouse_checker import (
     perform_rouse_check,
     set_hunger_level,
 )
-from traits.models import CharacterPower, CharacterTrait, DisciplinePower, Trait, TraitCategory
 
 
 class DiceRollerTestCase(EvenniaTest):
@@ -476,131 +475,28 @@ class V5CountingRulesTestCase(EvenniaTest):
 
 
 class DisciplineRollerTestCase(EvenniaTest):
-    """Test discipline power rolling."""
+    """Test discipline power rolling on a real character.
+
+    Traits are written through the Character accessors and powers come from
+    world.v5_data.DISCIPLINE_POWERS.
+    """
 
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
 
-        # Create trait categories
-        self.attr_category = TraitCategory.objects.create(
-            name="Attributes",
-            code="attributes",
-            sort_order=1
-        )
-        self.skill_category = TraitCategory.objects.create(
-            name="Skills",
-            code="skills",
-            sort_order=2
-        )
-        self.discipline_category = TraitCategory.objects.create(
-            name="Disciplines",
-            code="disciplines",
-            sort_order=3
-        )
+        self.char1.hunger = 1
+        self.char1.set_trait("Strength", 4)
+        self.char1.set_trait("Resolve", 3)
+        self.char1.set_trait("Brawl", 3)
+        self.char1.set_trait("Auspex", 2)
+        self.char1.set_trait("Blood Sorcery", 2)
+        self.char1.blood_potency = 2
 
-        # Create attributes
-        self.strength = Trait.objects.create(
-            name="Strength",
-            category=self.attr_category,
-            max_value=5
-        )
-        self.resolve = Trait.objects.create(
-            name="Resolve",
-            category=self.attr_category,
-            max_value=5
-        )
-
-        # Create skills
-        self.brawl = Trait.objects.create(
-            name="Brawl",
-            category=self.skill_category,
-            max_value=5
-        )
-
-        # Create disciplines
-        self.auspex = Trait.objects.create(
-            name="Auspex",
-            category=self.discipline_category,
-            max_value=5
-        )
-        self.blood_sorcery = Trait.objects.create(
-            name="Blood Sorcery",
-            category=self.discipline_category,
-            max_value=5
-        )
-
-        # Create Blood Potency
-        self.blood_potency = Trait.objects.create(
-            name="Blood Potency",
-            category=self.attr_category,
-            max_value=10
-        )
-
-        # Create discipline powers
-        self.heightened_senses = DisciplinePower.objects.create(
-            name="Heightened Senses",
-            discipline=self.auspex,
-            level=1,
-            description="Sharpen your senses to supernatural levels.",
-            dice_pool="Resolve + Auspex",
-            cost="Free",
-            duration="One scene"
-        )
-
-        self.corrosive_vitae = DisciplinePower.objects.create(
-            name="Corrosive Vitae",
-            discipline=self.blood_sorcery,
-            level=2,
-            description="Your blood becomes acidic.",
-            dice_pool="Strength + Blood Sorcery",
-            cost="One Rouse check",
-            duration="One scene"
-        )
-
-        # Set up test character with traits
-        self.char1.db.hunger = 1
-
-        CharacterTrait.objects.create(
-            character=self.char1,
-            trait=self.strength,
-            rating=4
-        )
-        CharacterTrait.objects.create(
-            character=self.char1,
-            trait=self.resolve,
-            rating=3
-        )
-        CharacterTrait.objects.create(
-            character=self.char1,
-            trait=self.brawl,
-            rating=3
-        )
-        CharacterTrait.objects.create(
-            character=self.char1,
-            trait=self.auspex,
-            rating=2
-        )
-        CharacterTrait.objects.create(
-            character=self.char1,
-            trait=self.blood_sorcery,
-            rating=2
-        )
-        CharacterTrait.objects.create(
-            character=self.char1,
-            trait=self.blood_potency,
-            rating=2
-        )
-
-        # Give character the powers
-        CharacterPower.objects.create(
-            character=self.char1,
-            power=self.heightened_senses
-        )
-        CharacterPower.objects.create(
-            character=self.char1,
-            power=self.corrosive_vitae
-        )
+        # Premonition: Auspex 2, free, "Resolve + Auspex".
+        # Corrosive Vitae: Blood Sorcery 1, Rouse, "Strength + Blood Sorcery".
+        self.char1.learn_power("Premonition")
+        self.char1.learn_power("Corrosive Vitae")
 
     def test_parse_dice_pool(self):
         """Test parsing 'Strength + Brawl' into ['Strength', 'Brawl']."""
@@ -634,59 +530,15 @@ class DisciplineRollerTestCase(EvenniaTest):
 
     def test_blood_potency_bonus(self):
         """Test BP adds correct bonus dice."""
-        # BP 0-1: +0
-        CharacterTrait.objects.filter(
-            character=self.char1,
-            trait=self.blood_potency
-        ).update(rating=1)
-        bonus = get_blood_potency_bonus(self.char1, "Auspex")
-        self.assertEqual(bonus, 0)
-
-        # BP 2-3: +1
-        CharacterTrait.objects.filter(
-            character=self.char1,
-            trait=self.blood_potency
-        ).update(rating=2)
-        bonus = get_blood_potency_bonus(self.char1, "Auspex")
-        self.assertEqual(bonus, 1)
-
-        # BP 4-5: +2
-        CharacterTrait.objects.filter(
-            character=self.char1,
-            trait=self.blood_potency
-        ).update(rating=4)
-        bonus = get_blood_potency_bonus(self.char1, "Auspex")
-        self.assertEqual(bonus, 2)
-
-        # BP 6-7: +3
-        CharacterTrait.objects.filter(
-            character=self.char1,
-            trait=self.blood_potency
-        ).update(rating=6)
-        bonus = get_blood_potency_bonus(self.char1, "Auspex")
-        self.assertEqual(bonus, 3)
-
-        # BP 8-9: +4
-        CharacterTrait.objects.filter(
-            character=self.char1,
-            trait=self.blood_potency
-        ).update(rating=8)
-        bonus = get_blood_potency_bonus(self.char1, "Auspex")
-        self.assertEqual(bonus, 4)
-
-        # BP 10: +5
-        CharacterTrait.objects.filter(
-            character=self.char1,
-            trait=self.blood_potency
-        ).update(rating=10)
-        bonus = get_blood_potency_bonus(self.char1, "Auspex")
-        self.assertEqual(bonus, 5)
+        for bp, bonus in ((1, 0), (2, 1), (4, 2), (6, 3), (8, 4), (10, 5)):
+            self.char1.blood_potency = bp
+            self.assertEqual(get_blood_potency_bonus(self.char1, "Auspex"), bonus, f"BP {bp}")
 
     def test_roll_discipline_power(self):
         """Test full integration with character."""
         result = roll_discipline_power(
             self.char1,
-            "Heightened Senses",
+            "Premonition",
             difficulty=2,
             with_rouse=False  # Skip Rouse for deterministic test
         )
@@ -698,7 +550,7 @@ class DisciplineRollerTestCase(EvenniaTest):
         self.assertIn('roll_result', result)
         self.assertIn('success', result)
 
-        self.assertEqual(result['power'].name, "Heightened Senses")
+        self.assertEqual(result['power']['name'], "Premonition")
         self.assertIsInstance(result['roll_result'], RollResult)
 
         # Verify pool calculation: Resolve (3) + Auspex (2) + BP bonus (1) = 6
@@ -713,23 +565,14 @@ class DisciplineRollerTestCase(EvenniaTest):
         self.assertIn("not found", str(context.exception).lower())
 
     def test_character_doesnt_know_power(self):
-        """Test raises ValueError if character doesn't know power."""
-        # Create a power the character doesn't know
-        unknown_power = DisciplinePower.objects.create(
-            name="Unknown Power",
-            discipline=self.auspex,
-            level=3,
-            dice_pool="Resolve + Auspex",
-            cost="One Rouse check"
-        )
-
-        can_use, reason = can_use_power(self.char1, "Unknown Power")
+        """A real power the character hasn't learned is refused."""
+        can_use, reason = can_use_power(self.char1, "Sense the Unseen")
         self.assertFalse(can_use)
         self.assertIn("don't know", reason.lower())
 
     def test_rouse_check_integration(self):
         """Test discipline roll includes Rouse check."""
-        initial_hunger = self.char1.db.hunger
+        initial_hunger = self.char1.hunger
 
         # Mock rouse check to always fail
         with patch('dice.rouse_checker.base_rouse_check') as mock_rouse:
@@ -749,17 +592,11 @@ class DisciplineRollerTestCase(EvenniaTest):
     def test_can_use_power(self):
         """Test checking if character can use a power."""
         # Character can use known power
-        can_use, reason = can_use_power(self.char1, "Heightened Senses")
+        can_use, reason = can_use_power(self.char1, "Premonition")
         self.assertTrue(can_use)
 
         # Character doesn't know power
-        unknown_power = DisciplinePower.objects.create(
-            name="Test Unknown",
-            discipline=self.auspex,
-            level=1,
-            dice_pool="Resolve + Auspex"
-        )
-        can_use, reason = can_use_power(self.char1, "Test Unknown")
+        can_use, reason = can_use_power(self.char1, "Heightened Senses")
         self.assertFalse(can_use)
 
     def test_get_character_discipline_powers(self):
@@ -768,13 +605,13 @@ class DisciplineRollerTestCase(EvenniaTest):
 
         self.assertEqual(len(powers), 2)
         power_names = [p['name'] for p in powers]
-        self.assertIn("Heightened Senses", power_names)
+        self.assertIn("Premonition", power_names)
         self.assertIn("Corrosive Vitae", power_names)
 
         # Filter by discipline
         auspex_powers = get_character_discipline_powers(self.char1, "Auspex")
         self.assertEqual(len(auspex_powers), 1)
-        self.assertEqual(auspex_powers[0]['name'], "Heightened Senses")
+        self.assertEqual(auspex_powers[0]['name'], "Premonition")
 
 
 class RouseCheckerTestCase(EvenniaTest):
@@ -784,19 +621,8 @@ class RouseCheckerTestCase(EvenniaTest):
         """Set up test fixtures."""
         super().setUp()
 
-        # Create Blood Potency trait
-        attr_category = TraitCategory.objects.create(
-            name="Attributes",
-            code="attributes"
-        )
-        self.blood_potency = Trait.objects.create(
-            name="Blood Potency",
-            category=attr_category,
-            max_value=10
-        )
-
         # Set initial Hunger
-        self.char1.db.hunger = 2
+        self.char1.hunger = 2
 
     def test_rouse_check_success(self):
         """Test roll 6+ = no Hunger gain."""
@@ -808,7 +634,7 @@ class RouseCheckerTestCase(EvenniaTest):
             self.assertTrue(result['success'])
             self.assertEqual(result['hunger_change'], 0)
             self.assertEqual(result['hunger_after'], 2)  # No change
-            self.assertEqual(self.char1.db.hunger, 2)
+            self.assertEqual(self.char1.hunger, 2)
 
     def test_rouse_check_failure(self):
         """Test roll 1-5 = +1 Hunger."""
@@ -820,7 +646,7 @@ class RouseCheckerTestCase(EvenniaTest):
             self.assertFalse(result['success'])
             self.assertEqual(result['hunger_change'], 1)
             self.assertEqual(result['hunger_after'], 3)  # 2 + 1
-            self.assertEqual(self.char1.db.hunger, 3)
+            self.assertEqual(self.char1.hunger, 3)
 
     def test_hunger_at_max(self):
         """Stored Hunger never exceeds 5.
@@ -829,23 +655,18 @@ class RouseCheckerTestCase(EvenniaTest):
         Hunger 5: QR p.4 forbids Rousing at Hunger 5 unless forced, and a
         failed forced Rouse provokes frenzy (p.13). PR 5 adds that refusal.
         """
-        self.char1.db.hunger = 5
+        self.char1.hunger = 5
 
         result = perform_rouse_check(self.char1, "Test", power_level=1)
 
         self.assertEqual(result['hunger_before'], 5)
         self.assertEqual(result['hunger_after'], 5)
         self.assertEqual(result['hunger_change'], 0)
-        self.assertEqual(self.char1.db.hunger, 5)
+        self.assertEqual(self.char1.hunger, 5)
 
     def test_blood_potency_reroll_eligibility(self):
         """Test BP allows reroll for low-level powers."""
-        # Create BP trait
-        CharacterTrait.objects.create(
-            character=self.char1,
-            trait=self.blood_potency,
-            rating=3
-        )
+        self.char1.blood_potency = 3
 
         # BP 3 can reroll Level 1-2 powers
         self.assertTrue(can_reroll_rouse(self.char1, power_level=1))
@@ -853,10 +674,7 @@ class RouseCheckerTestCase(EvenniaTest):
         self.assertFalse(can_reroll_rouse(self.char1, power_level=3))
 
         # BP 6 can reroll Level 1-3 powers
-        CharacterTrait.objects.filter(
-            character=self.char1,
-            trait=self.blood_potency
-        ).update(rating=6)
+        self.char1.blood_potency = 6
 
         self.assertTrue(can_reroll_rouse(self.char1, power_level=1))
         self.assertTrue(can_reroll_rouse(self.char1, power_level=2))
@@ -865,11 +683,7 @@ class RouseCheckerTestCase(EvenniaTest):
 
     def test_blood_potency_reroll_occurs(self):
         """Test failed roll gets rerolled automatically."""
-        CharacterTrait.objects.create(
-            character=self.char1,
-            trait=self.blood_potency,
-            rating=2  # Can reroll Level 1
-        )
+        self.char1.blood_potency = 2  # Can reroll Level 1
 
         with patch('dice.rouse_checker.base_rouse_check') as mock_rouse:
             # First call fails, second succeeds
@@ -884,51 +698,51 @@ class RouseCheckerTestCase(EvenniaTest):
             self.assertTrue(result['reroll_used'])
             self.assertTrue(result['success'])  # Reroll succeeded
             self.assertEqual(result['roll'], 7)  # Shows reroll value
-            self.assertEqual(self.char1.db.hunger, 2)  # No hunger gain
+            self.assertEqual(self.char1.hunger, 2)  # No hunger gain
 
     def test_hunger_persistence(self):
-        """Test character.db.hunger updated correctly."""
-        initial_hunger = self.char1.db.hunger
+        """Test Character.hunger is updated."""
+        initial_hunger = self.char1.hunger
 
         with patch('dice.rouse_checker.base_rouse_check') as mock_rouse:
             mock_rouse.return_value = {'roll': 2, 'success': False, 'hunger_change': 1}
 
             result = perform_rouse_check(self.char1, "Test")
 
-            self.assertEqual(self.char1.db.hunger, initial_hunger + 1)
+            self.assertEqual(self.char1.hunger, initial_hunger + 1)
             self.assertEqual(result['hunger_after'], initial_hunger + 1)
 
     def test_get_hunger_level(self):
         """Test getting character's Hunger level."""
-        self.char1.db.hunger = 3
+        self.char1.hunger = 3
         self.assertEqual(get_hunger_level(self.char1), 3)
 
         # Test clamping
-        self.char1.db.hunger = 10
+        self.char1.hunger = 10
         self.assertEqual(get_hunger_level(self.char1), 5)  # Max 5
 
-        self.char1.db.hunger = -1
+        self.char1.hunger = -1
         self.assertEqual(get_hunger_level(self.char1), 0)  # Min 0
 
     def test_set_hunger_level(self):
         """Test setting character's Hunger level."""
         result = set_hunger_level(self.char1, 4)
         self.assertEqual(result, 4)
-        self.assertEqual(self.char1.db.hunger, 4)
+        self.assertEqual(self.char1.hunger, 4)
 
         # Test clamping to max
         result = set_hunger_level(self.char1, 10)
         self.assertEqual(result, 5)
-        self.assertEqual(self.char1.db.hunger, 5)
+        self.assertEqual(self.char1.hunger, 5)
 
         # Test clamping to min
         result = set_hunger_level(self.char1, -2)
         self.assertEqual(result, 0)
-        self.assertEqual(self.char1.db.hunger, 0)
+        self.assertEqual(self.char1.hunger, 0)
 
     def test_format_hunger_display(self):
         """Test formatting Hunger for display."""
-        self.char1.db.hunger = 3
+        self.char1.hunger = 3
         display = format_hunger_display(self.char1)
 
         self.assertIsInstance(display, str)
@@ -942,10 +756,8 @@ class RouseCheckerTestCase(EvenniaTest):
     REROLL_MAX_LEVEL = {0: 0, 1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4, 9: 5, 10: 5}
 
     def assert_reroll_levels(self, bps):
-        trait = CharacterTrait.objects.create(character=self.char1, trait=self.blood_potency, rating=0)
         for bp in bps:
-            trait.rating = bp
-            trait.save()
+            self.char1.blood_potency = bp
             max_level = self.REROLL_MAX_LEVEL[bp]
             for level in range(1, 6):
                 self.assertEqual(
