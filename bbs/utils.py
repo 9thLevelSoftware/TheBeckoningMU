@@ -33,6 +33,22 @@ def can_read(account, board, post=None):
     return post is None or perm_allows(account, post.read_perm)
 
 
+def has_required_flags(caller, board):
+    """True if the board needs no flags, or the caller's character has them all."""
+    required_flags = board.get_required_flags_list()
+    if not required_flags:
+        return True
+    if not isinstance(caller, DefaultObject):
+        return False  # flags live on characters
+    char_flags = caller.db.flags or {}
+    return all(char_flags.get(flag) for flag in required_flags)
+
+
+def can_access_board(caller, board):
+    """Read perm and required flags together: what lists, counts and reads all use."""
+    return can_read(account_of(caller), board) and has_required_flags(caller, board)
+
+
 def readable_posts(account, board):
     """The board's posts the account may read, oldest first, with authors loaded."""
     if not can_read(account, board):
@@ -65,25 +81,10 @@ def get_board(caller, board_id, check_perm=True):
     if not check_perm:
         return board
     
-    # Check read permissions
-    if not can_read(account_of(caller), board):
+    # Read perm and required character flags
+    if not can_access_board(caller, board):
         return None
-    
-    # Check required flags
-    required_flags = board.get_required_flags_list()
-    if required_flags:
-        # Get character flags
-        character = caller if hasattr(caller, 'db') else None
-        if character:
-            char_flags = character.db.flags or {}
-            # Check if character has all required flags
-            for flag in required_flags:
-                if not char_flags.get(flag):
-                    return None
-        else:
-            # No character, can't check flags
-            return None
-    
+
     return board
 
 
@@ -128,7 +129,7 @@ def format_board_list(caller, boards):
         Formatted string for display
     """
     account = account_of(caller)
-    boards = [board for board in boards if can_read(account, board)]
+    boards = [board for board in boards if can_access_board(caller, board)]
     if not boards:
         return "No boards available."
 
@@ -279,7 +280,11 @@ def format_post_read(post, viewer=None):
                 output += "|c|||n" + "-" * 78 + "|c|||n\n"
             first_comment = False
 
-            comment_author = comment.author.username if comment.author else "Unknown"
+            if post.is_anonymous and comment.author_id == post.author_id:
+                # The anonymous poster replying in their own thread stays anonymous.
+                comment_author = post.get_author_name(account_of(viewer))
+            else:
+                comment_author = comment.author.username if comment.author else "Unknown"
             comment_date = comment.created_at.strftime("%m/%d/%y %I:%M %p")
 
             comment_header = f"|w{comment_author}|n ({comment_date}):{' ' * (52 - len(comment_author) - len(comment_date))}"
