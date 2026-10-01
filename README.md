@@ -29,7 +29,7 @@ The repository root **is** the Evennia game directory, so run every `evennia` co
    .venv\Scripts\activate           # Windows (PowerShell or cmd)
    ```
 
-   Or skip activation and prefix each command below with `uv run` (for example `uv run evennia migrate`).
+   Or skip activation and prefix each command below with `uv run` (for example `uv run evennia migrate`). If PowerShell refuses to run the activation script ("running scripts is disabled on this system"), use `uv run` instead, or allow local scripts once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
 3. Create the untracked per-host files (`server/conf/secret_settings.py` with a fresh random `SECRET_KEY`, and `server/logs/`):
 
@@ -66,7 +66,9 @@ The repository root **is** the Evennia game directory, so run every `evennia` co
 ### Day to day
 
 ```bash
-evennia stop | reload | status
+evennia stop
+evennia reload
+evennia status
 ```
 
 - After each `git pull`, run `evennia migrate` before starting the server.

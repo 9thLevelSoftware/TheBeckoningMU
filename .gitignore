@@ -65,7 +65,6 @@ nul
 
 # ----- AI Dev Tooling -----
 # Claude Code
-CLAUDE.md
 /.claude/
 # DevilMCP / Daem0nMCP
 /.devilmcp/
