@@ -214,6 +214,12 @@
         <!-- Project cards -->
         <div id="project-cards" class="review-grid"></div>
     </div>
+
+    <!-- Recently reviewed: every review records who made it -->
+    <div class="page-header" style="margin-top: 40px;">
+        <h2 style="font-size: 18px;">Recently Reviewed</h2>
+    </div>
+    <div id="reviewed-list"></div>
 </div>
 
 <!-- Reject Modal -->
@@ -454,6 +460,8 @@ async function loadProjects() {
             return;
         }
 
+        renderReviewed(data.reviewed || []);
+
         const projects = data.projects || [];
         countBadge.innerHTML = `<i class="bi bi-inbox" style="font-size: 12px;"></i> ${projects.length} pending`;
 
@@ -496,6 +504,11 @@ async function loadProjects() {
                         </div>
                     </div>
 
+                    <div class="builder-notes">
+                        <strong>Connects to</strong><br>
+                        ${formatConnection(project.connection)}
+                    </div>
+
                     ${project.submission_notes ? `
                     <div class="builder-notes">
                         <strong>Builder Notes</strong><br>
@@ -508,14 +521,17 @@ async function loadProjects() {
                     </div>
                 </div>
                 <div class="review-card-footer">
-                    <button class="btn-accent" style="flex: 1;"
-                            onclick="approveProject(${project.id}, '${escapeHtml(project.name)}')">
+                    ${project.can_review ? `
+                    <button class="btn-accent js-approve" style="flex: 1;" data-id="${Number(project.id)}">
                         <i class="bi bi-check-lg"></i> Approve
                     </button>
-                    <button class="btn-ghost" style="flex: 1; color: var(--builder-accent-light); border-color: rgba(139,0,0,0.3);"
-                            onclick="showRejectModal(${project.id}, '${escapeHtml(project.name)}')">
+                    <button class="btn-ghost js-reject" style="flex: 1; color: var(--builder-accent-light); border-color: rgba(139,0,0,0.3);"
+                            data-id="${Number(project.id)}">
                         <i class="bi bi-x-lg"></i> Reject
                     </button>
+                    ` : `
+                    <span style="flex: 1; color: var(--builder-muted); font-size: 13px;">Your own project: another staff member must review it.</span>
+                    `}
                     <a href="/builder/edit/${project.id}/" class="btn-ghost" style="text-decoration:none;"
                        target="_blank" title="View full map">
                         <i class="bi bi-box-arrow-up-right"></i>
@@ -523,6 +539,21 @@ async function loadProjects() {
                 </div>
             </div>`;
         }).join('');
+
+        // Wire buttons by id; names are looked up, never spliced into code.
+        const byId = new Map(projects.map(p => [String(p.id), p]));
+        container.querySelectorAll('.js-approve').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const p = byId.get(btn.dataset.id);
+                if (p) approveProject(p.id, p.name);
+            });
+        });
+        container.querySelectorAll('.js-reject').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const p = byId.get(btn.dataset.id);
+                if (p) showRejectModal(p.id, p.name);
+            });
+        });
 
         // Render map previews
         projects.forEach(project => {
@@ -545,12 +576,60 @@ async function loadProjects() {
     }
 }
 
-// XSS protection
+// XSS protection: safe in element content and in quoted attributes.
 function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    if (text === null || text === undefined) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatConnection(conn) {
+    if (!conn) return 'No connection room set';
+    const name = conn.room_name ? escapeHtml(conn.room_name) : '(missing room)';
+    return `${name} (#${Number(conn.room_id)}), direction ${escapeHtml(conn.direction)}`;
+}
+
+function renderReviewed(reviewed) {
+    const list = document.getElementById('reviewed-list');
+    list.replaceChildren();
+    if (reviewed.length === 0) {
+        const p = document.createElement('p');
+        p.className = 'text-builder-muted';
+        p.textContent = 'No reviews yet.';
+        list.appendChild(p);
+        return;
+    }
+    const table = document.createElement('table');
+    table.className = 'table table-sm';
+    const head = table.createTHead().insertRow();
+    ['Project', 'Builder', 'Status', 'Reviewed by', 'Connects to', 'When'].forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        head.appendChild(th);
+    });
+    const body = table.createTBody();
+    reviewed.forEach(r => {
+        const row = body.insertRow();
+        const conn = r.connection
+            ? `${r.connection.room_name || '(missing room)'} (#${r.connection.room_id}) ${r.connection.direction || ''}`
+            : '';
+        const cells = [
+            r.name,
+            r.user.username,
+            r.status,
+            r.reviewed_by + (r.self_reviewed ? ' (self-approved)' : ''),
+            conn,
+            r.reviewed_at ? new Date(r.reviewed_at).toLocaleString() : '',
+        ];
+        cells.forEach(text => {
+            row.insertCell().textContent = text;
+        });
+    });
+    list.appendChild(table);
 }
 
 document.addEventListener('DOMContentLoaded', loadProjects);

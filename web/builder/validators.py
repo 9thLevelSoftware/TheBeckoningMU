@@ -99,3 +99,46 @@ def validate_project(map_data):
 
     is_valid = len(errors) == 0
     return is_valid, errors, warnings
+
+
+# Directions a build may hang off its live connection room.
+CONNECTION_DIRECTIONS = ("n", "s", "e", "w", "ne", "nw", "se", "sw", "u", "d")
+
+
+def validate_connection(connection_room_id, connection_direction):
+    """
+    Validate the live attachment point a project is submitted with.
+
+    The connection is part of what the reviewer approves, so it must name an
+    existing live (non-sandbox) Room and a known direction.
+
+    Returns:
+        tuple: (errors, room_id, direction) where room_id is an int and
+        direction is lower-cased when valid.
+    """
+    from evennia.objects.models import ObjectDB
+
+    errors = []
+    try:
+        room_id = int(connection_room_id)
+    except (TypeError, ValueError):
+        room_id = None
+    if room_id is None or isinstance(connection_room_id, bool):
+        errors.append("connection_room_id is required and must be a room dbref")
+        room_id = None
+
+    direction = connection_direction.lower() if isinstance(connection_direction, str) else ""
+    if direction not in CONNECTION_DIRECTIONS:
+        errors.append(
+            "connection_direction is required and must be one of: "
+            + ", ".join(CONNECTION_DIRECTIONS)
+        )
+
+    if room_id is not None:
+        room = ObjectDB.objects.filter(pk=room_id).first()
+        if room is None or not room.is_typeclass("typeclasses.rooms.Room", exact=False):
+            errors.append(f"Connection room #{room_id} is not a room")
+        elif room.tags.has("sandbox"):
+            errors.append(f"Connection room #{room_id} is a sandbox room, not a live one")
+
+    return errors, room_id, direction

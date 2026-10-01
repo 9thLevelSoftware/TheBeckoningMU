@@ -1,6 +1,10 @@
-from django.db import models
+import copy
+
 from django.conf import settings
+from django.db import models
 from django.utils import timezone
+
+from web.permissions import has_perm
 
 
 class BuildProject(models.Model):
@@ -27,6 +31,14 @@ class BuildProject(models.Model):
     description = models.TextField(blank=True)
     # Stores the entire frontend state: rooms, exits, objects, triggers, coords
     map_data = models.JSONField(default=dict)
+    # Snapshot taken at approval: {"map_data", "connection_room_id",
+    # "connection_direction"}. The sandbox build reads this, never map_data,
+    # so what reaches the game is exactly what the reviewer approved.
+    approved_map_data = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Snapshot of map_data and connection taken at approval",
+    )
     # Visibility to other builders
     is_public = models.BooleanField(default=True)
     # Optimistic concurrency version -- incremented on each save
@@ -89,6 +101,20 @@ class BuildProject(models.Model):
         status_display = self.get_status_display()
         return f"{self.name} ({status_display}) by {self.user.username}"
 
+    def is_editable(self):
+        """Map edits are allowed only before review (draft, which includes
+        projects returned by a rejection)."""
+        return self.status == "draft"
+
+    def can_be_reviewed_by(self, user):
+        """
+        Builders and below may never review their own project; Admins and
+        above (including superusers) may. The reviewer is always recorded.
+        """
+        if not has_perm(user, "Builder"):
+            return False
+        return user != self.user or has_perm(user, "Admin")
+
     def can_transition_to(self, new_status):
         """
         Check if a status transition is valid.
@@ -114,26 +140,52 @@ class BuildProject(models.Model):
         """
         Submit a draft project for staff review.
         Transitions: draft -> submitted
-        Clears any previous rejection notes.
+        Clears any previous rejection notes, and saves the submission notes
+        and the connection point set by the caller.
         """
         if not self.can_transition_to("submitted"):
             raise ValueError(f"Cannot submit project in '{self.status}' status")
         self.status = "submitted"
         self.rejection_notes = ""
-        self.save(update_fields=["status", "rejection_notes", "updated_at"])
+        self.save(
+            update_fields=[
+                "status",
+                "rejection_notes",
+                "submission_notes",
+                "connection_room_id",
+                "connection_direction",
+                "updated_at",
+            ]
+        )
 
     def approve(self, user):
         """
         Approve a submitted project.
         Transitions: submitted -> approved
-        Records reviewer and timestamp.
+        Records reviewer and timestamp, and snapshots the reviewed map and
+        connection point into approved_map_data in the same save.
         """
+        if not self.can_be_reviewed_by(user):
+            raise PermissionError("You cannot review your own project")
         if not self.can_transition_to("approved"):
             raise ValueError(f"Cannot approve project in '{self.status}' status")
         self.status = "approved"
         self.reviewed_by = user
         self.reviewed_at = timezone.now()
-        self.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+        self.approved_map_data = {
+            "map_data": copy.deepcopy(self.map_data),
+            "connection_room_id": self.connection_room_id,
+            "connection_direction": self.connection_direction,
+        }
+        self.save(
+            update_fields=[
+                "status",
+                "reviewed_by",
+                "reviewed_at",
+                "approved_map_data",
+                "updated_at",
+            ]
+        )
 
     def reject(self, user, notes):
         """
@@ -141,6 +193,8 @@ class BuildProject(models.Model):
         Transitions: submitted -> draft
         Increments rejection count and stores notes.
         """
+        if not self.can_be_reviewed_by(user):
+            raise PermissionError("You cannot review your own project")
         if not self.can_transition_to("draft"):
             raise ValueError(f"Cannot reject project in '{self.status}' status")
         if not notes or not notes.strip():
