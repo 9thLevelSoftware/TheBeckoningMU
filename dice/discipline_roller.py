@@ -10,7 +10,7 @@ Rouse checks.
 from typing import Dict, Any, List, Optional, Tuple
 from .dice_roller import roll_v5_pool
 from .rouse_checker import perform_rouse_check, get_hunger_level
-from world.v5_data import UnknownTrait, find_power
+from world.v5_data import BLOOD_POTENCY, UnknownTrait, find_power
 
 
 def _trait_value(character, trait_name: str) -> int:
@@ -215,13 +215,8 @@ def get_blood_potency_bonus(character, discipline_name: str) -> int:
     """
     Get Blood Potency bonus dice for discipline rolls.
 
-    Blood Potency provides bonus dice to all discipline rolls:
-    - BP 0-1: +0 dice
-    - BP 2-3: +1 die
-    - BP 4-5: +2 dice
-    - BP 6-7: +3 dice
-    - BP 8-9: +4 dice
-    - BP 10: +5 dice
+    Blood Potency adds dice to Discipline rolls; the amount is
+    world.v5_data.BLOOD_POTENCY["power_bonus"].
 
     Args:
         character: Character object
@@ -229,26 +224,9 @@ def get_blood_potency_bonus(character, discipline_name: str) -> int:
 
     Returns:
         int: Bonus dice (0-5)
-
-    Examples:
-        >>> get_blood_potency_bonus(character, "Auspex")
-        2  # Character has BP 4
     """
-    blood_potency = character.blood_potency
-
-    # Calculate bonus based on BP level
-    if blood_potency >= 10:
-        return 5
-    elif blood_potency >= 8:
-        return 4
-    elif blood_potency >= 6:
-        return 3
-    elif blood_potency >= 4:
-        return 2
-    elif blood_potency >= 2:
-        return 1
-    else:
-        return 0
+    row = BLOOD_POTENCY.get(character.blood_potency)
+    return row["power_bonus"] if row else 0
 
 
 def can_use_power(character, power_name: str) -> Tuple[bool, str]:

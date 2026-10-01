@@ -8,6 +8,8 @@ Hunger, feeding, Blood Surge, and resonance.
 from typing import Dict, Any, Optional
 import time
 
+from world.v5_data import BLOOD_POTENCY
+
 
 # Constants
 
@@ -335,16 +337,17 @@ def get_blood_potency_bonus(character) -> int:
         character: Character object
 
     Returns:
-        int: Bonus dice (equal to Blood Potency)
+        int: Bonus dice, from world.v5_data.BLOOD_POTENCY["blood_surge"]
     """
-    return get_blood_potency(character)
+    row = BLOOD_POTENCY.get(get_blood_potency(character))
+    return row["blood_surge"] if row else 0
 
 
 def activate_blood_surge(character, trait_type: str, trait_name: str) -> Dict[str, Any]:
     """
     Activate Blood Surge to boost a trait.
 
-    Blood Surge adds dice equal to Blood Potency to a specified trait
+    Blood Surge adds the Blood Potency table's surge dice to a specified trait
     for one scene (1 hour). Requires a Rouse check.
 
     Args:

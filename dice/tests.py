@@ -765,12 +765,9 @@ class RouseCheckerTestCase(EvenniaTest):
                 )
 
     def test_blood_potency_reroll_levels(self):
-        """BP levels where the code already matches the V5 table."""
         self.assert_reroll_levels([0, 1, 2, 3, 4, 6, 8, 10])
 
-    # F-022 (BP table), fixed in PR 5: can_reroll_rouse groups BP 3-5, 6-7
-    # and 8-9, so BP 5, 7 and 9 re-roll one power level too few.
-    @unittest.expectedFailure
+    # F-022: can_reroll_rouse used to group BP 3-5, 6-7 and 8-9.
     def test_blood_potency_reroll_levels_odd_bp(self):
         self.assert_reroll_levels([5, 7, 9])
 

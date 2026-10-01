@@ -7,6 +7,9 @@ Potency are read and written through the Character accessors
 """
 
 from typing import Dict, Any, Optional
+
+from world.v5_data import BLOOD_POTENCY
+
 from .dice_roller import roll_rouse_check as base_rouse_check
 
 
@@ -110,17 +113,9 @@ def can_reroll_rouse(character, power_level: int) -> bool:
     """
     Check if character can reroll a failed Rouse check based on Blood Potency.
 
-    Blood Potency allows vampires to reroll failed Rouse checks for powers
-    at or below a certain level threshold.
-
-    Reroll Eligibility by Blood Potency:
-    - BP 0: No rerolls
-    - BP 1-2: Reroll Level 1 powers
-    - BP 3: Reroll Level 1-2 powers
-    - BP 4-5: Reroll Level 1-2 powers
-    - BP 6-7: Reroll Level 1-3 powers
-    - BP 8-9: Reroll Level 1-4 powers
-    - BP 10: Reroll Level 1-5 powers (all powers)
+    Blood Potency lets a vampire re-roll a failed Rouse check for powers at
+    or below a level set by world.v5_data.BLOOD_POTENCY["rouse_reroll"]
+    (0 = no re-roll). The table is the only source of these values.
 
     Args:
         character: Character object
@@ -128,37 +123,11 @@ def can_reroll_rouse(character, power_level: int) -> bool:
 
     Returns:
         bool: True if character can reroll this power's Rouse check
-
-    Examples:
-        >>> # Character with BP 3 using Level 2 power
-        >>> can_reroll_rouse(character, power_level=2)
-        True
-        >>> # Same character using Level 3 power
-        >>> can_reroll_rouse(character, power_level=3)
-        False
     """
-    # Get character's Blood Potency
-    blood_potency = character.blood_potency
-
-    # Determine maximum power level eligible for reroll
-    if blood_potency == 0:
-        max_reroll_level = 0  # No rerolls
-    elif blood_potency in [1, 2]:
-        max_reroll_level = 1  # Level 1 only
-    elif blood_potency == 3:
-        max_reroll_level = 2  # Levels 1-2
-    elif blood_potency in [4, 5]:
-        max_reroll_level = 2  # Levels 1-2
-    elif blood_potency in [6, 7]:
-        max_reroll_level = 3  # Levels 1-3
-    elif blood_potency in [8, 9]:
-        max_reroll_level = 4  # Levels 1-4
-    elif blood_potency >= 10:
-        max_reroll_level = 5  # All levels
-    else:
-        max_reroll_level = 0
-
-    return power_level <= max_reroll_level
+    row = BLOOD_POTENCY.get(character.blood_potency)
+    if row is None:
+        return False
+    return power_level <= row["rouse_reroll"]
 
 
 def get_hunger_level(character) -> int:

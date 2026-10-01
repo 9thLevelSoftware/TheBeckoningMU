@@ -391,13 +391,11 @@ class BloodSurgeManagementTests(EvenniaTest):
         self.assertEqual(blood_utils.get_blood_potency(self.char), 3)
         self.assertTrue(can_reroll_rouse(self.char, 1))
 
-    # F-022/F-093, fixed in PR 5: the surge bonus is "equal to Blood Potency"
-    # and BP always reads 0. The values below are the current, errata'd Blood
+    # F-022/F-093. The values below are the current, errata'd Blood
     # Potency table (Renegade "V5 Blood Potency Correction" sheet; The
     # Companion 2020 p.63; Players Guide p.248; later core printings). The
     # Quick Reference 2.0 p.14 shows the pre-errata 2018 printing, one die
     # lower at every BP.
-    @unittest.expectedFailure
     def test_blood_surge_bonus_follows_bp_table(self):
         expected = {0: 1, 1: 2, 2: 2, 3: 3, 4: 3, 5: 4, 6: 4, 7: 5, 8: 5, 9: 6, 10: 6}
         for bp, bonus in expected.items():

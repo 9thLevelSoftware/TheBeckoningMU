@@ -1370,96 +1370,49 @@ BACKGROUNDS = {
 # ============================================================================
 # BLOOD POTENCY TABLE
 # ============================================================================
+# Source: Renegade Game Studios, "V5 Blood Potency Correction" (official
+# errata sheet, https://renegadegamestudios.com/content/File%20Storage%20for%20site/VTM/BloodPotencyTable.pdf),
+# which is the table in The Companion (2020) p.63, Players Guide p.248 and
+# later core printings. The V5 Quick Reference 2.0 p.14 and the 2018 first
+# printing show older Surge and Bane values; don't use them.
+#   blood_surge     - dice added by a Blood Surge
+#   mend_amount     - Superficial damage mended per Rouse check
+#   power_bonus     - dice added to Discipline pools
+#   rouse_reroll    - re-roll a failed Rouse check for powers of this level
+#                     and below (0 = no re-roll)
+#   bane_severity   - clan Bane Severity
+#   feeding_penalty - restrictions on slaking Hunger
+# Nothing else in the game may hardcode these values; read this table.
 
 BLOOD_POTENCY = {
-    0: {
-        "blood_surge": 0,
-        "mend_amount": 1,
-        "power_bonus": 0,
-        "rouse_reroll": 0,
-        "bane_severity": 0,
-        "feeding_penalty": "No effect"
-    },
-    1: {
-        "blood_surge": 1,
-        "mend_amount": 1,
-        "power_bonus": 0,
-        "rouse_reroll": 0,
-        "bane_severity": 1,
-        "feeding_penalty": "No slaking from animals"
-    },
-    2: {
-        "blood_surge": 2,
-        "mend_amount": 2,
-        "power_bonus": 1,
-        "rouse_reroll": 1,
-        "bane_severity": 1,
-        "feeding_penalty": "No slaking from animals"
-    },
-    3: {
-        "blood_surge": 2,
-        "mend_amount": 2,
-        "power_bonus": 1,
-        "rouse_reroll": 1,
-        "bane_severity": 2,
-        "feeding_penalty": "No slaking from animals or bagged blood"
-    },
-    4: {
-        "blood_surge": 3,
-        "mend_amount": 3,
-        "power_bonus": 2,
-        "rouse_reroll": 2,
-        "bane_severity": 2,
-        "feeding_penalty": "No slaking from animals or bagged blood"
-    },
-    5: {
-        "blood_surge": 3,
-        "mend_amount": 3,
-        "power_bonus": 2,
-        "rouse_reroll": 2,
-        "bane_severity": 3,
-        "feeding_penalty": "Must drain and kill to slake at least 1 Hunger"
-    },
-    6: {
-        "blood_surge": 4,
-        "mend_amount": 3,
-        "power_bonus": 3,
-        "rouse_reroll": 3,
-        "bane_severity": 3,
-        "feeding_penalty": "Must drain and kill to slake at least 1 Hunger"
-    },
-    7: {
-        "blood_surge": 4,
-        "mend_amount": 4,
-        "power_bonus": 3,
-        "rouse_reroll": 3,
-        "bane_severity": 4,
-        "feeding_penalty": "Must drain and kill, only 1 Hunger per human"
-    },
-    8: {
-        "blood_surge": 5,
-        "mend_amount": 4,
-        "power_bonus": 4,
-        "rouse_reroll": 4,
-        "bane_severity": 4,
-        "feeding_penalty": "Must drain and kill, only 1 Hunger per human"
-    },
-    9: {
-        "blood_surge": 5,
-        "mend_amount": 5,
-        "power_bonus": 4,
-        "rouse_reroll": 4,
-        "bane_severity": 5,
-        "feeding_penalty": "Must drain and kill vampires (1 Hunger per vampire)"
-    },
-    10: {
-        "blood_surge": 6,
-        "mend_amount": 5,
-        "power_bonus": 5,
-        "rouse_reroll": 5,
-        "bane_severity": 5,
-        "feeding_penalty": "Must drain and kill vampires (1 Hunger per vampire)"
-    }
+    0: {"blood_surge": 1, "mend_amount": 1, "power_bonus": 0, "rouse_reroll": 0, "bane_severity": 0,
+        "feeding_penalty": "No effect"},
+    1: {"blood_surge": 2, "mend_amount": 1, "power_bonus": 0, "rouse_reroll": 1, "bane_severity": 2,
+        "feeding_penalty": "No effect"},
+    2: {"blood_surge": 2, "mend_amount": 2, "power_bonus": 1, "rouse_reroll": 1, "bane_severity": 2,
+        "feeding_penalty": "Animal and bagged blood slake half Hunger"},
+    3: {"blood_surge": 3, "mend_amount": 2, "power_bonus": 1, "rouse_reroll": 2, "bane_severity": 3,
+        "feeding_penalty": "Animal and bagged blood slake no Hunger"},
+    4: {"blood_surge": 3, "mend_amount": 3, "power_bonus": 2, "rouse_reroll": 2, "bane_severity": 3,
+        "feeding_penalty": "Animal and bagged blood slake no Hunger; slake 1 less Hunger per human"},
+    5: {"blood_surge": 4, "mend_amount": 3, "power_bonus": 2, "rouse_reroll": 3, "bane_severity": 4,
+        "feeding_penalty": ("Animal and bagged blood slake no Hunger; slake 1 less Hunger per human; "
+                            "must drain and kill a human to reduce Hunger below 2")},
+    6: {"blood_surge": 4, "mend_amount": 3, "power_bonus": 3, "rouse_reroll": 3, "bane_severity": 4,
+        "feeding_penalty": ("Animal and bagged blood slake no Hunger; slake 2 less Hunger per human; "
+                            "must drain and kill a human to reduce Hunger below 2")},
+    7: {"blood_surge": 5, "mend_amount": 3, "power_bonus": 3, "rouse_reroll": 4, "bane_severity": 5,
+        "feeding_penalty": ("Animal and bagged blood slake no Hunger; slake 2 less Hunger per human; "
+                            "must drain and kill a human to reduce Hunger below 2")},
+    8: {"blood_surge": 5, "mend_amount": 4, "power_bonus": 4, "rouse_reroll": 4, "bane_severity": 5,
+        "feeding_penalty": ("Animal and bagged blood slake no Hunger; slake 2 less Hunger per human; "
+                            "must drain and kill a human to reduce Hunger below 3")},
+    9: {"blood_surge": 6, "mend_amount": 4, "power_bonus": 4, "rouse_reroll": 5, "bane_severity": 6,
+        "feeding_penalty": ("Animal and bagged blood slake no Hunger; slake 2 less Hunger per human; "
+                            "must drain and kill a human to reduce Hunger below 3")},
+    10: {"blood_surge": 6, "mend_amount": 5, "power_bonus": 5, "rouse_reroll": 5, "bane_severity": 6,
+         "feeding_penalty": ("Animal and bagged blood slake no Hunger; slake 3 less Hunger per human; "
+                             "must drain and kill a human to reduce Hunger below 3")},
 }
 
 # ============================================================================
