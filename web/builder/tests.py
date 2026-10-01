@@ -221,6 +221,51 @@ class ReviewConcurrencyTests(BuilderGateTestBase):
         self.assertEqual(project.reviewed_by, self.admin)
         self.assertIsNone(project.approved_map_data)
 
+    def test_resubmit_with_new_connection_invalidates_old_card(self):
+        # Reviewer A loads the card; reviewer B rejects; the owner resubmits
+        # unchanged map but a different connection room. A's approve is stale.
+        other_room = create.create_object("typeclasses.rooms.Room", key="Docks", nohome=True)
+        project = self.submitted_project(self.owner)
+        card_version = BuildProject.objects.get(pk=project.pk).version
+
+        self.assertEqual(self.reject(self.client_for(self.admin), project).status_code, 200)
+        resp = self.submit(self.client_for(self.owner), project, room_id=other_room.id, direction="s")
+        self.assertEqual(resp.status_code, 200)
+        project.refresh_from_db()
+        self.assertEqual(project.connection_room_id, other_room.id)
+        self.assertNotEqual(project.version, card_version)
+
+        resp = self.approve(self.client_for(self.builder2), project, version=card_version)
+        self.assertEqual(resp.status_code, 409)
+        project.refresh_from_db()
+        self.assertEqual(project.status, "submitted")
+        self.assertIsNone(project.approved_map_data)
+
+        # With the current version, the new connection is what gets approved.
+        self.assertEqual(self.approve(self.client_for(self.builder2), project).status_code, 200)
+        project.refresh_from_db()
+        self.assertEqual(project.approved_map_data["connection_room_id"], other_room.id)
+        self.assertEqual(project.approved_map_data["connection_direction"], "s")
+
+    def test_submit_and_reject_bump_version(self):
+        project = self.make_project(self.owner)
+        v0 = project.version
+        self.submit(self.client_for(self.owner), project)
+        project.refresh_from_db()
+        self.assertEqual(project.version, v0 + 1)
+        self.reject(self.client_for(self.builder2), project)
+        project.refresh_from_db()
+        self.assertEqual(project.version, v0 + 2)
+
+    def test_stale_submit_is_refused(self):
+        project = self.make_project(self.owner)
+        stale = BuildProject.objects.get(pk=project.pk)
+        BuildProject.objects.filter(pk=project.pk).update(version=project.version + 1)
+        with self.assertRaises(StaleReviewError):
+            stale.submit()
+        project.refresh_from_db()
+        self.assertEqual(project.status, "draft")
+
 
 class AuthorityTests(BuilderGateTestBase):
     def _route_urls(self, project):

@@ -147,29 +147,37 @@ class BuildProject(models.Model):
         Transitions: draft -> submitted
         Clears any previous rejection notes, and saves the submission notes
         and the connection point set by the caller.
+
+        Bumps `version`, as a conditional update on draft-at-this-version, so
+        a review card loaded before this submission (e.g. with a different
+        connection room) can no longer approve it.
         """
         if not self.can_transition_to("submitted"):
             raise ValueError(f"Cannot submit project in '{self.status}' status")
-        self.status = "submitted"
-        self.rejection_notes = ""
-        self.save(
-            update_fields=[
-                "status",
-                "rejection_notes",
-                "submission_notes",
-                "connection_room_id",
-                "connection_direction",
-                "updated_at",
-            ]
+        updated = BuildProject.objects.filter(
+            pk=self.pk, status="draft", version=self.version
+        ).update(
+            status="submitted",
+            rejection_notes="",
+            submission_notes=self.submission_notes,
+            connection_room_id=self.connection_room_id,
+            connection_direction=self.connection_direction,
+            version=F("version") + 1,
+            updated_at=timezone.now(),
         )
+        if not updated:
+            raise StaleReviewError(
+                "Project changed since you loaded it. Reload and submit again."
+            )
+        self.refresh_from_db()
 
-    def _review_update(self, version, **fields):
+    def _review_update(self, seen_version, **fields):
         """
         Apply a review transition only if the project is still submitted at
         the version the reviewer saw. Raises StaleReviewError otherwise.
         """
         updated = BuildProject.objects.filter(
-            pk=self.pk, status="submitted", version=version
+            pk=self.pk, status="submitted", version=seen_version
         ).update(**fields)
         if not updated:
             raise StaleReviewError(
@@ -235,6 +243,8 @@ class BuildProject(models.Model):
             status="draft",
             rejection_notes=notes,
             rejection_count=F("rejection_count") + 1,
+            # A new version, so cards loaded before the rejection go stale.
+            version=F("version") + 1,
             reviewed_by=user,
             reviewed_at=now,
             updated_at=now,

@@ -441,6 +441,8 @@ class SubmitProjectView(BuilderRequiredMixin, View):
                     },
                 }
             )
+        except StaleReviewError as e:
+            return JsonResponse({"status": "error", "error": str(e)}, status=409)
         except ValueError as e:
             return JsonResponse({"status": "error", "error": str(e)}, status=400)
 
