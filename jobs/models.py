@@ -6,15 +6,20 @@ jobs, comments, and tags following BBS-style sequence numbering.
 """
 
 import threading
+from contextlib import nullcontext
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.db.models import Max
 from evennia.accounts.models import AccountDB
 
-# Serializes sequence allocation within this process. Evennia runs the game
-# loop and the web views (Twisted's thread pool) in one process, so this
-# closes the race there; the savepoint retry in Job.save() covers the rest.
+# Serializes sequence allocation between threads of this process (Evennia runs
+# the game loop and the web views' thread pool in one process; SQLite rejects
+# concurrent writers outright). Limits: it only serializes saves made outside
+# an outer transaction (inside one, the lock would be released before the
+# outer commit, so Job.save() skips it and relies on the savepoint retry), and
+# it does nothing across processes or for a server database, which would need
+# a DB-level counter or lock.
 _SEQUENCE_LOCK = threading.Lock()
 
 
@@ -202,14 +207,17 @@ class Job(models.Model):
 
         The max is read and the row inserted in one savepoint. If another
         writer took the number first (IntegrityError), roll the savepoint
-        back and allocate again once.
+        back and allocate again once. See _SEQUENCE_LOCK for what the lock
+        does and doesn't cover.
         """
         self.clean()
         if self.pk or self.sequence_number:
             super().save(*args, **kwargs)
             return
 
-        with _SEQUENCE_LOCK:
+        connection = transaction.get_connection()
+        lock = nullcontext() if connection.in_atomic_block else _SEQUENCE_LOCK
+        with lock:
             for attempt in range(2):
                 try:
                     with transaction.atomic():

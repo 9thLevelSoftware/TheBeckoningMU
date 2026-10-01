@@ -43,6 +43,9 @@ class CmdJobs(COMMAND_DEFAULT_CLASS):
     help_category = "Jobs"
     
     def func(self):
+        if self.switches and self.switches != ["list"]:
+            self.caller.msg(f"Unknown or staff-only switch: /{self.switches[0]}. See help jobs.")
+            return
         if self.args:
             # List jobs in specific bucket
             bucket = utils.get_bucket(self.caller, self.args.strip())
@@ -82,6 +85,10 @@ class CmdJobView(COMMAND_DEFAULT_CLASS):
     help_category = "Jobs"
     
     def func(self):
+        # A player's "job/claim X" lands here when job/claim is locked to them.
+        if self.switches and self.switches != ["view"]:
+            self.caller.msg(f"Unknown or staff-only switch: /{self.switches[0]}. See help job.")
+            return
         if not self.args:
             self.caller.msg("Usage: job <bucket>/<number>")
             return

@@ -315,6 +315,26 @@ class JobConcurrentCreateTests(TransactionTestCase):
         self.assertEqual(Job.objects.filter(bucket=self.bucket).count(), num_threads)
 
 
+class PriorityMigrationTests(TestCase):
+    """R-4/R-15: jobs.0002 maps the old +hunt/staffed 'NORMAL' priority to MEDIUM."""
+
+    def test_normalize_priority(self):
+        from importlib import import_module
+
+        from django.apps import apps
+
+        account = create.create_account("Hunter", "hunter@example.com", "testpass123")
+        bucket = Bucket.objects.create(name="Hunt Scenes", description="Hunts")
+        job = Job.objects.create(bucket=bucket, title="Hunt", description="d", creator=account)
+        Job.objects.filter(pk=job.pk).update(priority="NORMAL")  # as stored before PR 9
+
+        import_module("jobs.migrations.0002_normalize_priority").normalize_priority(apps, None)
+
+        job.refresh_from_db()
+        self.assertEqual(job.priority, "MEDIUM")
+        job.save()  # passes clean() again
+
+
 class CommentModelTests(TestCase):
     """Test Comment model functionality."""
     
@@ -877,8 +897,10 @@ class JobAuthorizationCommandTests(CommandTestBase):
         )
 
     def test_other_player_cannot_view_job(self):
+        # A job Bob can't see is reported exactly like a missing one.
         output = self.call(CmdJobView(), "Approval/1", caller=self.bob)
-        self.assertIn("permission", output)
+        self.assertIn("Job Approval/1 not found", output)
+        self.assertEqual(output, self.call(CmdJobView(), "Approval/99", caller=self.bob).replace("99", "1"))
         self.assertNotIn("STAFF ONLY NOTE", output)
         self.assertNotIn("Please approve Alice", output)
 
@@ -897,9 +919,19 @@ class JobAuthorizationCommandTests(CommandTestBase):
         self.call(CmdJobClaim(), "Approval/1", "You have claimed", caller=self.builder)
         self.assertIn(self.builder_account, self.alice_job.players.all())
 
+    def test_player_claim_falls_through_to_a_refusal(self):
+        """With job/claim locked, a player's "job/claim X" reaches `job` as a switch."""
+        self.alice_job.players.clear()
+        output = self.call(CmdJobView(), "/claim Approval/1", caller=self.alice)
+        self.assertIn("staff-only switch: /claim", output)
+        self.assertNotIn("Please approve Alice", output)
+        self.assertFalse(self.alice_job.players.exists())
+        output = self.call(CmdJobs(), "/claim", caller=self.alice)
+        self.assertIn("staff-only switch: /claim", output)
+
     def test_other_player_cannot_close_job(self):
         output = self.call(CmdJobDone(), "Approval/1", caller=self.bob)
-        self.assertIn("permission", output)
+        self.assertIn("not found", output)
         self.alice_job.refresh_from_db()
         self.assertEqual(self.alice_job.status, "OPEN")
 
@@ -916,6 +948,9 @@ class JobAuthorizationCommandTests(CommandTestBase):
     def test_jobs_list_shows_only_own_jobs_to_players(self):
         bob_output = self.call(CmdJobs(), "", caller=self.bob)
         self.assertNotIn("Alice approval", bob_output)
+        bob_bucket_output = self.call(CmdJobs(), "Approval", caller=self.bob)
+        self.assertNotIn("Alice approval", bob_bucket_output)
+        self.assertIn("Alice approval", self.call(CmdJobs(), "Approval", caller=self.alice))
         alice_output = self.call(CmdJobs(), "", caller=self.alice)
         self.assertIn("Alice approval", alice_output)
         builder_output = self.call(CmdJobs(), "", caller=self.builder)
@@ -926,6 +961,24 @@ class JobAuthorizationCommandTests(CommandTestBase):
         """Bugs/1 and Approval/1 both exist."""
         output = self.call(CmdJobView(), "1", caller=self.builder)
         self.assertIn("ambiguous", output)
+
+    def test_bare_number_resolves_among_visible_jobs_only(self):
+        """Bob's `job 1` never names other players' jobs (R-1/R-8)."""
+        output = self.call(CmdJobView(), "1", caller=self.bob)
+        self.assertIn("not found", output)
+        self.assertNotIn("Approval", output)
+        self.assertNotIn("Bugs", output)
+        # Alice can see only Approval/1, so her bare `1` is not ambiguous.
+        output = self.call(CmdJobView(), "1", caller=self.alice)
+        self.assertIn("Please approve Alice", output)
+        bob_job = Job.objects.create(
+            bucket=Bucket.objects.create(name="Plots", description="Plots"),
+            title="Bob plot",
+            description="Bob's plot request",
+            creator=self.bob_account,
+        )
+        self.assertEqual(bob_job.sequence_number, 1)
+        self.assertIn("Bob's plot request", self.call(CmdJobView(), "1", caller=self.bob))
 
     def test_myjobs_defaults_to_open(self):
         self.alice_job.status = "CLOSED"

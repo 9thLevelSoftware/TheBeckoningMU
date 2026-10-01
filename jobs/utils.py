@@ -43,7 +43,9 @@ def get_job(caller, job_ref, bucket=None):
     Find a Job by `<bucket>/<n>`, or by a bare `<n>` when only one bucket has it.
 
     Sequence numbers are per bucket, so a bare number that exists in more
-    than one bucket is ambiguous and is refused.
+    than one bucket is ambiguous and is refused. Non-staff callers only
+    resolve against jobs they can see (see can_view_job): a job they can't
+    see is "not found", and is never named in an ambiguity message.
 
     Args:
         caller: The calling character (receives error messages)
@@ -65,10 +67,10 @@ def get_job(caller, job_ref, bucket=None):
         caller.msg(f"Job '{job_ref}' not found. Use <bucket>/<number>.")
         return None
 
-    jobs = Job.objects.select_related("bucket").filter(sequence_number=number)
+    jobs = Job.objects.filter(sequence_number=number)
     if bucket is not None:
         jobs = jobs.filter(bucket=bucket)
-    jobs = list(jobs[:5])
+    jobs = list(jobs_visible_to(caller, jobs)[:5])
     if not jobs:
         where = f"{bucket.name}/{number}" if bucket is not None else f"#{number}"
         caller.msg(f"Job {where} not found.")
