@@ -30,8 +30,10 @@ ruff check . && ruff format .             # also run by pre-commit (pre-commit r
 - `evennia seed_traits --clear` deletes the trait tables, and every character's `CharacterTrait`/`CharacterPower` rows cascade with them. Never run it on a database you want to keep.
 - The database is the single SQLite file `server/evennia.db3`. Back up by stopping the server and copying it.
 - Until the builder's permission checks land (plan PR 2), the web builder admits any account with Django's `is_staff`; don't grant `is_staff` to untrusted builders.
-- Tests run through Evennia's Django runner (there is no pytest setup). Command tests must subclass `evennia.utils.test_resources.EvenniaCommandTest` to get `self.call`.
-- The suite already has many failures. For example, the `jobs.tests` command tests call `self.call` but subclass `BaseEvenniaTest` (which has no `.call()`) instead of `EvenniaCommandTest`, and much of `tests/` fails too. Compare against the failure set before your change, not against a green suite.
+- Tests run through Evennia's Django runner (there is no pytest setup). Command tests must subclass `evennia.utils.test_resources.EvenniaCommandTest` to get `self.call` (its `msg` argument matches the *start* of the output; use the returned string with `assertIn` for fragments). A test directory is only discovered if every parent directory is a package, so keep the `__init__.py` files.
+- The suite is green: `OK (expected failures=N)`. Each expected failure is a correct-rule test for a known bug, marked `@unittest.expectedFailure` with a `# F-###, fixed in PR N` comment. An unexpected success fails the run, so when you fix one of those bugs, remove its marker. Don't add tests that assert the current behaviour where it disagrees with the V5 core book; write the correct-rule test and mark it instead.
+- Prefer real characters (`EvenniaTest`/`EvenniaCommandTest`) over `Mock` characters, and patch only the dice (`dice.dice_roller.randint`). Attributes come back as `_SaverDict`/`_SaverList`, so check `collections.abc.Mapping`, not `dict`.
+- CI (`.github/workflows/tests.yml`) runs `uv sync --locked`, `uv run evennia --initmissing` and `uv run evennia test --settings settings.py .` on every push and pull request.
 - Ports: telnet 6660, web **6665** (browser-facing; 5001 is internal), websocket 6662, AMP 6670. Per-host overrides and secrets go in `server/conf/secret_settings.py` (untracked).
 
 ## Architecture
