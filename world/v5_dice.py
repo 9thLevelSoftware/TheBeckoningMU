@@ -304,7 +304,7 @@ def apply_discipline_modifiers(pool: int, character, discipline_name: str = None
     return pool
 
 
-def check_frenzy(character, trigger_type: str, difficulty: Optional[int] = None) -> Tuple[bool, Optional[str]]:
+def check_frenzy(character, trigger_type: str, difficulty: int | None = None) -> Tuple[bool, Optional[str]]:
     """
     Check if a character resists frenzy.
 

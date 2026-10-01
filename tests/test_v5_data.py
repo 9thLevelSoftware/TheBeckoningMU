@@ -163,7 +163,7 @@ class DisciplineTests(TestCase):
                 self.assertNotIn(" vs ", pool, f"{label}: put the opposing pool in 'opposed_by'")
 
     def test_amalgams_resolve(self):
-        for discipline, level, power in self._all_powers():
+        for discipline, _level, power in self._all_powers():
             if not power.get("amalgam"):
                 continue
             name, amalgam_level = _parse_amalgam(power["amalgam"])

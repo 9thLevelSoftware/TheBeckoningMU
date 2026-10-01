@@ -295,6 +295,7 @@ DISCIPLINES = {
                        opposed_by="Composure + Subterfuge"),
             ],
             2: [
+                # UNVERIFIED: which use takes Manipulation and which Charisma.
                 _power("Feral Whispers", 1, "Manipulation / Charisma + Animalism", "one scene",
                        "Talk with animals and summon those nearby",
                        note="1 Rouse per animal type per scene"),
@@ -377,6 +378,7 @@ DISCIPLINES = {
                        "Tasting a drop of blood reveals basic facts about its owner"),
             ],
             2: [
+                # UNVERIFIED: pool (3 sources Intelligence, 1 Resolve).
                 _power("Extinguish Vitae", 1, "Intelligence + Blood Sorcery", "instant",
                        "Spoil another vampire's blood, raising their Hunger",
                        opposed_by="Stamina + Composure"),
@@ -418,8 +420,10 @@ DISCIPLINES = {
             _ritual("Communicate with Kindred Sire", 2, "Talk mind to mind with your sire"),
             _ritual("Eyes of Babel", 2, "Gain a language from an eye and tongue"),
             _ritual("Illuminate the Trail of Prey", 2, "Make a known target's path glow"),
+            # UNVERIFIED: one source gives Resolve + Blood Sorcery.
             _ritual("Truth of Blood", 2, "Your blood shows whether a statement is true"),
             _ritual("Ward against Spirits", 2, "Ward an object against spirits"),
+            # UNVERIFIED: the Warding Circles' Rouse cost (one source says 3).
             _ritual("Warding Circle against Ghouls", 2, "Ward an area against ghouls"),
             _ritual("Dagon's Call", 3, "Drown a target from afar through their blood",
                     dice_pool="Resolve + Blood Sorcery", opposed_by="Stamina + Resolve"),
@@ -433,6 +437,7 @@ DISCIPLINES = {
             _ritual("Incorporeal Passage", 4, "Become intangible"),
             _ritual("Ward against Cainites", 4, "Ward an object against vampires"),
             _ritual("Warding Circle against Lupines", 4, "Ward an area against werewolves"),
+            # UNVERIFIED: cost (one source says 12 Rouse in total).
             _ritual("Escape to True Sanctuary", 5, "Step between two prepared circles"),
             _ritual("Heart of Stone", 5, "Your heart turns to stone: immune to staking and emotion"),
             _ritual("Shaft of Belated Dissolution", 5, "Make a rowan stake whose splinter seeks the heart",
@@ -494,6 +499,7 @@ DISCIPLINES = {
                 _power("Mesmerize", 1, "Manipulation + Dominate", "until done or scene ends",
                        "Implant a more complex command",
                        opposed_by="Intelligence + Resolve"),
+                # UNVERIFIED: 1 Rouse per scene, or per target per scene.
                 _power("Dementation", 1, "Manipulation + Dominate", "one scene",
                        "Push the target toward breakdown or madness",
                        opposed_by="Composure + Intelligence", amalgam="Obfuscate 2"),
@@ -1007,7 +1013,7 @@ PREDATOR_TYPES = {
 # "benefit" and "uses_per_session" drive the in-game +background command.
 # They are a game convention, not book rules (UNVERIFIED), except Herd:
 # you may slake Hunger up to your Herd rating each week without a hunting
-# roll (core p.189 per vtm.paradoxwikis.com).
+# roll (core p.189 per vtm.paradoxwikis.com; UNVERIFIED against the book).
 
 BACKGROUNDS = {
     "Allies": {
@@ -1317,7 +1323,7 @@ FLAWS = {
                          "description": "You must drink vampire blood to use any Discipline"},
     # Background flaws (QR pp.8-11).
     # Enemy (QR p.8): rated two less than the equivalent Allies, so an
-    # effectiveness of 1-2 plus a reliability of 0-1.
+    # effectiveness of 1-2 plus a reliability of 0-1 (UNVERIFIED: derived).
     "Enemy": {"category": "Allies", "dots": (1, 2, 3),
               "description": "Mortals who want to harm you"},
     "Infamy": {"category": "Fame", "dots": (1, 2, 3, 4, 5),
@@ -1363,7 +1369,8 @@ FLAWS = {
 # "Melancholy". Dyscrasias: the core book's sample dyscrasia table,
 # as transcribed by chartopia.d12dev.com chart 12112 and the
 # cftarbay/VTM-V5-Resonance-Generator data (the two agree); effects are
-# paraphrased. The dyscrasia names and effects are not in the QR.
+# paraphrased. UNVERIFIED: the dyscrasias are not in the QR and the printed
+# table wasn't seen.
 #
 # Animal blood carries no humour but counts as resonant for Animalism and
 # Protean; bagged blood has none (QR p.12). They are in BLOOD_WITHOUT_HUMOUR,
