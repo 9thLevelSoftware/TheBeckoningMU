@@ -164,3 +164,17 @@ if SECRET_KEY == _evennia_settings_default.SECRET_KEY:  # noqa: F405
         "SECRET_KEY is still Evennia's public default. Set a unique SECRET_KEY in "
         "server/conf/secret_settings.py (`evennia --initmissing` generates one)."
     )
+
+# `evennia --initmissing` writes 40 random characters, so require at least that.
+# (Django's deploy check asks for 50; a 40-character Evennia key is still strong.)
+_SECRET_KEY_MIN_LENGTH = 40
+_SECRET_KEY_MIN_UNIQUE = 5
+if (
+    not isinstance(SECRET_KEY, str)  # noqa: F405
+    or len(SECRET_KEY.strip()) < _SECRET_KEY_MIN_LENGTH  # noqa: F405
+    or len(set(SECRET_KEY)) < _SECRET_KEY_MIN_UNIQUE  # noqa: F405
+):
+    raise ImproperlyConfigured(
+        f"SECRET_KEY in server/conf/secret_settings.py is too weak: use at least "
+        f"{_SECRET_KEY_MIN_LENGTH} random characters (`evennia --initmissing` generates one)."
+    )
