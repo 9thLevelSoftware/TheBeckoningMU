@@ -8,7 +8,6 @@ from django.views.decorators.http import require_http_methods
 from django.views import View
 from django.db import models
 from evennia.objects.models import ObjectDB
-from evennia.accounts.models import AccountDB
 import json
 
 from .utils import (
@@ -217,57 +216,6 @@ class CharacterValidationAPI(BaseAPIView):
                 'specialties_validated': results['imported_specialties'],
                 'powers_validated': results['imported_powers']
             }
-        })
-
-
-class CharacterImportAPI(BaseAPIView):
-    """API endpoint for character import."""
-
-    def post(self, request):
-        """Import character data to an existing character."""
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'Authentication required'}, status=401)
-        if not request.user.is_staff:
-            return JsonResponse({'error': 'Staff permissions required'}, status=403)
-
-        character_name = request.json.get('character_name')
-        character_data = request.json.get('character_data')
-        account_name = request.json.get('account_name')
-
-        if not all([character_name, character_data, account_name]):
-            return JsonResponse({
-                'error': 'Missing required fields: character_name, character_data, account_name'
-            }, status=400)
-
-        try:
-            # Get the account
-            account = AccountDB.objects.get(username__iexact=account_name)
-
-            # Get the character
-            character = ObjectDB.objects.get(
-                db_key__iexact=character_name,
-                db_account=account,
-                db_typeclass_path__contains='characters'
-            )
-
-        except AccountDB.DoesNotExist:
-            return JsonResponse({'error': 'Account not found'}, status=404)
-        except ObjectDB.DoesNotExist:
-            return JsonResponse({'error': 'Character not found'}, status=404)
-
-        # Import the character data
-        results = enhanced_import_character_from_json(character, character_data)
-
-        return JsonResponse({
-            'success': results['success'],
-            'errors': results['errors'],
-            'warnings': results['warnings'],
-            'imported': {
-                'traits': results['imported_traits'],
-                'specialties': results['imported_specialties'],
-                'powers': results['imported_powers']
-            },
-            'validation_errors': results['validation_errors']
         })
 
 
@@ -806,19 +754,3 @@ class CharacterResubmitAPI(BaseAPIView):
             'character_id': character.id,
             'message': 'Character resubmitted for approval'
         })
-
-
-# URL patterns for inclusion in main urls.py
-def get_api_urls():
-    """Return URL patterns for the trait API."""
-    from django.urls import path
-
-    return [
-        path('api/traits/categories/', TraitCategoriesAPI.as_view(), name='trait_categories_api'),
-        path('api/traits/', TraitsAPI.as_view(), name='traits_api'),
-        path('api/discipline-powers/', DisciplinePowersAPI.as_view(), name='discipline_powers_api'),
-        path('api/character/validate/', CharacterValidationAPI.as_view(), name='character_validation_api'),
-        path('api/character/import/', CharacterImportAPI.as_view(), name='character_import_api'),
-        path('api/character/<int:character_id>/export/', CharacterExportAPI.as_view(), name='character_export_api'),
-        path('api/character/<int:character_id>/available-traits/', CharacterAvailableTraitsAPI.as_view(), name='character_available_traits_api'),
-    ]

@@ -1,143 +1,18 @@
 |[R+===================================================================+
-|W|                   CHARACTER CREATION GUIDE                        |
+|W|                   CHARACTER CREATION                              |
 |[R+===================================================================+|n
 
-Welcome to character creation! This guide will walk you through creating
-your vampire character for TheBeckoningMU.
+Characters are created on the game website, not in the game.
 
-|WSTEP 1: CONCEPT|n
+  1. Log in to the website with your game account.
+  2. Open the character creation form at |y/character-creation/|n
+     (linked from the website's front page).
+  3. Build your character and submit it.
+  4. Staff review the submission. You are notified in game when it
+     is approved, or when it needs changes and can be resubmitted.
 
-Before diving into mechanics, decide:
-  - |yWho were they as a mortal?|n Background, personality, goals
-  - |yWhy were they Embraced?|n What caught their sire's attention?
-  - |yHow do they hunt?|n Their relationship with predation
-  - |yWhat do they want?|n Ambitions in the Camarilla
+Once your character is approved, connect to the game, and use
+|yic <name>|n to start playing.
 
-Command: |y+chargen/start|n
-
-|WSTEP 2: CHOOSE CLAN|n
-
-Select from 13 vampire clans (see |yhelp clans|n):
-  - Each clan has unique disciplines, bane, and compulsion
-  - Consider what powers and roleplay style you prefer
-  - Camarilla clans: Brujah, Gangrel, Malkavian, Nosferatu, Toreador,
-    Tremere, Ventrue
-
-Command: |y+chargen/clan <name>|n
-
-|WSTEP 3: CHOOSE PREDATOR TYPE|n
-
-How do you hunt? (see |yhelp predator|n)
-  - |wAlleycat|n - Hunt the homeless and desperate
-  - |wBagger|n - Use blood bags and hospitals
-  - |wBlood Leech|n - Feed on other vampires
-  - |wConsensensual|n - Willing vessels
-  - |wFarmer|n - Feed on animals
-  - |wOsmosis|n - Feed during sex
-  - |wSandman|n - Feed from sleeping victims
-  - |wScene Queen|n - Feed at clubs and parties
-  - |wSiren|n - Seduce your prey
-
-Each type grants bonus skills and disciplines.
-
-Command: |y+chargen/predator <type>|n
-
-|WSTEP 4: DISTRIBUTE ATTRIBUTES (7/5/3)|n
-
-Prioritize Physical, Social, or Mental, then distribute points:
-  - Primary category: |y7 dots|n
-  - Secondary category: |y5 dots|n
-  - Tertiary category: |y3 dots|n
-
-|yPhysical:|n Strength, Dexterity, Stamina
-|ySocial:|n Charisma, Manipulation, Composure
-|yMental:|n Intelligence, Wits, Resolve
-
-All attributes start at 1 (minimum).
-Maximum 4 during chargen (5 requires XP later).
-
-Command: |y+chargen/attr <name>=<value>|n
-
-|WSTEP 5: DISTRIBUTE SKILLS (13/9/5)|n
-
-Prioritize Physical, Social, or Mental skills:
-  - Primary category: |y13 dots|n
-  - Secondary category: |y9 dots|n
-  - Tertiary category: |y5 dots|n
-
-Maximum 3 dots in any skill during chargen.
-
-|yPhysical Skills:|n Athletics, Brawl, Craft, Drive, Firearms, Larceny,
-  Melee, Stealth, Survival
-
-|ySocial Skills:|n Animal Ken, Etiquette, Insight, Intimidation, Leadership,
-  Performance, Persuasion, Streetwise, Subterfuge
-
-|yMental Skills:|n Academics, Awareness, Finance, Investigation, Medicine,
-  Occult, Politics, Science, Technology
-
-Command: |y+chargen/skill <name>=<value>|n
-
-|WSTEP 6: SELECT DISCIPLINES (2 dots in-clan)|n
-
-Choose |y2 dots|n from your clan's in-clan disciplines:
-  - Can split (1 dot each) or focus (2 dots in one)
-  - Additional dots require XP after chargen
-
-Command: |y+chargen/discipline <name>=<value>|n
-
-|WSTEP 7: SELECT ADVANTAGES (7 dots)|n
-
-Distribute |y7 dots|n among:
-  - |yBackgrounds|n - Resources, Contacts, Allies, Herd, Haven, etc.
-  - |yMerits|n - Special advantages (Beautiful, Iron Will, etc.)
-
-Maximum 3 dots in any single advantage during chargen.
-
-Command: |y+chargen/advantage <name>=<value>|n
-
-|WSTEP 8: FINISHING TOUCHES|n
-
-Set your starting values:
-  - |yHumanity:|n Starts at |w7|n (can adjust ±1 for 1 Flaw/Merit)
-  - |yWillpower:|n Equal to |wComposure + Resolve|n
-  - |yHealth:|n Equal to |wStamina + 3|n
-  - |yBlood Potency:|n Starts at |w0|n
-  - |yHunger:|n Starts at |w1|n
-
-|WSTEP 9: DESCRIBE YOUR CHARACTER|n
-
-Write your character description and background:
-
-|y+chargen/desc|n - Set physical description
-|y+chargen/background|n - Write character background story
-
-|WSTEP 10: SUBMIT FOR APPROVAL|n
-
-When finished, submit for staff review:
-
-Command: |y+chargen/submit|n
-
-Staff will review your character and either:
-  - |gApprove|n - Welcome to the game!
-  - |yRequest Changes|n - Minor adjustments needed
-  - |[RReject|n - Major issues (rare)
-
-|WCHARGEN COMMANDS SUMMARY:|n
-
-|y+chargen/start|n - Begin character creation
-|y+chargen/clan <name>|n - Select clan
-|y+chargen/predator <type>|n - Choose predator type
-|y+chargen/attr <name>=<value>|n - Set attribute
-|y+chargen/skill <name>=<value>|n - Set skill
-|y+chargen/discipline <name>=<value>|n - Set discipline
-|y+chargen/advantage <name>=<value>|n - Set advantage/background
-|y+chargen/desc|n - Set description
-|y+chargen/background|n - Write backstory
-|y+chargen/review|n - Review your character sheet
-|y+chargen/submit|n - Submit for staff approval
-|y+chargen/reset|n - Start over (before submission)
-
-|[r+===================================================================+|n
-
-|ySee also:|n help clans, help disciplines, help predator, help xp
+For the setting and the V5 rules behind the choices on the form, see
+|yhelp clans|n, |yhelp disciplines|n and |yhelp v5|n.

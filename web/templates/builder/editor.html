@@ -1388,14 +1388,10 @@
             if (projectId) {
                 html += '<button class="btn btn-ghost w-100 mb-2" onclick="submitForReview()"><i class="bi bi-send"></i> Submit for Review</button>';
             }
-            if (projectId) {
-                html += '<a href="/builder/export/' + projectId + '/" class="btn btn-ghost w-100"><i class="bi bi-download"></i> Export .ev File</a>';
-            }
         } else if (projectStatus === 'submitted') {
             html += '<div class="alert mb-0 py-2 text-center" style="background: rgba(212,160,23,0.1); color: var(--builder-warning); border: 1px solid rgba(212,160,23,0.2); border-radius: 8px;">Awaiting Review</div>';
         } else if (projectStatus === 'approved') {
             html += '<button class="btn btn-accent w-100 mb-2" onclick="buildToSandbox()"><i class="bi bi-hammer"></i> Build to Sandbox</button>';
-            html += '<a href="/builder/export/' + projectId + '/" class="btn btn-ghost w-100"><i class="bi bi-download"></i> Export .ev File</a>';
         } else if (projectStatus === 'built') {
             html += '<div class="alert mb-0 py-2 text-center" style="background: rgba(56,139,253,0.1); color: var(--builder-info); border: 1px solid rgba(56,139,253,0.2); border-radius: 8px;">Built — test in sandbox</div>';
         } else if (projectStatus === 'live') {

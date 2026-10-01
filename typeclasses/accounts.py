@@ -136,6 +136,34 @@ class Account(DefaultAccount):
 
     """
 
+    # Evennia's stock OOC menu advertises `charcreate`, which is removed here:
+    # characters are created only through the website form.
+    ooc_appearance_template = """
+--------------------------------------------------------------------
+{header}
+
+{sessions}
+
+  |whelp|n - more commands
+  |wpublic <text>|n - talk on public channel
+  Create characters on the game website at |w/character-creation/|n
+  |wchardelete <name>|n - delete a character
+  |wic <name>|n - enter the game as character (|wooc|n to get back here)
+  |wic|n - enter the game as latest character controlled.
+
+{characters}
+{footer}
+--------------------------------------------------------------------
+""".strip()
+
+    def at_look(self, target=None, session=None, **kwargs):
+        """Show the OOC menu, pointing new players at the website form."""
+        text = super().at_look(target=target, session=session, **kwargs)
+        return text.replace(
+            "You don't have a character yet. Use |wcharcreate|n.",
+            "You don't have a character yet. Create one on the game website at |w/character-creation/|n.",
+        )
+
     def at_post_login(self, session=None, **kwargs):
         """Deliver any pending notifications on login."""
         super().at_post_login(session=session, **kwargs)

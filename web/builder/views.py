@@ -1,13 +1,12 @@
 import json
 from django.views.generic import TemplateView, View
-from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
+from django.http import JsonResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.utils.decorators import method_decorator
 from django.contrib.admin.views.decorators import staff_member_required
 
 from .models import BuildProject, RoomTemplate
-from .exporter import generate_batch_script
 from .validators import validate_project
 from .sandbox_bridge import create_sandbox_from_project
 from .promotion import promote_project_to_live
@@ -287,40 +286,6 @@ class DeleteProjectView(StaffRequiredMixin, View):
         return self.delete(request, pk, *args, **kwargs)
 
 
-class BuildProjectView(StaffRequiredMixin, View):
-    """Build project to sandbox."""
-
-    def post(self, request, pk, *args, **kwargs):
-        project = get_object_or_404(BuildProject, pk=pk)
-
-        # Check ownership - only owner can build
-        if project.user != request.user:
-            return JsonResponse(
-                {"status": "error", "error": "Not authorized"}, status=403
-            )
-
-        # Check if sandbox already exists
-        if project.sandbox_room_id:
-            return JsonResponse(
-                {
-                    "status": "error",
-                    "error": "Sandbox already exists. Use @abandon in-game first.",
-                    "sandbox_id": project.sandbox_room_id,
-                },
-                status=400,
-            )
-
-        # For now, return manual_required status with download URL
-        # Automatic execution requires more integration work
-        return JsonResponse(
-            {
-                "status": "manual_required",
-                "message": "Automatic execution not yet implemented. Download and run manually.",
-                "download_url": f"/builder/export/{pk}/",
-            }
-        )
-
-
 class PrototypesView(StaffRequiredMixin, View):
     def get(self, request, *args, **kwargs):
         return JsonResponse({"status": "not_implemented"}, status=501)
@@ -329,28 +294,6 @@ class PrototypesView(StaffRequiredMixin, View):
 class TemplatesView(StaffRequiredMixin, View):
     def get(self, request, *args, **kwargs):
         return JsonResponse({"status": "success", "templates": V5_ROOM_TEMPLATES})
-
-
-class ExportProjectView(StaffRequiredMixin, View):
-    """Download project as .ev batch file."""
-
-    def get(self, request, pk, *args, **kwargs):
-        project = get_object_or_404(BuildProject, pk=pk)
-
-        # Check visibility
-        if not project.is_public and project.user != request.user:
-            return JsonResponse(
-                {"status": "error", "error": "Not authorized"}, status=403
-            )
-
-        # Generate script
-        script_content = generate_batch_script(project, request.user.username)
-
-        # Return as downloadable file
-        filename = f"{project.name.replace(' ', '_')}_build.ev"
-        response = HttpResponse(script_content, content_type="text/plain")
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return response
 
 
 # Approval Workflow Views

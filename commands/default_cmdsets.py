@@ -46,11 +46,6 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         self.add(CmdSheet)
         self.add(CmdSheetShort)
 
-        # Add V5 Character Generation commands
-        from commands.v5.chargen import CmdChargen
-
-        self.add(CmdChargen)
-
         # Add V5 hunting commands
         from commands.v5.hunt import CmdHunt, CmdHuntingInfo
 
@@ -175,22 +170,12 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
 
         self.add(CmdNews)
 
-        # Add Builder commands
-        from commands.builder import CmdPromote, CmdAbandon
-
-        self.add(CmdPromote)
-        self.add(CmdAbandon)
-
-        # Add Sandbox commands
-        from commands.builder.sandbox import (
-            CmdGotoSandbox,
-            CmdListSandboxes,
-            CmdCleanupSandbox,
-        )
+        # Add Sandbox commands. @cleanup_sandbox stays unregistered until its
+        # cleanup selects objects by recorded ids instead of forgeable tags.
+        from commands.builder.sandbox import CmdGotoSandbox, CmdListSandboxes
 
         self.add(CmdGotoSandbox)
         self.add(CmdListSandboxes)
-        self.add(CmdCleanupSandbox)
 
 
 class AccountCmdSet(default_cmds.AccountCmdSet):
@@ -211,6 +196,10 @@ class AccountCmdSet(default_cmds.AccountCmdSet):
         #
         # any commands you add below will overload the default ones.
         #
+
+        # Characters are created only through the website form
+        # (/character-creation/), which records them for staff approval.
+        self.remove(default_cmds.CmdCharCreate)
 
 
 class UnloggedinCmdSet(default_cmds.UnloggedinCmdSet):

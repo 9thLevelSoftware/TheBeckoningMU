@@ -8,7 +8,6 @@ from .api import (
     TraitsAPI,
     DisciplinePowersAPI,
     CharacterValidationAPI,
-    CharacterImportAPI,
     CharacterExportAPI,
     CharacterAvailableTraitsAPI,
     CharacterCreateAPI,
@@ -31,7 +30,6 @@ urlpatterns = [
     # Character management endpoints
     path('character/validate/', CharacterValidationAPI.as_view(), name='character_validate'),
     path('character/create/', CharacterCreateAPI.as_view(), name='character_create'),
-    path('character/import/', CharacterImportAPI.as_view(), name='character_import'),
     path('character/<int:character_id>/export/', CharacterExportAPI.as_view(), name='character_export'),
     path('character/<int:character_id>/available-traits/', CharacterAvailableTraitsAPI.as_view(), name='character_available_traits'),
 
