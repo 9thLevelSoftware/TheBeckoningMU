@@ -157,12 +157,16 @@ class CmdRoll(default_cmds.MuxCommand):
         # Validate ranges
         if pool_size < 1:
             raise ValueError("Pool size must be at least 1")
+        if pool_size > dice_roller.MAX_POOL:
+            raise ValueError(f"Pool size cannot exceed {dice_roller.MAX_POOL} dice")
         if hunger < 0 or hunger > 5:
             raise ValueError("Hunger must be between 0 and 5")
         if hunger > pool_size:
             raise ValueError("Hunger cannot exceed pool size")
-        if difficulty < 0:
-            raise ValueError("Difficulty must be 0 or greater")
+        if not dice_roller.MIN_DIFFICULTY <= difficulty <= dice_roller.MAX_DIFFICULTY:
+            raise ValueError(
+                f"Difficulty must be between {dice_roller.MIN_DIFFICULTY} and {dice_roller.MAX_DIFFICULTY}"
+            )
 
         return pool_size, hunger, difficulty
 

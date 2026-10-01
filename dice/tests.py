@@ -9,7 +9,7 @@ Test coverage for:
 """
 
 from unittest.mock import patch, MagicMock
-from evennia.utils.test_resources import EvenniaTest
+from evennia.utils.test_resources import EvenniaCommandTest, EvenniaTest
 from dice import dice_roller, roll_result, discipline_roller, rouse_checker
 from dice.dice_roller import (
     roll_v5_pool, roll_chance_die, roll_rouse_check, roll_contested,
@@ -995,3 +995,48 @@ class RouseCheckerTestCase(EvenniaTest):
 
         for level in range(1, 6):
             self.assertTrue(can_reroll_rouse(self.char1, level))
+
+
+class PoolCapTestCase(EvenniaCommandTest):
+    """Roll size and difficulty are capped at every entry point."""
+
+    def test_pool_cap(self):
+        from dice.commands import CmdRoll
+
+        with patch("dice.commands.dice_roller.roll_v5_pool") as mock_roll:
+            output = self.call(CmdRoll(), "1000")
+        mock_roll.assert_not_called()
+        self.assertIn(f"cannot exceed {dice_roller.MAX_POOL}", output)
+
+        with self.assertRaises(ValueError):
+            roll_v5_pool(1000, 0)
+
+    def test_pool_cap_boundary(self):
+        self.assertEqual(len(roll_v5_pool(dice_roller.MAX_POOL, 0).all_dice), dice_roller.MAX_POOL)
+        with self.assertRaises(ValueError):
+            roll_v5_pool(dice_roller.MAX_POOL + 1, 0)
+
+    def test_difficulty_range(self):
+        from dice.commands import CmdRoll
+
+        with patch("dice.commands.dice_roller.roll_v5_pool") as mock_roll:
+            output = self.call(CmdRoll(), f"5 vs {dice_roller.MAX_DIFFICULTY + 1}")
+        mock_roll.assert_not_called()
+        self.assertIn("Difficulty must be between", output)
+
+        roll_v5_pool(5, 0, dice_roller.MAX_DIFFICULTY)
+        with self.assertRaises(ValueError):
+            roll_v5_pool(5, 0, dice_roller.MAX_DIFFICULTY + 1)
+        with self.assertRaises(ValueError):
+            roll_v5_pool(5, 0, -1)
+
+    def test_v5_dice_roll_pool_cap(self):
+        from world.v5_dice import roll_pool
+
+        with self.assertRaises(ValueError):
+            roll_pool(1000)
+        # The Willpower bonus counts toward the cap.
+        with self.assertRaises(ValueError):
+            roll_pool(dice_roller.MAX_POOL - 2, willpower=True)
+        with self.assertRaises(ValueError):
+            roll_pool(5, difficulty=dice_roller.MAX_DIFFICULTY + 1)

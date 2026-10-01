@@ -9,6 +9,14 @@ from random import randint
 from typing import Tuple, Dict, Any, Optional
 from .roll_result import RollResult
 
+# Upper bound on dice in one roll. No legitimate V5 pool comes close; the cap
+# stops a typo or a malicious `roll 1000000` from tying up the server.
+MAX_POOL = 30
+
+# Allowed difficulty range (successes needed).
+MIN_DIFFICULTY = 0
+MAX_DIFFICULTY = 20
+
 
 def roll_v5_pool(pool_size: int, hunger: int = 0, difficulty: int = 0) -> RollResult:
     """
@@ -33,7 +41,8 @@ def roll_v5_pool(pool_size: int, hunger: int = 0, difficulty: int = 0) -> RollRe
         RollResult object with comprehensive analysis
 
     Raises:
-        ValueError: If pool_size < 1, hunger < 0, hunger > 5, or hunger > pool_size
+        ValueError: If pool_size is outside 1..MAX_POOL, hunger is outside 0-5,
+            hunger > pool_size, or difficulty is outside MIN_DIFFICULTY..MAX_DIFFICULTY
 
     Examples:
         >>> result = roll_v5_pool(5, hunger=2, difficulty=3)
@@ -44,14 +53,17 @@ def roll_v5_pool(pool_size: int, hunger: int = 0, difficulty: int = 0) -> RollRe
     if pool_size < 1:
         raise ValueError(f"Pool size must be at least 1 (got {pool_size})")
 
+    if pool_size > MAX_POOL:
+        raise ValueError(f"Pool size cannot exceed {MAX_POOL} dice (got {pool_size})")
+
     if hunger < 0 or hunger > 5:
         raise ValueError(f"Hunger must be between 0 and 5 (got {hunger})")
 
     if hunger > pool_size:
         raise ValueError(f"Hunger ({hunger}) cannot exceed pool size ({pool_size})")
 
-    if difficulty < 0:
-        raise ValueError(f"Difficulty must be 0 or greater (got {difficulty})")
+    if not MIN_DIFFICULTY <= difficulty <= MAX_DIFFICULTY:
+        raise ValueError(f"Difficulty must be between {MIN_DIFFICULTY} and {MAX_DIFFICULTY} (got {difficulty})")
 
     # Special case: Zero pool becomes chance die
     # (This shouldn't happen due to pool_size validation, but included for clarity)
