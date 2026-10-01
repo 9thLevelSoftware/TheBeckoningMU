@@ -117,9 +117,9 @@ class VampireDataMigrationTestCase(EvenniaTest):
         self.assertEqual(char.db.vampire['hunger'], 2)
         self.assertEqual(char.db.hunger, 2)
 
-    # F-063, fixed in PR 4 (which deletes migrate_vampire_data): the
-    # `hasattr(self.db, 'hunger')` guard is always true, so migration copies
-    # the missing legacy Hunger (None) over the stored value.
+    # F-063: delete this test in PR 4 (it removes migrate_vampire_data). Until
+    # then: the `hasattr(self.db, 'hunger')` guard is always true, so migration
+    # copies the missing legacy Hunger (None) over the stored value.
     @unittest.expectedFailure
     def test_migrate_without_hunger(self):
         """Test migrating character without Hunger attribute."""
@@ -136,9 +136,9 @@ class VampireDataMigrationTestCase(EvenniaTest):
         self.assertIsNotNone(char.db.vampire)
         self.assertEqual(char.db.vampire['hunger'], 1)
 
-    # F-063, fixed in PR 4 (which deletes migrate_vampire_data): the
-    # `hasattr(self.db, 'hunger')` guard is always true, so migration copies
-    # the missing legacy Hunger (None) over the stored value.
+    # F-063: delete this test in PR 4 (it removes migrate_vampire_data). Until
+    # then: the `hasattr(self.db, 'hunger')` guard is always true, so migration
+    # copies the missing legacy Hunger (None) over the stored value.
     @unittest.expectedFailure
     def test_migrate_preserves_existing_vampire_data(self):
         """Test migration doesn't overwrite existing vampire dict."""

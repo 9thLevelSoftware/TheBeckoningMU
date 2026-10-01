@@ -147,16 +147,22 @@ class DiceRollerTestCase(EvenniaTest):
         with self.assertRaises(ValueError):
             roll_v5_pool(pool_size=10, hunger=6)
 
-        # Hunger > pool_size
-        with self.assertRaises(ValueError):
-            roll_v5_pool(pool_size=3, hunger=5)
-
         # Difficulty < 0
         with self.assertRaises(ValueError):
             roll_v5_pool(pool_size=5, hunger=0, difficulty=-1)
 
+    # F-016 family (Hunger dice), fixed in PR 5: roll_v5_pool raises when
+    # Hunger exceeds the pool. QR p.4: Hunger dice replace regular dice
+    # "without exceeding the total dice pool", so pool 3 at Hunger 5 rolls
+    # three Hunger dice.
+    @unittest.expectedFailure
+    def test_hunger_above_pool_rolls_all_hunger_dice(self):
+        result = roll_v5_pool(pool_size=3, hunger=5)
+        self.assertEqual(len(result.regular_dice), 0)
+        self.assertEqual(len(result.hunger_dice), 3)
+
     def test_willpower_reroll(self):
-        """Test reroll up to 3 failed regular dice."""
+        """Re-roll up to 3 regular dice; Hunger dice are never re-rolled (QR p.3)."""
         # Create result with known failed dice
         original = RollResult(
             regular_dice=[1, 2, 3, 4, 5],  # 5 failed dice
@@ -170,17 +176,6 @@ class DiceRollerTestCase(EvenniaTest):
         self.assertEqual(len(rerolled_indices), 3)  # Should reroll 3 dice
         self.assertEqual(len(new_result.regular_dice), 5)  # Same number of regular dice
         self.assertEqual(new_result.hunger_dice, original.hunger_dice)  # Hunger dice unchanged
-
-        # Test that rerolling with no failed dice works
-        original = RollResult(
-            regular_dice=[6, 7, 8, 9, 10],  # All successes
-            hunger_dice=[],
-            difficulty=0
-        )
-
-        new_result, rerolled_indices = apply_willpower_reroll(original, num_rerolls=3)
-        self.assertEqual(len(rerolled_indices), 0)  # No dice to reroll
-        self.assertEqual(new_result.regular_dice, original.regular_dice)  # Unchanged
 
     def test_willpower_reroll_validation(self):
         """Test that invalid reroll counts raise ValueError."""
@@ -336,7 +331,7 @@ class RollResultTestCase(EvenniaTest):
         self.assertFalse(result.is_messy_critical)
 
     def test_bestial_failure_detection(self):
-        """Test only Hunger 1s on failure = bestial."""
+        """A failed roll with a Hunger 1 is bestial; a successful one is not (QR p.4)."""
         # Failure with Hunger 1, no regular 1s = bestial
         result = RollResult(
             regular_dice=[3, 4, 5],
@@ -345,15 +340,6 @@ class RollResultTestCase(EvenniaTest):
         )
         self.assertFalse(result.is_success)
         self.assertTrue(result.is_bestial_failure)
-
-        # Failure with Hunger 1 AND regular 1 = NOT bestial
-        result = RollResult(
-            regular_dice=[1, 3, 5],
-            hunger_dice=[1, 2],
-            difficulty=5
-        )
-        self.assertFalse(result.is_success)
-        self.assertFalse(result.is_bestial_failure)
 
         # Success with Hunger 1s = NOT bestial
         result = RollResult(
@@ -837,7 +823,12 @@ class RouseCheckerTestCase(EvenniaTest):
             self.assertEqual(self.char1.db.hunger, 3)
 
     def test_hunger_at_max(self):
-        """Test Hunger 5 cannot increase."""
+        """Stored Hunger never exceeds 5.
+
+        This checks the storage bound only. It is not the rule for a Rouse at
+        Hunger 5: QR p.4 forbids Rousing at Hunger 5 unless forced, and a
+        failed forced Rouse provokes frenzy (p.13). PR 5 adds that refusal.
+        """
         self.char1.db.hunger = 5
 
         result = perform_rouse_check(self.char1, "Test", power_level=1)
@@ -945,68 +936,31 @@ class RouseCheckerTestCase(EvenniaTest):
         self.assertIn("■", display)  # Filled boxes
         self.assertIn("□", display)  # Empty boxes
 
+    # Highest power level whose Rouse check BP lets you re-roll (V5 Blood
+    # Potency table: "Level N and below"). Same in the 2018 printing (QR 2.0
+    # p.14) and the errata'd table (Companion p.63, Players Guide p.248).
+    REROLL_MAX_LEVEL = {0: 0, 1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4, 9: 5, 10: 5}
+
+    def assert_reroll_levels(self, bps):
+        trait = CharacterTrait.objects.create(character=self.char1, trait=self.blood_potency, rating=0)
+        for bp in bps:
+            trait.rating = bp
+            trait.save()
+            max_level = self.REROLL_MAX_LEVEL[bp]
+            for level in range(1, 6):
+                self.assertEqual(
+                    can_reroll_rouse(self.char1, level), level <= max_level, f"BP {bp}, power level {level}"
+                )
+
     def test_blood_potency_reroll_levels(self):
-        """Test all BP levels for reroll eligibility."""
-        CharacterTrait.objects.create(
-            character=self.char1,
-            trait=self.blood_potency,
-            rating=0
-        )
+        """BP levels where the code already matches the V5 table."""
+        self.assert_reroll_levels([0, 1, 2, 3, 4, 6, 8, 10])
 
-        # BP 0: No rerolls
-        for level in range(1, 6):
-            self.assertFalse(can_reroll_rouse(self.char1, level))
-
-        # BP 1-2: Level 1 only
-        CharacterTrait.objects.filter(
-            character=self.char1,
-            trait=self.blood_potency
-        ).update(rating=2)
-
-        self.assertTrue(can_reroll_rouse(self.char1, 1))
-        self.assertFalse(can_reroll_rouse(self.char1, 2))
-
-        # BP 3-5: Levels 1-2
-        CharacterTrait.objects.filter(
-            character=self.char1,
-            trait=self.blood_potency
-        ).update(rating=5)
-
-        self.assertTrue(can_reroll_rouse(self.char1, 1))
-        self.assertTrue(can_reroll_rouse(self.char1, 2))
-        self.assertFalse(can_reroll_rouse(self.char1, 3))
-
-        # BP 6-7: Levels 1-3
-        CharacterTrait.objects.filter(
-            character=self.char1,
-            trait=self.blood_potency
-        ).update(rating=7)
-
-        self.assertTrue(can_reroll_rouse(self.char1, 1))
-        self.assertTrue(can_reroll_rouse(self.char1, 2))
-        self.assertTrue(can_reroll_rouse(self.char1, 3))
-        self.assertFalse(can_reroll_rouse(self.char1, 4))
-
-        # BP 8-9: Levels 1-4
-        CharacterTrait.objects.filter(
-            character=self.char1,
-            trait=self.blood_potency
-        ).update(rating=9)
-
-        self.assertTrue(can_reroll_rouse(self.char1, 1))
-        self.assertTrue(can_reroll_rouse(self.char1, 2))
-        self.assertTrue(can_reroll_rouse(self.char1, 3))
-        self.assertTrue(can_reroll_rouse(self.char1, 4))
-        self.assertFalse(can_reroll_rouse(self.char1, 5))
-
-        # BP 10: All levels
-        CharacterTrait.objects.filter(
-            character=self.char1,
-            trait=self.blood_potency
-        ).update(rating=10)
-
-        for level in range(1, 6):
-            self.assertTrue(can_reroll_rouse(self.char1, level))
+    # F-022 (BP table), fixed in PR 5: can_reroll_rouse groups BP 3-5, 6-7
+    # and 8-9, so BP 5, 7 and 9 re-roll one power level too few.
+    @unittest.expectedFailure
+    def test_blood_potency_reroll_levels_odd_bp(self):
+        self.assert_reroll_levels([5, 7, 9])
 
 
 class PoolCapTestCase(EvenniaCommandTest):

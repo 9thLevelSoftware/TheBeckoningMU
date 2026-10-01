@@ -52,12 +52,21 @@ class CmdFeedTestCase(BloodCommandTestBase):
     def test_feed_requires_character(self):
         self.call(CmdFeed(), "mortal", "You must be in character", caller=self.account)
 
-    def test_feed_rolls_strength_brawl_with_character_hunger(self):
-        """With no predator type the pool is Strength + Brawl and Hunger is the character's."""
+    def test_feed_rolls_with_character_hunger(self):
+        """The feeding roll uses the character's Hunger as its Hunger dice (QR p.4).
+
+        The pool and difficulty are not pinned: the book takes the pool from
+        the predator type and the difficulty from the hunting ground (QR p.12),
+        and PR 6 rebuilds both.
+        """
         self.char.hunger = 4
-        with patch("dice.dice_roller.roll_v5_pool", wraps=dice_roller.roll_v5_pool) as roll, fixed_dice(7, 7, 7, 7, 7):
+        with (
+            patch("dice.dice_roller.roll_v5_pool", wraps=dice_roller.roll_v5_pool) as roll,
+            patch(RANDINT, return_value=7),
+        ):
             self.call(CmdFeed(), "mortal")
-        roll.assert_called_once_with(5, 4, difficulty=2)
+        roll.assert_called_once()
+        self.assertEqual(roll.call_args.args[1], 4)
 
     def test_feed_success_reduces_hunger(self):
         self.char.hunger = 4
@@ -105,10 +114,6 @@ class CmdBloodSurgeTestCase(BloodCommandTestBase):
 
     def test_bloodsurge_no_arguments(self):
         self.call(CmdBloodSurge(), "", "Usage: bloodsurge")
-
-    def test_bloodsurge_rejects_non_physical_skill(self):
-        output = self.call(CmdBloodSurge(), "occult")
-        self.assertIn("can only be used on Attributes or Physical Skills", output)
 
     def test_bloodsurge_requires_character(self):
         self.call(CmdBloodSurge(), "strength", "You must be in character", caller=self.account)

@@ -392,9 +392,10 @@ class BloodSurgeManagementTests(EvenniaTest):
         surge = blood_utils.get_blood_surge(self.char)
         self.assertIsNone(surge)
 
-    # F-022, fixed in PR 4/5: Blood Potency is read through
-    # trait_utils.get_trait_value, which never looks at db.vampire, so it is
-    # always 0 and Rouse re-rolls never apply.
+    # F-022, fixed in PR 4: Blood Potency is read through
+    # trait_utils.get_trait_value (and a traits.models row in rouse_checker),
+    # neither of which looks at db.vampire, so it is always 0 and Rouse
+    # re-rolls never apply. PR 4 rewrites both read paths.
     @unittest.expectedFailure
     def test_blood_potency_is_read_from_character(self):
         self.char.db.vampire['blood_potency'] = 3
@@ -402,12 +403,14 @@ class BloodSurgeManagementTests(EvenniaTest):
         self.assertTrue(can_reroll_rouse(self.char, 1))
 
     # F-022/F-093, fixed in PR 5: the surge bonus is "equal to Blood Potency"
-    # and BP always reads 0. V5 core (p.216) gives the bonus from the Blood
-    # Potency table. These rows are pending owner sign-off (design doc, "Rule
-    # tables requiring owner sign-off").
+    # and BP always reads 0. The values below are the current, errata'd Blood
+    # Potency table (Renegade "V5 Blood Potency Correction" sheet; The
+    # Companion 2020 p.63; Players Guide p.248; later core printings). The
+    # Quick Reference 2.0 p.14 shows the pre-errata 2018 printing, one die
+    # lower at every BP.
     @unittest.expectedFailure
     def test_blood_surge_bonus_follows_bp_table(self):
-        expected = {0: 1, 1: 2, 2: 2, 3: 3, 4: 3, 5: 4}
+        expected = {0: 1, 1: 2, 2: 2, 3: 3, 4: 3, 5: 4, 6: 4, 7: 5, 8: 5, 9: 6, 10: 6}
         for bp, bonus in expected.items():
             self.char.db.vampire['blood_potency'] = bp
             self.assertEqual(blood_utils.get_blood_potency_bonus(self.char), bonus, f"BP {bp}")

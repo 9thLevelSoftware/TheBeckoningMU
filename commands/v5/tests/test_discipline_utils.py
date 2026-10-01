@@ -37,8 +37,9 @@ class ActivateDisciplinePowerTests(EvenniaTest):
         self.assertTrue(result["success"])
         self.assertEqual(self.char.hunger, 3)
 
-    # F-038, fixed in PR 5: the power check reads db.disciplines, so a
-    # character with the discipline in db.stats is told they lack it.
+    # F-038, fixed in PR 4: the power check reads db.disciplines, which is
+    # None on a real character, so can_use_power raises AttributeError. PR 4
+    # replaces every db.disciplines read.
     @unittest.expectedFailure
     def test_free_power_leaves_hunger_unchanged(self):
         """A power with no Rouse cost activates and leaves Hunger alone."""
