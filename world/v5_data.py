@@ -74,88 +74,150 @@ def _create_skills_dict(default_value=0):
 # ============================================================================
 # CLANS (with in-clan disciplines, banes, compulsions)
 # ============================================================================
+# Source: V5 core book, clan chapter: Brujah p.65, Gangrel p.69, Malkavian
+# p.75, Nosferatu p.81, Toreador p.87, Tremere p.93, Ventrue p.99, Caitiff
+# p.105, Thin-blood p.109 (page anchors from the V5 Quick Reference 2.0 p.5;
+# bane/compulsion text cross-checked against vtm.paradoxwikis.com clan pages,
+# which cite the core book, and the Progeny V5 character creator's clan data).
+# In-clan disciplines also match QR p.5.
+#
+# Banes scale with Bane Severity, which comes from Blood Potency
+# (BLOOD_POTENCY[bp]["bane_severity"]); "Bane Severity" in the text below
+# means that number. Compulsions trigger on a bestial failure (QR p.3-4)
+# and are not stored on the character either.
+#
+# Caitiff and thin-bloods have no clan bane, compulsion or in-clan
+# disciplines (QR p.2, p.5). Caitiff take the Suspect flaw at creation and
+# pay new level x 6 XP for any discipline; thin-bloods take 1-3 thin-blood
+# merits and the same number of thin-blood flaws, and get Thin-Blood Alchemy
+# only through the Thin-blood Alchemist merit.
+#
+# CORE BOOK ONLY. The owner chose "V5 core book exactly", so CLANS holds the
+# core-book clans. Clans from later books are in NON_CORE_CLANS below; they
+# are not offered to players, and the Character.clan setter rejects them.
+# Re-enabling one is an owner decision (see the PR 11 sign-off table): move
+# its entry into CLANS.
 
 CLANS = {
     "Brujah": {
         "disciplines": ["Celerity", "Potence", "Presence"],
-        "bane": "Violent Temper: Difficulty +2 to resist fury frenzy",
-        "compulsion": "Rebellion: Must defy authority or lose 1 die from Social pools"
+        "bane": "Violent Temper: subtract Bane Severity dice from rolls to resist fury frenzy",
+        "compulsion": ("Rebellion: -2 dice to all pools until you defy an order or expectation, "
+                       "or change someone's mind"),
     },
     "Gangrel": {
         "disciplines": ["Animalism", "Fortitude", "Protean"],
-        "bane": "Bestial Features: Animal features emerge when Hunger 4+",
-        "compulsion": "Feral Impulses: Must avoid civilization or lose 1 die from Mental/Social pools"
-    },
-    "Hecata": {
-        "disciplines": ["Auspex", "Fortitude", "Oblivion"],
-        "bane": "Painful Kiss: Feeding causes intense pain to mortal victims, making it impossible to feed discreetly",
-        "compulsion": "Morbidity: Must witness or cause death, or engage with death-related activities, or lose 2 dice from pools"
+        "bane": ("Bestial Features: in frenzy you gain animal features equal to Bane Severity, "
+                 "each -1 to one Attribute, lasting one more night (one feature if you ride the wave)"),
+        "compulsion": ("Feral Impulses: for one scene, -3 dice to rolls using Manipulation or "
+                       "Intelligence, and you can speak only in one-word sentences"),
     },
     "Malkavian": {
         "disciplines": ["Auspex", "Dominate", "Obfuscate"],
-        "bane": "Fractured Perspective: Must have at least one mental derangement",
-        "compulsion": "Delusion: Fixate on irrational belief or lose 1 die from pools"
+        "bane": ("Fractured Perspective: on a bestial failure or compulsion, a penalty equal to Bane "
+                 "Severity to one category of pools (chosen at creation) for the scene"),
+        "compulsion": ("Delusion: for one scene, -2 dice to rolls using Dexterity, Manipulation, "
+                       "Composure or Wits, and to rolls to resist terror frenzy"),
     },
     "Nosferatu": {
         "disciplines": ["Animalism", "Obfuscate", "Potence"],
-        "bane": "Repulsive: Appearance 0, automatic fail on all Persuasion/Performance vs mortals",
-        "compulsion": "Cryptophilia: Hoard secrets or lose 2 dice from actions"
+        "bane": ("Repulsiveness: you take the Repulsive flaw and can't buy Looks merits; any attempt "
+                 "to pass as undeformed (even by Discipline) loses Bane Severity dice"),
+        "compulsion": ("Cryptophilia: -2 dice to actions not aimed at learning a secret, until you "
+                       "learn a useful one; you won't share secrets except for a greater one"),
     },
     "Toreador": {
         "disciplines": ["Auspex", "Celerity", "Presence"],
-        "bane": "Aesthetic Fixation: May become entranced by beauty (Composure + Wits vs Diff 3+)",
-        "compulsion": "Obsession: Fixate on beauty or lose 2 dice from other actions"
+        "bane": ("Aesthetic Fixation: in surroundings you find less than beautiful, subtract Bane "
+                 "Severity dice from Discipline pools"),
+        "compulsion": ("Obsession: -2 dice to actions not related to the object of your fixation, "
+                       "until you can no longer perceive it or the scene ends"),
     },
     "Tremere": {
         "disciplines": ["Auspex", "Blood Sorcery", "Dominate"],
-        "bane": "Deficient Blood: Blood bonds form one step stronger when drinking from Tremere",
-        "compulsion": "Perfectionism: Retry failed action or lose 3 dice from other pools"
+        "bane": ("Deficient Blood: you can't Blood Bond Kindred; a mortal or ghoul needs Bane "
+                 "Severity extra drinks of your blood to be bound"),
+        "compulsion": ("Perfectionism: -2 dice to all pools until you score a critical win on a "
+                       "Skill roll or the scene ends; repeating an action lowers the penalty"),
     },
     "Ventrue": {
         "disciplines": ["Dominate", "Fortitude", "Presence"],
-        "bane": "Rarefied Taste: Can only feed from specific type of mortal (player chosen)",
-        "compulsion": "Arrogance: Must dominate situation or lose 2 dice from actions"
+        "bane": ("Rarefied Taste: choose a preferred prey at creation; feeding outside it costs "
+                 "Willpower equal to Bane Severity, or you vomit the blood and slake nothing"),
+        "compulsion": ("Arrogance: -2 dice to actions not related to leadership, until someone "
+                       "obeys an order you gave without supernatural compulsion"),
     },
     "Caitiff": {
-        "disciplines": [],  # Choose any 2 disciplines at character creation
-        "bane": "Suspect Blood: Ostracized by Camarilla, -1 die to Social with non-Caitiff",
-        "compulsion": "None (varies by individual)"
+        "disciplines": [],
+        "bane": None,
+        "compulsion": None,
     },
     "Thin-Blood": {
-        "disciplines": ["Thin-Blood Alchemy"],  # Plus 1 discipline with weakness
-        "bane": "Thin Blood: No Blood Potency, can't create blood bonds or ghouls",
-        "compulsion": "None (varies by individual)"
+        "disciplines": [],
+        "bane": None,
+        "compulsion": None,
     },
-    # Additional clans (unlockable via admin approval)
-    "Lasombra": {
-        "disciplines": ["Dominate", "Oblivion", "Potence"],
-        "bane": "No Reflection: No reflection in mirrors or recordings",
-        "compulsion": "Ruthlessness: Must pursue goal regardless of cost or lose 2 dice"
-    },
-    "Tzimisce": {
-        "disciplines": ["Animalism", "Dominate", "Protean"],
-        "bane": "Grounded: Must sleep in homeland soil or lose 1 die cumulatively",
-        "compulsion": "Covetousness: Must possess desired object/person or lose 2 dice"
-    },
-    "Ravnos": {
-        "disciplines": ["Animalism", "Obfuscate", "Presence"],
-        "bane": "Doomed Blood: Bane severity increases at Hunger 4+",
-        "compulsion": "Tempting Fate: Must take unnecessary risk or lose 2 dice"
-    },
+}
+
+# Non-core clans. NOT offered to players (see CLANS above); kept, with their
+# sources, so the owner can decide whether to enable any of them. Sources:
+# vtm.paradoxwikis.com clan pages and the Progeny V5 character creator.
+NON_CORE_CLANS = {
     "Banu Haqim": {
+        "source": "V5 Camarilla p.157",
         "disciplines": ["Blood Sorcery", "Celerity", "Obfuscate"],
-        "bane": "Blood Addiction: Must make Hunger Frenzy test when smelling vampire blood",
-        "compulsion": "Judgement: Must punish transgressor or lose 2 dice"
+        "bane": ("Blood Addiction: slaking at least 1 Hunger from a vampire forces a hunger frenzy "
+                 "test at Difficulty 2 + Bane Severity"),
+        "compulsion": ("Judgment: -3 dice to all rolls until you slake 1 Hunger from someone who "
+                       "broke one of your Convictions, or the scene ends"),
     },
     "Ministry": {
+        "source": "V5 Anarch p.176",
         "disciplines": ["Obfuscate", "Presence", "Protean"],
-        "bane": "Light Sensitivity: +1 Aggravated damage from sunlight",
-        "compulsion": "Transgression: Must corrupt someone or lose 2 dice"
+        "bane": ("Abhors the Light: in direct bright light, -Bane Severity dice to all pools; "
+                 "sunlight deals Bane Severity extra Aggravated damage"),
+        "compulsion": ("Transgression: -2 dice to actions not aimed at tempting someone to break a "
+                       "Chronicle Tenet or Conviction, until someone takes a Stain"),
+    },
+    "Lasombra": {
+        "source": "V5 Chicago by Night (and Players Guide)",
+        "disciplines": ["Dominate", "Oblivion", "Potence"],
+        "bane": ("Distorted Image: reflections and recordings distort; using modern communication "
+                 "tech is a Technology roll at Difficulty 2 + Bane Severity"),
+        "compulsion": ("Ruthlessness: after your next failure, -2 dice to all rolls until a later "
+                       "attempt at the same action succeeds"),
+    },
+    "Hecata": {
+        "source": "V5 Cults of the Blood Gods (and Players Guide)",
+        "disciplines": ["Auspex", "Fortitude", "Oblivion"],
+        "bane": ("Painful Kiss: your bite only hurts; victims must pass Stamina + Resolve at "
+                 "Difficulty 2 + Bane Severity or recoil"),
+        "compulsion": ("Morbidity: -2 dice to actions that don't move something from life toward "
+                       "death or back, until you do"),
+    },
+    "Tzimisce": {
+        "source": "V5 Companion (and Players Guide)",
+        "disciplines": ["Animalism", "Dominate", "Protean"],
+        "bane": ("Grounded: you must sleep among your chosen charge (a place, group or thing) or "
+                 "take Aggravated Willpower damage equal to Bane Severity"),
+        "compulsion": ("Covetousness: -2 dice to actions not aimed at owning a chosen thing, until "
+                       "you own it or it can't be had"),
+    },
+    "Ravnos": {
+        "source": "V5 Companion (and Players Guide)",
+        "disciplines": ["Animalism", "Obfuscate", "Presence"],
+        "bane": ("Doomed: sleeping in the same place twice in seven nights means rolling Bane "
+                 "Severity dice, each 10 dealing 1 Aggravated damage; can't take No Haven"),
+        "compulsion": ("Tempting Fate: -2 dice unless you choose the most dangerous solution to your "
+                       "next problem, until it is solved or impossible"),
     },
     "Salubri": {
+        "source": "V5 Companion (and Players Guide)",
         "disciplines": ["Auspex", "Dominate", "Fortitude"],
-        "bane": "Third Eye: Visible third eye reveals vampire nature",
-        "compulsion": "Affective Empathy: Must help person in distress or lose 3 dice",
+        "bane": ("Hunted: vampires who taste your blood must test for hunger frenzy at Difficulty "
+                 "2 + Bane Severity; your third eye weeps blood when you use Disciplines"),
+        "compulsion": ("Affective Empathy: -2 dice to actions that don't ease someone's personal "
+                       "problem, until it is eased or the scene ends"),
     },
 }
 
