@@ -1,28 +1,34 @@
 """
 Tests for API URL routing configuration.
-Ensures web character creation endpoints are properly wired up.
+
+The endpoints must be routed and must answer with a deliberate response: the
+data for a logged-in account, a refusal (401/403) for an anonymous one. A 404
+means the route is missing; a 500 or any other code means the view broke.
 """
-from django.test import TestCase, Client
-from django.urls import reverse
+
+from django.test import Client, TestCase
+from evennia.accounts.models import AccountDB
+
+REFUSED = (401, 403)
 
 
 class TestAPIRouting(TestCase):
-    """Test that API endpoints are accessible through URL routing."""
+    """Test that API endpoints are routed and answer callers deliberately."""
 
     def setUp(self):
-        """Set up test client."""
         self.client = Client()
 
     def test_traits_api_endpoint_exists(self):
-        """Test that /api/traits/ endpoint is accessible"""
-        response = self.client.get('/api/traits/')
-        # Should get 200 or 401 (if auth required), not 404
-        self.assertNotEqual(response.status_code, 404,
-                           msg="API endpoint /api/traits/ returns 404 - URL routing not configured")
+        """GET /api/traits/ refuses anonymous callers and serves logged-in ones."""
+        response = self.client.get("/api/traits/")
+        self.assertIn(response.status_code, REFUSED)
+
+        account = AccountDB.objects.create_user(username="RouteUser", password="testpass123")
+        self.client.force_login(account)
+        response = self.client.get("/api/traits/")
+        self.assertEqual(response.status_code, 200)
 
     def test_character_create_endpoint_exists(self):
-        """Test that character creation endpoint exists"""
-        response = self.client.post('/api/traits/character/create/')
-        # Should get 400 (bad request) or 401, not 404
-        self.assertNotEqual(response.status_code, 404,
-                           msg="API endpoint /api/traits/character/create/ returns 404 - URL routing not configured")
+        """An anonymous POST to the create endpoint is routed and refused."""
+        response = self.client.post("/api/traits/character/create/")
+        self.assertIn(response.status_code, REFUSED)

@@ -8,9 +8,11 @@ Tests the core trait manipulation API:
 - Error cases and edge conditions
 """
 
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from evennia.objects.models import ObjectDB
-from traits.models import TraitCategory, Trait, CharacterTrait
+
+from traits.models import CharacterTrait, Trait, TraitCategory
 from traits.utils import (
     get_character_trait_value,
     set_character_trait_value,
@@ -282,8 +284,9 @@ class TraitModelTestCase(TestCase):
             category=self.category
         )
 
-        # Attempting to create another trait with same name should fail
-        with self.assertRaises(Exception):
+        # Attempting to create another trait with same name should fail. The
+        # savepoint keeps the IntegrityError from breaking the test transaction.
+        with self.assertRaises(IntegrityError), transaction.atomic():
             Trait.objects.create(
                 name="Unique Trait",
                 category=self.category

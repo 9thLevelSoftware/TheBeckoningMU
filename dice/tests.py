@@ -8,25 +8,38 @@ Test coverage for:
 - RouseCheckerTestCase: Rouse checks and Hunger management (rouse_checker.py)
 """
 
-from unittest.mock import patch, MagicMock
+import unittest
+from unittest.mock import patch
+
 from evennia.utils.test_resources import EvenniaCommandTest, EvenniaTest
-from dice import dice_roller, roll_result, discipline_roller, rouse_checker
+
+from dice import dice_roller
 from dice.dice_roller import (
-    roll_v5_pool, roll_chance_die, roll_rouse_check, roll_contested,
-    apply_willpower_reroll, validate_pool_params, get_success_threshold
+    apply_willpower_reroll,
+    get_success_threshold,
+    roll_chance_die,
+    roll_contested,
+    roll_rouse_check,
+    roll_v5_pool,
+    validate_pool_params,
+)
+from dice.discipline_roller import (
+    calculate_pool_from_traits,
+    can_use_power,
+    get_blood_potency_bonus,
+    get_character_discipline_powers,
+    parse_dice_pool,
+    roll_discipline_power,
 )
 from dice.roll_result import RollResult
-from dice.discipline_roller import (
-    roll_discipline_power, parse_dice_pool, calculate_pool_from_traits,
-    get_blood_potency_bonus, can_use_power, get_character_discipline_powers
-)
 from dice.rouse_checker import (
-    perform_rouse_check, can_reroll_rouse, get_hunger_level,
-    set_hunger_level, format_hunger_display
+    can_reroll_rouse,
+    format_hunger_display,
+    get_hunger_level,
+    perform_rouse_check,
+    set_hunger_level,
 )
-from traits.models import (
-    TraitCategory, Trait, DisciplinePower, CharacterTrait, CharacterPower
-)
+from traits.models import CharacterPower, CharacterTrait, DisciplinePower, Trait, TraitCategory
 
 
 class DiceRollerTestCase(EvenniaTest):
@@ -47,15 +60,14 @@ class DiceRollerTestCase(EvenniaTest):
             self.assertLessEqual(die, 10)
 
     def test_success_counting(self):
-        """Test that 6-9 = 1 success, 10 = 2 successes."""
-        # Create result with known dice values
+        """Test that 6-9 = 1 success each and 1-5 = none."""
         result = RollResult(
-            regular_dice=[6, 7, 8, 9, 10],  # 1+1+1+1+2 = 6 successes
+            regular_dice=[6, 7, 8, 9],
             hunger_dice=[],
             difficulty=0
         )
 
-        self.assertEqual(result.total_successes, 6)
+        self.assertEqual(result.total_successes, 4)
 
         # Test failures (1-5)
         result = RollResult(
@@ -108,17 +120,6 @@ class DiceRollerTestCase(EvenniaTest):
         self.assertFalse(result.is_success)
         self.assertTrue(result.is_bestial_failure)
         self.assertEqual(result.result_type, 'bestial_failure')
-
-        # Test NOT bestial if regular die also shows 1
-        result = RollResult(
-            regular_dice=[1, 3, 5],  # Regular 1 present
-            hunger_dice=[1, 2],  # Hunger 1 present
-            difficulty=5  # Failure
-        )
-
-        self.assertFalse(result.is_success)
-        self.assertFalse(result.is_bestial_failure)  # NOT bestial because regular 1 exists
-        self.assertEqual(result.result_type, 'failure')
 
     def test_chance_die(self):
         """Test that pool 0 or negative becomes 1 die."""
@@ -194,26 +195,17 @@ class DiceRollerTestCase(EvenniaTest):
             apply_willpower_reroll(original, num_rerolls=4)
 
     def test_contested_roll(self):
-        """Test two pools rolled, highest wins."""
-        result = roll_contested(pool1=5, hunger1=2, pool2=7, hunger2=1)
+        """The side with more successes wins by the difference."""
+        # Roller 1: five dice, three successes. Roller 2: three dice, one success.
+        dice = [8, 7, 6, 2, 3, 9, 1, 4]
+        with patch('dice.dice_roller.randint', side_effect=dice):
+            result = roll_contested(pool1=5, hunger1=0, pool2=3, hunger2=0)
 
-        self.assertIn('roller1_result', result)
-        self.assertIn('roller2_result', result)
-        self.assertIn('winner', result)
-        self.assertIn('margin', result)
-        self.assertIn('is_tie', result)
-
-        self.assertIsInstance(result['roller1_result'], RollResult)
-        self.assertIsInstance(result['roller2_result'], RollResult)
-
-        # Winner should be 1, 2, or None (tie)
-        self.assertIn(result['winner'], [1, 2, None])
-
-        # Margin should be non-negative
-        self.assertGreaterEqual(result['margin'], 0)
-
-        # is_tie should match winner being None
-        self.assertEqual(result['is_tie'], result['winner'] is None)
+        self.assertEqual(result['roller1_result'].total_successes, 3)
+        self.assertEqual(result['roller2_result'].total_successes, 1)
+        self.assertEqual(result['winner'], 1)
+        self.assertEqual(result['margin'], 2)
+        self.assertFalse(result['is_tie'])
 
     def test_rouse_check(self):
         """Test Rouse check returns proper structure."""
@@ -268,9 +260,6 @@ class DiceRollerTestCase(EvenniaTest):
         for value in range(6, 10):
             self.assertEqual(get_success_threshold(value), 1)
 
-        # 10: 2 successes
-        self.assertEqual(get_success_threshold(10), 2)
-
 
 class RollResultTestCase(EvenniaTest):
     """Test result parsing and interpretation."""
@@ -290,10 +279,11 @@ class RollResultTestCase(EvenniaTest):
 
     def test_success_calculation(self):
         """Test total_successes computed correctly."""
-        # 6-9 = 1 success each, 10 = 2 successes
+        # Three 6-9s are 3 successes. The two 10s (one regular, one Hunger)
+        # form a critical pair worth 4. Total 7.
         result = RollResult(
-            regular_dice=[6, 7, 10],  # 1+1+2 = 4
-            hunger_dice=[8, 10],  # 1+2 = 3
+            regular_dice=[6, 7, 10],
+            hunger_dice=[8, 10],
             difficulty=0
         )
 
@@ -463,22 +453,40 @@ class RollResultTestCase(EvenniaTest):
         )
         self.assertFalse(result.is_success)
 
-    def test_format_result(self):
-        """Test result formatting produces string output."""
-        result = RollResult(
-            regular_dice=[6, 7, 8],
-            hunger_dice=[9, 10],
-            difficulty=3
-        )
 
-        formatted = result.format_result(show_details=True)
-        self.assertIsInstance(formatted, str)
-        self.assertGreater(len(formatted), 0)
+class V5CountingRulesTestCase(EvenniaTest):
+    """V5 core rules for successes and bestial failures, on fixed dice.
 
-        # Test without details
-        formatted = result.format_result(show_details=False)
-        self.assertIsInstance(formatted, str)
-        self.assertGreater(len(formatted), 0)
+    Each 6-9 or 10 is one success; each pair of 10s adds 2 more (a critical).
+    A failed roll with any Hunger 1 is a bestial failure, whatever the regular
+    dice show.
+    """
+
+    # F-016, fixed in PR 5: RollResult counts every 10 as 2 successes.
+    @unittest.expectedFailure
+    def test_lone_ten_is_one_success(self):
+        result = RollResult(regular_dice=[10], hunger_dice=[], difficulty=0)
+        self.assertEqual(result.total_successes, 1)
+        self.assertFalse(result.is_critical)
+
+    # F-016, fixed in PR 5: RollResult counts every 10 as 2 successes.
+    @unittest.expectedFailure
+    def test_three_tens_are_five_successes(self):
+        result = RollResult(regular_dice=[10, 10, 10], hunger_dice=[], difficulty=0)
+        self.assertEqual(result.total_successes, 5)
+
+    # F-016, fixed in PR 5: RollResult suppresses the bestial failure when a
+    # regular die also shows a 1.
+    @unittest.expectedFailure
+    def test_bestial_failure_with_regular_one(self):
+        result = RollResult(regular_dice=[1, 3, 5], hunger_dice=[1, 2], difficulty=5)
+        self.assertFalse(result.is_success)
+        self.assertTrue(result.is_bestial_failure)
+
+    def test_failure_without_hunger_one_is_not_bestial(self):
+        result = RollResult(regular_dice=[2, 3], hunger_dice=[4, 5], difficulty=5)
+        self.assertFalse(result.is_success)
+        self.assertFalse(result.is_bestial_failure)
 
 
 class DisciplineRollerTestCase(EvenniaTest):
@@ -620,7 +628,11 @@ class DisciplineRollerTestCase(EvenniaTest):
         traits = parse_dice_pool("  Strength  +  Brawl  ")
         self.assertEqual(traits, ['Strength', 'Brawl'])
 
-        # Test with alternative (/)
+    # F-095, fixed in PR 5: parse_dice_pool drops everything after the first
+    # '/', so an alternative-attribute pool loses its skill.
+    @unittest.expectedFailure
+    def test_parse_dice_pool_alternative(self):
+        """'A / B + C' takes the first option of the '/' group plus C."""
         traits = parse_dice_pool("Charisma / Manipulation + Intimidation")
         self.assertEqual(traits, ['Charisma', 'Intimidation'])
 

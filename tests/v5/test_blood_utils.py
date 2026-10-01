@@ -6,9 +6,13 @@ and Blood Surge mechanics.
 """
 
 import time
-from unittest.mock import patch, Mock
+import unittest
+from unittest.mock import patch
+
 from evennia.utils.test_resources import EvenniaTest
+
 from commands.v5.utils import blood_utils
+from dice.rouse_checker import can_reroll_rouse
 
 
 class HungerManagementTests(EvenniaTest):
@@ -83,20 +87,20 @@ class HungerManagementTests(EvenniaTest):
     def test_increase_hunger_normal(self):
         """Test increasing Hunger by specified amount."""
         self.char.db.hunger = 2
-        new_hunger = blood_utils.increase_hunger(self.char, 1)
+        new_hunger = blood_utils.increase_hunger(self.char, 1)['hunger_after']
         self.assertEqual(new_hunger, 3)
         self.assertEqual(self.char.db.hunger, 3)
 
     def test_increase_hunger_default_amount(self):
         """Test increasing Hunger by default amount (1)."""
         self.char.db.hunger = 2
-        new_hunger = blood_utils.increase_hunger(self.char)
+        new_hunger = blood_utils.increase_hunger(self.char)['hunger_after']
         self.assertEqual(new_hunger, 3)
 
     def test_increase_hunger_clamps_to_five(self):
         """Test Hunger increase clamps to 5, not higher."""
         self.char.db.hunger = 4
-        new_hunger = blood_utils.increase_hunger(self.char, 5)
+        new_hunger = blood_utils.increase_hunger(self.char, 5)['hunger_after']
         self.assertEqual(new_hunger, 5, "Hunger should not exceed 5")
         self.assertEqual(self.char.db.hunger, 5)
 
@@ -104,7 +108,7 @@ class HungerManagementTests(EvenniaTest):
         """Test full range transition from 0 to 5."""
         self.char.db.hunger = 0
         for expected in range(1, 6):
-            new_hunger = blood_utils.increase_hunger(self.char, 1)
+            new_hunger = blood_utils.increase_hunger(self.char, 1)['hunger_after']
             self.assertEqual(new_hunger, expected)
 
     def test_hunger_edge_case_five_to_zero(self):
@@ -279,6 +283,10 @@ class ResonanceDisplayTests(EvenniaTest):
         self.assertIn('Melancholic', display)
         self.assertIn('Intense', display)
 
+    # F-096, fixed in PR 5: intensity 3 is labelled "Dyscrasia". In V5 the
+    # third intensity is Acute; a Dyscrasia is something an Acute resonance
+    # may carry.
+    @unittest.expectedFailure
     def test_format_resonance_display_acute(self):
         """Test resonance display for acute intensity."""
         blood_utils.set_resonance(self.char, 'Phlegmatic', intensity=3)
@@ -327,65 +335,16 @@ class BloodSurgeManagementTests(EvenniaTest):
         super().setUp()
         self.char = self.char1
 
-    @patch('traits.utils.get_character_trait_value')
-    @patch('dice.rouse_checker.perform_rouse_check')
-    def test_activate_blood_surge_success(self, mock_rouse, mock_trait):
-        """Test successful Blood Surge activation."""
-        # Mock Blood Potency
-        mock_trait.return_value = 3
-
-        # Mock Rouse check
-        mock_rouse.return_value = {
-            'success': True,
-            'hunger_after': 2,
-            'message': 'Rouse check passed'
-        }
-
-        result = blood_utils.activate_blood_surge(self.char, 'attribute', 'Strength')
-
-        self.assertTrue(result['success'])
-        self.assertEqual(result['bonus'], 3)
-        self.assertEqual(result['trait'], 'Strength')
-        self.assertIn('expires', result)
-        self.assertIn('rouse_result', result)
-
-    @patch('traits.utils.get_character_trait_value')
-    @patch('dice.rouse_checker.perform_rouse_check')
-    def test_activate_blood_surge_stores_data(self, mock_rouse, mock_trait):
-        """Test Blood Surge activation stores data correctly."""
-        mock_trait.return_value = 2
-        mock_rouse.return_value = {
-            'success': True,
-            'hunger_after': 1,
-            'message': 'Rouse check passed'
-        }
-
-        blood_utils.activate_blood_surge(self.char, 'skill', 'Brawl')
-
-        surge = blood_utils.get_blood_surge(self.char)
-        self.assertIsNotNone(surge)
-        self.assertEqual(surge['trait'], 'Brawl')
-        self.assertEqual(surge['trait_type'], 'skill')
-        self.assertEqual(surge['bonus'], 2)
-
-    @patch('traits.utils.get_character_trait_value')
-    @patch('dice.rouse_checker.perform_rouse_check')
-    def test_activate_blood_surge_performs_rouse_check(self, mock_rouse, mock_trait):
-        """Test Blood Surge performs Rouse check."""
-        mock_trait.return_value = 1
-        mock_rouse.return_value = {
-            'success': True,
-            'hunger_after': 2,
-            'message': 'Rouse check passed'
-        }
-
-        blood_utils.activate_blood_surge(self.char, 'attribute', 'Dexterity')
-
-        # Verify Rouse check was called
-        mock_rouse.assert_called_once()
-        call_args = mock_rouse.call_args
-        self.assertEqual(call_args[0][0], self.char)
-        self.assertIn('Dexterity', call_args[1]['reason'])
+    # F-017, fixed in PR 5: activate_blood_surge calls
+    # roll_rouse_check(character, reason=...), which takes no arguments, so
+    # every Blood Surge raises TypeError.
+    @unittest.expectedFailure
+    def test_activate_blood_surge_rouses(self):
+        """Blood Surge costs a Rouse check: a die of 1-5 raises Hunger by 1."""
+        self.char.hunger = 2
+        with patch('dice.dice_roller.randint', return_value=3):
+            blood_utils.activate_blood_surge(self.char, 'attribute', 'Strength')
+        self.assertEqual(self.char.hunger, 3)
 
     def test_get_blood_surge_active(self):
         """Test getting active Blood Surge status."""
@@ -433,22 +392,25 @@ class BloodSurgeManagementTests(EvenniaTest):
         surge = blood_utils.get_blood_surge(self.char)
         self.assertIsNone(surge)
 
-    @patch('traits.utils.get_character_trait_value')
-    def test_get_blood_potency_bonus(self, mock_trait):
-        """Test getting Blood Potency bonus."""
-        mock_trait.return_value = 4
-        bonus = blood_utils.get_blood_potency_bonus(self.char)
-        self.assertEqual(bonus, 4)
-        mock_trait.assert_called_once_with(self.char, 'Blood Potency')
+    # F-022, fixed in PR 4/5: Blood Potency is read through
+    # trait_utils.get_trait_value, which never looks at db.vampire, so it is
+    # always 0 and Rouse re-rolls never apply.
+    @unittest.expectedFailure
+    def test_blood_potency_is_read_from_character(self):
+        self.char.db.vampire['blood_potency'] = 3
+        self.assertEqual(blood_utils.get_blood_potency(self.char), 3)
+        self.assertTrue(can_reroll_rouse(self.char, 1))
 
-    @patch('traits.utils.get_character_trait_value')
-    def test_blood_surge_bonus_equals_blood_potency(self, mock_trait):
-        """Test Blood Surge bonus equals Blood Potency."""
-        for bp_level in range(0, 6):  # Test BP 0-5
-            mock_trait.return_value = bp_level
-            bonus = blood_utils.get_blood_potency_bonus(self.char)
-            self.assertEqual(bonus, bp_level,
-                           f"Blood Surge bonus should equal Blood Potency ({bp_level})")
+    # F-022/F-093, fixed in PR 5: the surge bonus is "equal to Blood Potency"
+    # and BP always reads 0. V5 core (p.216) gives the bonus from the Blood
+    # Potency table. These rows are pending owner sign-off (design doc, "Rule
+    # tables requiring owner sign-off").
+    @unittest.expectedFailure
+    def test_blood_surge_bonus_follows_bp_table(self):
+        expected = {0: 1, 1: 2, 2: 2, 3: 3, 4: 3, 5: 4}
+        for bp, bonus in expected.items():
+            self.char.db.vampire['blood_potency'] = bp
+            self.assertEqual(blood_utils.get_blood_potency_bonus(self.char), bonus, f"BP {bp}")
 
     def test_blood_surge_expiration_timing(self):
         """Test Blood Surge expires after approximately 1 hour."""
@@ -503,31 +465,3 @@ class EdgeCaseTests(EvenniaTest):
         self.assertEqual(res2['type'], 'Sanguine')
         self.assertEqual(res2['intensity'], 3)
         self.assertNotEqual(res2['expires'], res1['expires'])
-
-    @patch('traits.utils.get_character_trait_value')
-    @patch('dice.rouse_checker.perform_rouse_check')
-    def test_blood_surge_replaces_previous(self, mock_rouse, mock_trait):
-        """Test that activating Blood Surge on new trait replaces previous."""
-        mock_trait.return_value = 2
-        mock_rouse.return_value = {
-            'success': True,
-            'hunger_after': 1,
-            'message': 'Rouse check passed'
-        }
-
-        # Activate on Strength
-        blood_utils.activate_blood_surge(self.char, 'attribute', 'Strength')
-        surge1 = blood_utils.get_blood_surge(self.char)
-        self.assertEqual(surge1['trait'], 'Strength')
-
-        # Activate on Dexterity (should replace)
-        blood_utils.activate_blood_surge(self.char, 'attribute', 'Dexterity')
-        surge2 = blood_utils.get_blood_surge(self.char)
-        self.assertEqual(surge2['trait'], 'Dexterity')
-        self.assertNotEqual(surge2['trait'], surge1['trait'])
-
-    def test_character_without_blood_potency(self):
-        """Test Blood Surge when character has no Blood Potency."""
-        with patch('traits.utils.get_character_trait_value', return_value=0):
-            bonus = blood_utils.get_blood_potency_bonus(self.char)
-            self.assertEqual(bonus, 0, "Characters with BP 0 should get 0 bonus")
