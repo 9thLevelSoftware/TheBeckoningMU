@@ -77,9 +77,10 @@ Calling in a Life Boon for a trivial favor is poor form.
 |WFULFILLING A BOON:|n
 
 |y+boonfulfill <boon #> = <description>|n
-  Mark a called boon as fulfilled.
+  Confirm that a called-in boon has been repaid.
 
-Used by the debtor after completing the requested favor.
+Both the debtor and the creditor confirm. The boon is fulfilled when
+the second of them does.
 
 |yExamples:|n
   +boonfulfill 42 = Voted for Marcus as requested.
@@ -103,7 +104,8 @@ Used by the debtor after completing the requested favor.
    When the creditor needs a favor, they use |y+booncall|n.
 
 6. |yBoon Fulfilled|n
-   After completing the favor, debtor uses |y+boonfulfill|n.
+   After the favor is done, debtor and creditor each confirm it
+   with |y+boonfulfill|n.
 
 |WSTAFF/HARPY COMMANDS:|n
 
@@ -113,11 +115,11 @@ Used by the debtor after completing the requested favor.
 |y+boonadmin/cancel <boon #> = <reason>|n
   Cancel a boon.
 
+|y+boonadmin/fulfill <boon #> = <reason>|n
+  Mark an outstanding boon fulfilled without both confirmations.
+
 |y+boonadmin/list|n
   List all public boons.
-
-|y+boonadmin/refresh <character>|n
-  Refresh a character's boon ledger calculations.
 
 |WBOON STATUS MEANINGS:|n
 
