@@ -2,8 +2,43 @@
 BBS utility functions for permissions and formatting.
 """
 
-from evennia.utils.utils import crop
+from evennia.objects.objects import DefaultObject
+
 from .models import Board, Post
+
+
+def account_of(caller):
+    """The Account behind a caller: a puppeted Object's account, or the Account itself."""
+    if isinstance(caller, DefaultObject):
+        return caller.account
+    return caller
+
+
+def perm_allows(account, perm):
+    """An empty perm (or "all") is open to everyone; otherwise the Account must hold it."""
+    if not perm or perm.strip().lower() == "all":
+        return True
+    return bool(account) and account.check_permstring(perm)
+
+
+def can_read(account, board, post=None):
+    """
+    The one read check for boards and posts.
+
+    The board's read perm applies to everything on it; a post's own read
+    perm, if set, applies on top. An empty perm means open.
+    """
+    if not perm_allows(account, board.read_perm):
+        return False
+    return post is None or perm_allows(account, post.read_perm)
+
+
+def readable_posts(account, board):
+    """The board's posts the account may read, oldest first, with authors loaded."""
+    if not can_read(account, board):
+        return []
+    posts = board.posts.select_related("author").order_by("sequence_number")
+    return [post for post in posts if can_read(account, board, post)]
 
 
 def get_board(caller, board_id, check_perm=True):
@@ -31,10 +66,8 @@ def get_board(caller, board_id, check_perm=True):
         return board
     
     # Check read permissions
-    if board.read_perm:
-        account = caller.account if hasattr(caller, 'account') else caller
-        if not account.check_permstring(board.read_perm):
-            return None
+    if not can_read(account_of(caller), board):
+        return None
     
     # Check required flags
     required_flags = board.get_required_flags_list()
@@ -77,11 +110,8 @@ def get_post(caller, board, post_id, check_perm=True):
         return post
     
     # Check read permissions
-    perm_to_check = post.read_perm or board.read_perm
-    if perm_to_check:
-        account = caller.account if hasattr(caller, 'account') else caller
-        if not account.check_permstring(perm_to_check):
-            return None
+    if not can_read(account_of(caller), board, post):
+        return None
     
     return post
 
@@ -97,6 +127,8 @@ def format_board_list(caller, boards):
     Returns:
         Formatted string for display
     """
+    account = account_of(caller)
+    boards = [board for board in boards if can_read(account, board)]
     if not boards:
         return "No boards available."
 
@@ -122,14 +154,14 @@ def format_board_list(caller, boards):
         first_board = False
 
         # Count posts that the caller can read
-        readable_posts = [p for p in board.posts.all()
-                         if p.read_perm == 'all' or caller.check_permstring(p.read_perm)]
-        post_count = len(readable_posts)
+        posts = readable_posts(account, board)
+        post_count = len(posts)
 
-        # Get last post info
-        last_post = board.posts.order_by('-created_at').first() if readable_posts else None
+        # Last post among the readable ones only
+        last_post = max(posts, key=lambda p: p.created_at) if posts else None
         if last_post:
-            last_post_info = f"{last_post.author.username[:15]} - {last_post.created_at.strftime('%m/%d/%y')}"
+            author = last_post.get_author_name(account)
+            last_post_info = f"{author[:15]} - {last_post.created_at.strftime('%m/%d/%y')}"
         else:
             last_post_info = "No posts"
 
@@ -161,12 +193,10 @@ def format_board_view(caller, board):
         Formatted string for display
     """
     # Get posts the caller can read
-    readable_posts = []
-    for post in board.posts.all():
-        if post.read_perm == 'all' or caller.check_permstring(post.read_perm):
-            readable_posts.append(post)
+    account = account_of(caller)
+    posts = readable_posts(account, board)
 
-    if not readable_posts:
+    if not posts:
         return f"Board '{board.name}' has no posts or you don't have permission to read them."
 
     # Build header with box borders (76 char content width)
@@ -182,13 +212,13 @@ def format_board_view(caller, board):
 
     # Add each post
     first_post = True
-    for post in readable_posts:
+    for post in posts:
         # Add divider between posts (but not before first post)
         if not first_post:
             output += "|c|||n" + "-" * 78 + "|c|||n\n"
         first_post = False
 
-        author_name = post.author.username if post.author else "Unknown"
+        author_name = post.get_author_name(account)
         date_str = post.created_at.strftime("%m/%d/%y")
 
         row_content = "|w{:<5} {:<35} {:<20} {:<13}|n".format(
@@ -209,12 +239,12 @@ def format_post_read(post, viewer=None):
 
     Args:
         post: Post object
-        viewer: AccountDB object of the viewer (optional, for compatibility)
+        viewer: The viewer's Account (decides whether an anonymous author shows)
 
     Returns:
         Formatted string for display
     """
-    author_name = post.author.username if post.author else "Unknown"
+    author_name = post.get_author_name(account_of(viewer))
     date_str = post.created_at.strftime("%B %d, %Y at %I:%M %p")
 
     # Post header with box borders (76 char content width)
