@@ -76,3 +76,16 @@ class StatusRequestTests(EvenniaCommandTest):
         output = self.call(CmdStatusAdmin(), "/set Alice = 9", caller=self.wren)
         self.assertIn("set to 5", output)
         self.assertNotIn("set to 9", output)
+
+    def test_approval_is_atomic(self):
+        """R-16: if recording the approval fails, the applied change rolls back."""
+        from unittest.mock import patch
+
+        request = create_status_request(self.alice, "earned_status", "Good deeds", requested_change=2)
+        with (
+            patch.object(StatusRequest, "save", side_effect=RuntimeError("disk full")),
+            self.assertRaises(RuntimeError),
+        ):
+            request.approve(self.wren, "ok")
+        self.assertEqual(get_or_create_character_status(self.alice).earned_status, 0)
+        self.assertEqual(StatusRequest.objects.filter(pk=request.pk).values_list("status", flat=True).get(), "pending")

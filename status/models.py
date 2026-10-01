@@ -257,6 +257,8 @@ class StatusRequest(SharedMemoryModel):
         The change is applied first, through the same helpers the admin
         commands use, so their requirements (position status and clan)
         hold here too. If the change is refused the request stays pending.
+        The pending check, the change and the approval commit or roll back
+        together.
 
         Args:
             staff_member: Staff character object
@@ -265,20 +267,24 @@ class StatusRequest(SharedMemoryModel):
         Returns:
             tuple: (success: bool, message: str)
         """
+        from django.db import transaction
         from django.utils import timezone
 
-        if self.status != "pending":
-            return (False, f"Request #{self.id} is already {self.status}.")
+        with transaction.atomic():
+            current = type(self).objects.filter(pk=self.pk).values_list("status", flat=True).first()
+            if self.status != "pending" or current != "pending":
+                return (False, f"Request #{self.id} is already {current or self.status}.")
 
-        success, message = self._apply_change(staff_member)
-        if not success:
-            return (False, message)
+            success, message = self._apply_change(staff_member)
+            if not success:
+                transaction.set_rollback(True)
+                return (False, message)
 
-        self.status = "approved"
-        self.reviewed_by = staff_member
-        self.resolution_reason = reason
-        self.resolved_date = timezone.now()
-        self.save()
+            self.status = "approved"
+            self.reviewed_by = staff_member
+            self.resolution_reason = reason
+            self.resolved_date = timezone.now()
+            self.save()
         return (True, message)
 
     def deny(self, staff_member, reason=""):
