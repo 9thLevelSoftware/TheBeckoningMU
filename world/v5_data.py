@@ -841,77 +841,155 @@ ALL_DISCIPLINES = {**DISCIPLINES, **NON_CORE_DISCIPLINES}
 # ============================================================================
 # PREDATOR TYPES
 # ============================================================================
+# Source: V5 core p.175-178 (predator types) and p.307-308 (hunting pools),
+# cross-checked against vtm.paradoxwikis.com/Predator_type (cites those
+# pages) and the Progeny and VicarData V5 character-creator data. QR p.2:
+# the bonus specialty, discipline and advantages/flaws cost no XP;
+# thin-bloods and fledglings take no predator type.
+#
+#   hunting_pool       - the type's hunting roll (None: the book says not
+#                        to reduce Blood Leech hunting to one roll)
+#   alt_hunting_pool   - a second pool the book offers, if any
+#   specialties        - (skill, specialty) pairs; pick one
+#   disciplines        - pick one and take a dot in it
+#   discipline_clans   - disciplines only some clans may pick, and which
+#   humanity, blood_potency - changes to the starting value
+#   merits, flaws, backgrounds - fixed grants: {"name", "dots", "note"}
+#   flaw_choices, advantage_choices - "spend N dots among these" grants
 
 PREDATOR_TYPES = {
     "Alleycat": {
-        "description": "Hunt the homeless and forgotten",
-        "specialty": "Intimidation or Streetwise",
+        "description": "Take blood by force or threat from people on the street",
+        "hunting_pool": "Strength + Brawl",
+        "alt_hunting_pool": "Wits + Streetwise",
+        "specialties": [("Intimidation", "Stickups"), ("Brawl", "Grappling")],
         "disciplines": ["Celerity", "Potence"],
+        "humanity": -1,
+        "blood_potency": 0,
         "merits": [],
-        "flaws": []
+        "flaws": [],
+        "backgrounds": [{"name": "Contacts", "dots": 3, "note": "criminals"}],
     },
     "Bagger": {
-        "description": "Feed from blood bags and hospitals",
-        "specialty": "Medicine or Streetwise",
+        "description": "Feed on blood bags, corpses and other preserved blood",
+        "hunting_pool": "Intelligence + Streetwise",
+        "specialties": [("Larceny", "Lock Picking"), ("Streetwise", "Black Market")],
         "disciplines": ["Blood Sorcery", "Obfuscate"],
-        "merits": [],
-        "flaws": []
+        # Core: Tremere only. The Players Guide p.107 adds Banu Haqim.
+        "discipline_clans": {"Blood Sorcery": ["Tremere", "Banu Haqim"]},
+        "humanity": 0,
+        "blood_potency": 0,
+        "merits": [{"name": "Iron Gullet", "dots": 3}],
+        "flaws": [{"name": "Enemy", "dots": 2, "note": "someone who thinks you owe them"}],
+        "backgrounds": [],
+        "note": "Ventrue can't take this predator type",
     },
     "Blood Leech": {
-        "description": "Feed from other vampires",
-        "specialty": "Brawl or Stealth",
+        "description": "Feed on other vampires",
+        "hunting_pool": None,
+        "specialties": [("Brawl", "Kindred"), ("Stealth", "Against Kindred")],
         "disciplines": ["Celerity", "Protean"],
+        "humanity": -1,
+        "blood_potency": 1,
         "merits": [],
-        "flaws": []
+        "flaws": [{"name": "Prey Exclusion", "dots": 2, "note": "mortals"}],
+        "flaw_choices": [{"dots": 2, "from": ["Dark Secret", "Shunned"],
+                          "note": "Dark Secret: Diablerist, or Shunned"}],
+        "backgrounds": [],
     },
     "Cleaver": {
-        "description": "Feed from a mortal family or group",
-        "specialty": "Persuasion or Subterfuge",
+        "description": "Feed covertly on your own mortal family or friends",
+        "hunting_pool": "Manipulation + Subterfuge",
+        "specialties": [("Persuasion", "Gaslighting"), ("Subterfuge", "Coverups")],
         "disciplines": ["Animalism", "Dominate"],
+        "humanity": 0,
+        "blood_potency": 0,
         "merits": [],
-        "flaws": []
+        "flaws": [{"name": "Dark Secret", "dots": 1, "note": "Cleaver"}],
+        "backgrounds": [{"name": "Herd", "dots": 2}],
     },
     "Consensualist": {
-        "description": "Feed with permission and consent",
-        "specialty": "Medicine or Persuasion",
+        "description": "Feed only with the vessel's consent",
+        "hunting_pool": "Manipulation + Persuasion",
+        "specialties": [("Medicine", "Phlebotomy"), ("Persuasion", "Vessels")],
         "disciplines": ["Auspex", "Fortitude"],
+        "humanity": 1,
+        "blood_potency": 0,
         "merits": [],
-        "flaws": []
+        "flaws": [
+            {"name": "Dark Secret", "dots": 1, "note": "Masquerade breacher"},
+            {"name": "Prey Exclusion", "dots": 1, "note": "non-consenting vessels"},
+        ],
+        "backgrounds": [],
     },
     "Farmer": {
-        "description": "Feed from animals",
-        "specialty": "Animal Ken or Survival",
+        "description": "Feed on animals only",
+        "hunting_pool": "Composure + Animal Ken",
+        "specialties": [("Animal Ken", "Specific animal"), ("Survival", "Hunting")],
         "disciplines": ["Animalism", "Protean"],
+        "humanity": 1,
+        "blood_potency": 0,
         "merits": [],
-        "flaws": []
+        "flaws": [{"name": "Farmer", "dots": 2}],
+        "backgrounds": [],
+        "note": "Ventrue and characters of Blood Potency 3+ can't take this predator type",
     },
     "Osiris": {
-        "description": "Cult leader who feeds from worshippers",
-        "specialty": "Occult or Performance",
+        "description": "Feed on the followers of your cult, band or fandom",
+        # UNVERIFIED: the alternative pool. The wiki writes "Intimidation +
+        # Fame", which mixes a Skill and a Background.
+        "hunting_pool": "Manipulation + Subterfuge",
+        "alt_hunting_pool": "Intimidation + Fame",
+        "specialties": [("Occult", "Specific tradition"), ("Performance", "Specific field")],
         "disciplines": ["Blood Sorcery", "Presence"],
+        # Core: Tremere only. The Players Guide p.107 adds Banu Haqim.
+        "discipline_clans": {"Blood Sorcery": ["Tremere", "Banu Haqim"]},
+        "humanity": 0,
+        "blood_potency": 0,
         "merits": [],
-        "flaws": []
+        "flaws": [],
+        "advantage_choices": [{"dots": 3, "from": ["Fame", "Herd"]}],
+        "flaw_choices": [{"dots": 2, "from": ["Enemy", "Mythic flaws"]}],
+        "backgrounds": [],
     },
     "Sandman": {
-        "description": "Feed from sleeping victims",
-        "specialty": "Medicine or Stealth",
+        "description": "Feed on sleeping victims",
+        "hunting_pool": "Dexterity + Stealth",
+        "specialties": [("Medicine", "Anesthetics"), ("Stealth", "Break-in")],
         "disciplines": ["Auspex", "Obfuscate"],
+        "humanity": 0,
+        "blood_potency": 0,
         "merits": [],
-        "flaws": []
+        "flaws": [],
+        "backgrounds": [{"name": "Resources", "dots": 1}],
     },
     "Scene Queen": {
-        "description": "Feed from the party scene",
-        "specialty": "Performance or Streetwise",
-        "disciplines": ["Dominate", "Presence"],
+        "description": "Feed within a subculture where you have status",
+        "hunting_pool": "Manipulation + Persuasion",
+        "specialties": [
+            ("Etiquette", "Specific scene"),
+            ("Leadership", "Specific scene"),
+            ("Streetwise", "Specific scene"),
+        ],
+        "disciplines": ["Dominate", "Potence"],
+        "humanity": 0,
+        "blood_potency": 0,
         "merits": [],
-        "flaws": []
+        "flaws": [],
+        "flaw_choices": [{"dots": 1, "from": ["Disliked", "Prey Exclusion"],
+                          "note": "Disliked outside the subculture, or Prey Exclusion (a different subculture)"}],
+        "backgrounds": [{"name": "Fame", "dots": 1}, {"name": "Contacts", "dots": 1}],
     },
     "Siren": {
-        "description": "Seduce and feed",
-        "specialty": "Persuasion or Subterfuge",
+        "description": "Feed under the guise of sex or seduction",
+        "hunting_pool": "Charisma + Subterfuge",
+        "specialties": [("Persuasion", "Seduction"), ("Subterfuge", "Seduction")],
         "disciplines": ["Fortitude", "Presence"],
-        "merits": [],
-        "flaws": []
+        "humanity": 0,
+        "blood_potency": 0,
+        "merits": [{"name": "Beautiful", "dots": 2}],
+        "flaws": [{"name": "Enemy", "dots": 1, "note": "a spurned lover or jealous partner"}],
+        "backgrounds": [],
     },
 }
 
