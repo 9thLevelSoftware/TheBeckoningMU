@@ -7,6 +7,9 @@ Tracks Camarilla positions, Status ratings, and status change requests.
 from django.db import models
 from evennia.typeclasses.models import SharedMemoryModel
 
+# Request types that can be stored but have no implementation yet.
+UNSUPPORTED_REQUEST_TYPES = ("sect_change",)
+
 
 class CamarillaPosition(SharedMemoryModel):
     """
@@ -249,86 +252,77 @@ class StatusRequest(SharedMemoryModel):
 
     def approve(self, staff_member, reason=""):
         """
-        Approve the status request.
+        Approve a pending request and apply it.
+
+        The change is applied first, through the same helpers the admin
+        commands use, so their requirements (position status and clan)
+        hold here too. If the change is refused the request stays pending.
 
         Args:
             staff_member: Staff character object
             reason (str): Reason for approval
+
+        Returns:
+            tuple: (success: bool, message: str)
         """
         from django.utils import timezone
+
+        if self.status != "pending":
+            return (False, f"Request #{self.id} is already {self.status}.")
+
+        success, message = self._apply_change(staff_member)
+        if not success:
+            return (False, message)
 
         self.status = "approved"
         self.reviewed_by = staff_member
         self.resolution_reason = reason
         self.resolved_date = timezone.now()
         self.save()
-
-        # Apply the change
-        self._apply_change()
+        return (True, message)
 
     def deny(self, staff_member, reason=""):
         """
-        Deny the status request.
+        Deny a pending request.
 
         Args:
             staff_member: Staff character object
             reason (str): Reason for denial
+
+        Returns:
+            tuple: (success: bool, message: str)
         """
         from django.utils import timezone
+
+        if self.status != "pending":
+            return (False, f"Request #{self.id} is already {self.status}.")
 
         self.status = "denied"
         self.reviewed_by = staff_member
         self.resolution_reason = reason
         self.resolved_date = timezone.now()
         self.save()
+        return (True, f"Request #{self.id} denied.")
 
-    def _apply_change(self):
-        """Apply the approved status change to the character."""
-        from .utils import get_or_create_character_status
-
-        char_status = get_or_create_character_status(self.character)
+    def _apply_change(self, staff_member):
+        """Apply the requested change; returns (success, message)."""
+        from .utils import assign_position, modify_earned_status, remove_position
 
         if self.request_type == "earned_status":
-            char_status.earned_status = max(0, min(5, char_status.earned_status + self.requested_change))
-            char_status.add_status_history(
-                self.requested_change,
-                self.reason,
-                str(self.reviewed_by) if self.reviewed_by else "System"
+            char_status = modify_earned_status(
+                self.character, self.requested_change, self.reason, staff_member
             )
-            char_status.save()
+            return (True, f"Earned Status is now {char_status.earned_status}.")
 
-        elif self.request_type == "position":
-            if self.requested_position:
-                # Remove from old position if unique
-                if self.requested_position.is_unique:
-                    # Clear any existing holder
-                    old_holders = CharacterStatus.objects.filter(position=self.requested_position)
-                    for old_holder in old_holders:
-                        old_holder.position = None
-                        old_holder.position_status = 0
-                        old_holder.save()
+        if self.request_type == "position":
+            if not self.requested_position:
+                return (False, "The request names no position.")
+            return assign_position(self.character, self.requested_position.name, staff_member)
 
-                # Assign new position
-                char_status.position = self.requested_position
-                char_status.position_status = self.requested_position.status_granted
-                char_status.add_status_history(
-                    self.requested_position.status_granted,
-                    f"Appointed to position: {self.requested_position.name}",
-                    str(self.reviewed_by) if self.reviewed_by else "System"
-                )
-                char_status.save()
+        if self.request_type == "position_removal":
+            return remove_position(self.character, staff_member)
 
-        elif self.request_type == "position_removal":
-            char_status.position = None
-            char_status.position_status = 0
-            char_status.add_status_history(
-                0,
-                f"Removed from position",
-                str(self.reviewed_by) if self.reviewed_by else "System"
-            )
-            char_status.save()
+        if self.request_type in UNSUPPORTED_REQUEST_TYPES:
+            return (False, "Sect change requests aren't implemented yet. Deny it and make the change by hand.")
 
-        elif self.request_type == "sect_change":
-            # Sect change would be handled here
-            # May require additional logic based on game rules
-            pass
+        return (True, "Approved; no automatic change applies to this request type.")
