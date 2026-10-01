@@ -1000,29 +1000,44 @@ class RouseCheckerTestCase(EvenniaTest):
 class PoolCapTestCase(EvenniaCommandTest):
     """Roll size and difficulty are capped at every entry point."""
 
-    def test_pool_cap(self):
+    def _call_roll(self, args):
+        """Run `roll <args>` and return (output, mock of roll_v5_pool)."""
         from dice.commands import CmdRoll
 
-        with patch("dice.commands.dice_roller.roll_v5_pool") as mock_roll:
-            output = self.call(CmdRoll(), "1000")
-        mock_roll.assert_not_called()
-        self.assertIn(f"cannot exceed {dice_roller.MAX_POOL}", output)
+        real_roll = dice_roller.roll_v5_pool
+        with patch("dice.commands.dice_roller.roll_v5_pool", side_effect=real_roll) as mock_roll:
+            output = self.call(CmdRoll(), args)
+        return output, mock_roll
 
+    def _assert_roll_rejected(self, args, message):
+        from dice.commands import CmdRoll
+
+        with patch(
+            "dice.commands.dice_roller.roll_v5_pool",
+            side_effect=AssertionError("roll_v5_pool should not be called"),
+        ):
+            output = self.call(CmdRoll(), args)
+        self.assertIn(message, output)
+
+    def test_pool_cap(self):
+        self._assert_roll_rejected("1000", f"cannot exceed {dice_roller.MAX_POOL}")
         with self.assertRaises(ValueError):
             roll_v5_pool(1000, 0)
 
     def test_pool_cap_boundary(self):
+        self._assert_roll_rejected(str(dice_roller.MAX_POOL + 1), f"cannot exceed {dice_roller.MAX_POOL}")
+        _, mock_roll = self._call_roll(str(dice_roller.MAX_POOL))
+        mock_roll.assert_called_once_with(dice_roller.MAX_POOL, 0, 0)
+
         self.assertEqual(len(roll_v5_pool(dice_roller.MAX_POOL, 0).all_dice), dice_roller.MAX_POOL)
         with self.assertRaises(ValueError):
             roll_v5_pool(dice_roller.MAX_POOL + 1, 0)
 
     def test_difficulty_range(self):
-        from dice.commands import CmdRoll
-
-        with patch("dice.commands.dice_roller.roll_v5_pool") as mock_roll:
-            output = self.call(CmdRoll(), f"5 vs {dice_roller.MAX_DIFFICULTY + 1}")
-        mock_roll.assert_not_called()
-        self.assertIn("Difficulty must be between", output)
+        self._assert_roll_rejected(f"5 vs {dice_roller.MAX_DIFFICULTY + 1}", "Difficulty must be between")
+        self._assert_roll_rejected("5 vs -1", "Difficulty must be between")
+        _, mock_roll = self._call_roll(f"5 vs {dice_roller.MAX_DIFFICULTY}")
+        mock_roll.assert_called_once_with(5, 0, dice_roller.MAX_DIFFICULTY)
 
         roll_v5_pool(5, 0, dice_roller.MAX_DIFFICULTY)
         with self.assertRaises(ValueError):
@@ -1033,10 +1048,23 @@ class PoolCapTestCase(EvenniaCommandTest):
     def test_v5_dice_roll_pool_cap(self):
         from world.v5_dice import roll_pool
 
+        # Accepted at the limits.
+        def dice_count(result):
+            return len(result.normal_dice) + len(result.hunger_dice)
+
+        self.assertEqual(dice_count(roll_pool(dice_roller.MAX_POOL)), dice_roller.MAX_POOL)
+        self.assertEqual(dice_count(roll_pool(dice_roller.MAX_POOL - 3, willpower=True)), dice_roller.MAX_POOL)
+        roll_pool(5, difficulty=dice_roller.MAX_DIFFICULTY)
+        roll_pool(5, difficulty=dice_roller.MIN_DIFFICULTY)
+
+        # Rejected past them. The Willpower bonus counts toward the cap.
         with self.assertRaises(ValueError):
             roll_pool(1000)
-        # The Willpower bonus counts toward the cap.
+        with self.assertRaises(ValueError):
+            roll_pool(dice_roller.MAX_POOL + 1)
         with self.assertRaises(ValueError):
             roll_pool(dice_roller.MAX_POOL - 2, willpower=True)
         with self.assertRaises(ValueError):
             roll_pool(5, difficulty=dice_roller.MAX_DIFFICULTY + 1)
+        with self.assertRaises(ValueError):
+            roll_pool(5, difficulty=-1)
