@@ -21,8 +21,8 @@ class ActivateDisciplinePowerTests(EvenniaTest):
         super().setUp()
         self.char = self.char1
         self.char.db.stats["disciplines"]["animalism"] = {
-            "level": 1,
-            "powers": ["Bond Famulus", "Sense the Beast"],
+            "level": 2,
+            "powers": ["Feral Whispers", "Sense the Beast"],
         }
         self.char.hunger = 2
 
@@ -31,9 +31,9 @@ class ActivateDisciplinePowerTests(EvenniaTest):
     # every Rouse-costing power raises TypeError.
     @unittest.expectedFailure
     def test_rouse_power_failed_rouse_raises_hunger(self):
-        """A failed Rouse (die 1-5) on a Rouse power raises Hunger by 1."""
+        """A failed Rouse (die 1-5) on a 1-Rouse power raises Hunger by 1."""
         with patch("dice.dice_roller.randint", return_value=3):
-            result = discipline_utils.activate_discipline_power(self.char, "Animalism", "Bond Famulus")
+            result = discipline_utils.activate_discipline_power(self.char, "Animalism", "Feral Whispers")
         self.assertTrue(result["success"])
         self.assertEqual(self.char.hunger, 3)
 
