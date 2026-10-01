@@ -4,9 +4,11 @@ Display formatting utilities for V5 character sheets and game information.
 This module provides WoD-style formatting with dot leaders adapted to V5 data.
 """
 
+from collections.abc import Mapping
+
 from evennia.utils.ansi import ANSIString
 
-from world.ansi_theme import (
+from world.ansi_theme import (  # noqa: F401 - commands/v5/humanity.py imports colours from here
     BLOOD_RED, DARK_RED, PALE_IVORY, SHADOW_GREY, DEEP_PURPLE,
     MIDNIGHT_BLUE, BONE_WHITE, DECAY_GREEN, GOLD, VAMPIRE_GOLD, RESET,
     HUNGER_0, HUNGER_1_2, HUNGER_3_4, HUNGER_5,
@@ -14,9 +16,7 @@ from world.ansi_theme import (
     DBOX_H, DBOX_V, DBOX_TL, DBOX_TR, DBOX_BL, DBOX_BR,
     BOX_H, BOX_V, BOX_TL, BOX_TR, BOX_BL, BOX_BR, BOX_L, BOX_R
 )
-
-from collections.abc import Mapping
-
+from world.v5_data import TRAIT_REGISTRY
 
 # V5 Skills organized by category (matching WoD pattern)
 PHYSICAL_SKILLS = ['athletics', 'brawl', 'craft', 'drive', 'firearms', 'larceny', 'melee', 'stealth', 'survival']
@@ -287,11 +287,22 @@ def _format_advantages_section(character):
     has_content = False
     output = "\n"
 
-    if backgrounds and any(val > 0 for val in backgrounds.values()):
-        output += " Backgrounds:\n"
-        for bg, level in sorted(backgrounds.items()):
+    background_lines = []
+    for key in sorted(backgrounds):
+        if key not in TRAIT_REGISTRY:
+            continue  # not a V5 background (old web-import key)
+        label = key.replace('_', ' ').title()
+        instances = character.background_instances(key)
+        if instances:
+            for instance in instances:
+                dots = instance['dots']
+                background_lines.append(f"  {label} ({instance['note']}): {'●' * dots} ({dots})\n")
+        else:
+            level = character.get_trait(key)
             if level > 0:
-                output += f"  {bg.replace('_', ' ').title()}: {'●' * level} ({level})\n"
+                background_lines.append(f"  {label}: {'●' * level} ({level})\n")
+    if background_lines:
+        output += " Backgrounds:\n" + "".join(background_lines)
         has_content = True
 
     if merits:

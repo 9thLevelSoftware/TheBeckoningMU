@@ -37,16 +37,14 @@ class RemorseTests(EvenniaTest):
 
 
 class FrenzyTests(EvenniaTest):
-    # F-041, fixed in PR 6: resist_frenzy reads keys the typeclass never
-    # writes and always rolls 7 dice. V5 (QR p.4) rolls Willpower +
-    # Humanity / 3: Composure 4 + Resolve 4 gives Willpower 8, plus 7 // 3 = 2.
+    # F-041, fixed in PR 6: resist_frenzy rolls current Willpower + Composure
+    # (8 + 4 = 12 dice here). V5 (QR p.4) rolls Willpower + Humanity / 3:
+    # Composure 4 + Resolve 4 gives Willpower 8, plus 7 // 3 = 2.
     @unittest.expectedFailure
     def test_frenzy_pool_is_willpower_plus_third_humanity(self):
         char = self.char1
         char.db.stats["attributes"]["social"]["composure"] = 4
         char.db.stats["attributes"]["mental"]["resolve"] = 4
-        char.db.pools["willpower"] = 8
-        char.db.pools["current_willpower"] = 8
         humanity_utils.set_humanity(char, 7)
         char.hunger = 0
         with patch("random.randint", return_value=6), patch("dice.dice_roller.randint", return_value=6):
@@ -58,17 +56,16 @@ class XPSpendTests(EvenniaTest):
     def setUp(self):
         super().setUp()
         self.char = self.char1
-        self.char.db.experience["current"] = 50
+        self.char.db.experience["total_earned"] = 50
         self.char.db.stats["attributes"]["physical"]["strength"] = 3
 
-    # F-005, fixed in PR 6: +spend never checks the trait's category, so an
-    # attribute can be bought at the skill price (Strength 3 -> 4 for 12 XP;
-    # an attribute costs new x 5 = 20).
-    @unittest.expectedFailure
+    # F-005: the spend resolves the name through the trait registry, so an
+    # attribute can no longer be bought at the skill price.
     def test_skill_spend_refuses_an_attribute(self):
-        ok, _message = xp_utils.spend_xp_on_skill(self.char, "strength")
+        ok, message = xp_utils.spend_xp_on_skill(self.char, "strength")
         self.assertFalse(ok)
-        self.assertEqual(self.char.db.experience["current"], 50)
+        self.assertIn("not one of the skills", message)
+        self.assertEqual(self.char.xp, 50)
         self.assertEqual(self.char.db.stats["attributes"]["physical"]["strength"], 3)
 
     # F-043, fixed in PR 6: Caitiff disciplines cost new x 6 (QR p.1); the

@@ -17,7 +17,7 @@ from django.db import transaction
 from traits.models import TraitCategory, Trait, DisciplinePower
 
 # world/v5_data.py is the only source of rules data; this command copies it
-# into the traits tables until PR 7 deletes them.
+# into the legacy traits tables that the web chargen API still serves.
 from world.v5_data import (
     ATTRIBUTES,
     BACKGROUNDS,

@@ -4,9 +4,7 @@ Humanity System Utility Functions for V5
 Handles Stains, Remorse rolls, Humanity tracking, Convictions, and Touchstones.
 """
 
-from collections.abc import Mapping
-
-from world.v5_dice import roll_pool, format_dice_result
+from world.v5_dice import roll_pool
 
 
 def get_humanity(character):
@@ -35,25 +33,6 @@ def set_humanity(character, value):
     """
     character.humanity = value
     return character.humanity
-
-
-def get_humanity_data(character):
-    """
-    Get humanity_data dict, ensuring it exists.
-
-    Args:
-        character: Character object
-
-    Returns:
-        dict: humanity_data with convictions, touchstones, stains
-    """
-    if not isinstance(character.db.humanity_data, Mapping):
-        character.db.humanity_data = {
-            'convictions': [],
-            'touchstones': [],
-            'stains': 0
-        }
-    return character.db.humanity_data
 
 
 def get_stains(character):
@@ -285,7 +264,7 @@ def gain_humanity(character, amount=1):
 
 def add_conviction(character, conviction_text):
     """
-    Add a Conviction (max 3).
+    Add a Conviction (max 3), through Character.add_conviction.
 
     Args:
         character: Character object
@@ -298,29 +277,24 @@ def add_conviction(character, conviction_text):
             'message': result message
         }
     """
-    hum_data = get_humanity_data(character)
-    convictions = hum_data.get('convictions', [])
-
-    if len(convictions) >= 3:
-        return {
-            'success': False,
-            'convictions': convictions,
-            'message': "You already have 3 Convictions (the maximum). Remove one first."
-        }
-
-    convictions.append(conviction_text)
-    hum_data['convictions'] = convictions
+    try:
+        text = character.add_conviction(conviction_text)
+    except ValueError as err:
+        message = str(err)
+        if "already have" in message:
+            message = "You already have 3 Convictions (the maximum). Remove one first."
+        return {'success': False, 'convictions': character.convictions, 'message': message}
 
     return {
         'success': True,
-        'convictions': convictions,
-        'message': f"Conviction added: {conviction_text}"
+        'convictions': character.convictions,
+        'message': f"Conviction added: {text}"
     }
 
 
 def remove_conviction(character, index):
     """
-    Remove a Conviction by index.
+    Remove a Conviction by index, through Character.remove_conviction.
 
     Args:
         character: Character object
@@ -333,29 +307,25 @@ def remove_conviction(character, index):
             'message': result message
         }
     """
-    hum_data = get_humanity_data(character)
-    convictions = hum_data.get('convictions', [])
-
-    if index < 0 or index >= len(convictions):
+    try:
+        removed = character.remove_conviction(index)
+    except (IndexError, ValueError):
         return {
             'success': False,
-            'convictions': convictions,
+            'convictions': character.convictions,
             'message': f"Invalid conviction index: {index}"
         }
 
-    removed = convictions.pop(index)
-    hum_data['convictions'] = convictions
-
     return {
         'success': True,
-        'convictions': convictions,
+        'convictions': character.convictions,
         'message': f"Conviction removed: {removed}"
     }
 
 
 def add_touchstone(character, name, description, conviction_index=0):
     """
-    Add a Touchstone (mortal who anchors Humanity).
+    Add a Touchstone (mortal who anchors Humanity), through Character.add_touchstone.
 
     Max touchstones = current Humanity // 2
 
@@ -372,15 +342,13 @@ def add_touchstone(character, name, description, conviction_index=0):
             'message': result message
         }
     """
-    hum_data = get_humanity_data(character)
-    touchstones = hum_data.get('touchstones', [])
-    humanity = get_humanity(character)
+    humanity = character.humanity
     max_touchstones = humanity // 2
 
-    if len(touchstones) >= max_touchstones:
+    if len(character.touchstones) >= max_touchstones:
         return {
             'success': False,
-            'touchstones': touchstones,
+            'touchstones': character.touchstones,
             'message': (
                 f"You can only have {max_touchstones} Touchstones "
                 f"(Humanity {humanity} ÷ 2 = {max_touchstones}). "
@@ -388,24 +356,21 @@ def add_touchstone(character, name, description, conviction_index=0):
             )
         }
 
-    touchstone = {
-        'name': name,
-        'description': description,
-        'conviction_index': conviction_index
-    }
-    touchstones.append(touchstone)
-    hum_data['touchstones'] = touchstones
+    try:
+        character.add_touchstone(name, description, conviction_index)
+    except ValueError as err:
+        return {'success': False, 'touchstones': character.touchstones, 'message': str(err)}
 
     return {
         'success': True,
-        'touchstones': touchstones,
+        'touchstones': character.touchstones,
         'message': f"Touchstone added: {name} - {description}"
     }
 
 
 def remove_touchstone(character, index):
     """
-    Remove a Touchstone by index.
+    Remove a Touchstone by index, through Character.remove_touchstone.
 
     Args:
         character: Character object
@@ -418,22 +383,18 @@ def remove_touchstone(character, index):
             'message': result message
         }
     """
-    hum_data = get_humanity_data(character)
-    touchstones = hum_data.get('touchstones', [])
-
-    if index < 0 or index >= len(touchstones):
+    try:
+        removed = character.remove_touchstone(index)
+    except (IndexError, ValueError):
         return {
             'success': False,
-            'touchstones': touchstones,
+            'touchstones': character.touchstones,
             'message': f"Invalid touchstone index: {index}"
         }
 
-    removed = touchstones.pop(index)
-    hum_data['touchstones'] = touchstones
-
     return {
         'success': True,
-        'touchstones': touchstones,
+        'touchstones': character.touchstones,
         'message': f"Touchstone removed: {removed['name']}"
     }
 
@@ -454,14 +415,13 @@ def get_humanity_status(character):
             'max_touchstones': int
         }
     """
-    hum_data = get_humanity_data(character)
     humanity = get_humanity(character)
 
     return {
         'humanity': humanity,
-        'stains': hum_data.get('stains', 0),
-        'convictions': hum_data.get('convictions', []),
-        'touchstones': hum_data.get('touchstones', []),
+        'stains': character.stains,
+        'convictions': character.convictions,
+        'touchstones': character.touchstones,
         'max_touchstones': humanity // 2
     }
 

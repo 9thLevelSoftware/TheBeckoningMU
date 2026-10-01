@@ -6,10 +6,9 @@ Handles experience point costs, spending, and tracking.
 
 from collections.abc import Mapping
 
-from world.v5_data import resolve_trait
+from world.v5_data import MERITS, UnknownTrait, WrongCategory, resolve_trait
 
-from .trait_utils import get_trait_value, set_trait_value
-from .clan_utils import get_clan, get_inclan_disciplines
+from .clan_utils import get_inclan_disciplines
 
 
 def get_xp_cost_attribute(character, attribute_name):
@@ -25,7 +24,7 @@ def get_xp_cost_attribute(character, attribute_name):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    current = get_trait_value(character, attribute_name, category='attributes')
+    current = character.get_trait(attribute_name, 'attributes')
     new_rating = current + 1
 
     if new_rating > 5:
@@ -48,7 +47,7 @@ def get_xp_cost_skill(character, skill_name):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    current = get_trait_value(character, skill_name, category='skills')
+    current = character.get_trait(skill_name, 'skills')
     new_rating = current + 1
 
     if new_rating > 5:
@@ -58,7 +57,7 @@ def get_xp_cost_skill(character, skill_name):
     return (cost, new_rating)
 
 
-def get_xp_cost_specialty(character, skill_name):
+def get_xp_cost_specialty(character, skill_name, specialty_name=None):
     """
     Calculate XP cost for a specialty.
 
@@ -67,18 +66,23 @@ def get_xp_cost_specialty(character, skill_name):
     Args:
         character: Character object
         skill_name (str): Skill to add specialty to
+        specialty_name (str, optional): The specialty; if the skill already
+            has it, the cost is None
 
     Returns:
         int: Cost (3 XP or None if invalid)
     """
+    ref = resolve_trait(skill_name, 'skills')
+
     # Check if skill is at least 1
-    skill_value = get_trait_value(character, skill_name, category='skills')
-    if skill_value < 1:
+    if character.get_trait(ref.key) < 1:
         return None
 
-    # Check if already has specialty
-    if resolve_trait(skill_name, 'skills').key in character.specialties:
-        return None  # Already has specialty
+    # A skill may hold several specialties, but not the same one twice
+    if specialty_name is not None:
+        existing = [name.lower() for name in character.specialties.get(ref.key, [])]
+        if str(specialty_name).strip().lower() in existing:
+            return None
 
     return 3
 
@@ -154,7 +158,10 @@ def get_xp_cost_merit(character, merit_name):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    current = character.advantages['merits'].get(merit_name, 0)
+    canonical = next((name for name in MERITS if name.lower() == str(merit_name).strip().lower()), None)
+    if canonical is None:
+        raise UnknownTrait(f"Unknown merit: {merit_name}")
+    current = character.advantages['merits'].get(canonical, 0)
     new_rating = current + 1
 
     if new_rating > 5:
@@ -267,15 +274,13 @@ def award_xp(character, amount, reason="", awarded_by=None):
         character.db.experience = {
             'total_earned': 0,
             'total_spent': 0,
-            'current': 0,
             'log': []
         }
 
     exp = character.db.experience
 
-    # Update totals
-    exp['current'] += amount
-    exp['total_earned'] += amount
+    # Update totals (unspent XP is derived: earned - spent)
+    exp['total_earned'] = exp.get('total_earned', 0) + amount
 
     # Log the award
     from datetime import datetime
@@ -285,7 +290,7 @@ def award_xp(character, amount, reason="", awarded_by=None):
         'reason': reason,
         'awarded_by': str(awarded_by) if awarded_by else 'System',
         'date': datetime.now().isoformat(),
-        'balance': exp['current']
+        'balance': character.xp
     }
 
     if 'log' not in exp:
@@ -294,7 +299,7 @@ def award_xp(character, amount, reason="", awarded_by=None):
 
     character.db.experience = exp
 
-    return (True, f"Awarded {amount} XP. Current XP: {exp['current']}")
+    return (True, f"Awarded {amount} XP. Current XP: {character.xp}")
 
 
 def spend_xp_on_attribute(character, attribute_name, reason=""):
@@ -309,7 +314,10 @@ def spend_xp_on_attribute(character, attribute_name, reason=""):
     Returns:
         tuple: (success: bool, message: str)
     """
-    cost, new_rating = get_xp_cost_attribute(character, attribute_name)
+    try:
+        cost, new_rating = get_xp_cost_attribute(character, attribute_name)
+    except (UnknownTrait, WrongCategory) as err:
+        return (False, f"{err}.")
 
     if cost is None:
         return (False, f"Cannot raise {attribute_name} further (max 5).")
@@ -319,7 +327,7 @@ def spend_xp_on_attribute(character, attribute_name, reason=""):
         return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
 
     # Raise attribute
-    set_trait_value(character, attribute_name, new_rating, category='attributes')
+    character.set_trait(attribute_name, new_rating, 'attributes')
 
     # Deduct XP
     _deduct_xp(character, cost, f"Raised {attribute_name} to {new_rating}" + (f" - {reason}" if reason else ""))
@@ -339,7 +347,10 @@ def spend_xp_on_skill(character, skill_name, reason=""):
     Returns:
         tuple: (success: bool, message: str)
     """
-    cost, new_rating = get_xp_cost_skill(character, skill_name)
+    try:
+        cost, new_rating = get_xp_cost_skill(character, skill_name)
+    except (UnknownTrait, WrongCategory) as err:
+        return (False, f"{err}.")
 
     if cost is None:
         return (False, f"Cannot raise {skill_name} further (max 5).")
@@ -349,7 +360,7 @@ def spend_xp_on_skill(character, skill_name, reason=""):
         return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
 
     # Raise skill
-    set_trait_value(character, skill_name, new_rating, category='skills')
+    character.set_trait(skill_name, new_rating, 'skills')
 
     # Deduct XP
     _deduct_xp(character, cost, f"Raised {skill_name} to {new_rating}" + (f" - {reason}" if reason else ""))
@@ -370,17 +381,20 @@ def spend_xp_on_specialty(character, skill_name, specialty_name, reason=""):
     Returns:
         tuple: (success: bool, message: str)
     """
-    cost = get_xp_cost_specialty(character, skill_name)
+    try:
+        cost = get_xp_cost_specialty(character, skill_name, specialty_name)
+    except (UnknownTrait, WrongCategory) as err:
+        return (False, f"{err}.")
 
     if cost is None:
-        return (False, f"Cannot add specialty to {skill_name}. Skill must be at least 1 and not already have a specialty.")
+        return (False, f"Cannot add specialty {specialty_name} to {skill_name}. The skill needs at least 1 dot and can't already have that specialty.")
 
     current_xp = get_current_xp(character)
     if current_xp < cost:
         return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
 
     # Add specialty
-    character.db.stats['specialties'][resolve_trait(skill_name, 'skills').key] = specialty_name
+    character.add_specialty(skill_name, specialty_name)
 
     # Deduct XP
     _deduct_xp(character, cost, f"Added specialty: {skill_name} ({specialty_name})" + (f" - {reason}" if reason else ""))
@@ -400,7 +414,10 @@ def spend_xp_on_discipline(character, discipline_name, reason=""):
     Returns:
         tuple: (success: bool, message: str)
     """
-    cost, new_rating, is_in_clan = get_xp_cost_discipline(character, discipline_name)
+    try:
+        cost, new_rating, is_in_clan = get_xp_cost_discipline(character, discipline_name)
+    except (UnknownTrait, WrongCategory) as err:
+        return (False, f"{err}.")
 
     if cost is None:
         return (False, f"Cannot raise {discipline_name} further (max 5).")
@@ -452,7 +469,7 @@ def spend_xp_on_willpower(character, reason=""):
     """
     Refuse: Willpower is Composure + Resolve and is never bought directly.
 
-    Raise Composure or Resolve instead. (PR 6 removes this spend type.)
+    Raise Composure or Resolve instead.
 
     Args:
         character: Character object
@@ -475,8 +492,7 @@ def _deduct_xp(character, amount, reason):
     """
     exp = character.db.experience
 
-    exp['current'] -= amount
-    exp['total_spent'] += amount
+    exp['total_spent'] = exp.get('total_spent', 0) + amount
 
     # Log the expenditure
     from datetime import datetime
@@ -485,7 +501,7 @@ def _deduct_xp(character, amount, reason):
         'amount': -amount,
         'reason': reason,
         'date': datetime.now().isoformat(),
-        'balance': exp['current']
+        'balance': character.xp
     }
 
     if 'log' not in exp:

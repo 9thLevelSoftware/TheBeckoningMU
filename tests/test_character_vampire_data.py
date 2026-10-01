@@ -33,14 +33,16 @@ class VampireDataInitializationTestCase(EvenniaTest):
         vampire = self.char.db.vampire
         self.assertIsNone(vampire['clan'])
         self.assertEqual(vampire['generation'], 13)
-        self.assertEqual(vampire['blood_potency'], 0)
+        self.assertEqual(vampire['blood_potency'], 1)  # QR p.3: 13th Generation
         self.assertEqual(vampire['hunger'], 1)
         self.assertEqual(vampire['humanity'], 7)
         self.assertIsNone(vampire['predator_type'])
         self.assertIsNone(vampire['current_resonance'])
         self.assertEqual(vampire['resonance_intensity'], 0)
-        self.assertIsNone(vampire['bane'])
-        self.assertIsNone(vampire['compulsion'])
+        # Bane and compulsion are derived from the clan, not stored.
+        self.assertNotIn('bane', vampire)
+        self.assertNotIn('compulsion', vampire)
+        self.assertIsNone(self.char.bane)
 
     def test_fresh_character_hunger_is_one(self):
         """A new vampire starts at Hunger 1, read through the property."""

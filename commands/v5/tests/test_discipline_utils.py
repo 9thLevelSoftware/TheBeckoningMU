@@ -26,9 +26,9 @@ class ActivateDisciplinePowerTests(EvenniaTest):
         }
         self.char.hunger = 2
 
-    # F-038, fixed in PR 5: +power reads db.disciplines, which nothing
-    # populates, and then calls roll_rouse_check(character, reason=...), which
-    # takes no arguments, so every Rouse-costing power crashes.
+    # F-038, fixed in PR 5: activate_discipline_power calls
+    # roll_rouse_check(character, reason=...), which takes no arguments, so
+    # every Rouse-costing power raises TypeError.
     @unittest.expectedFailure
     def test_rouse_power_failed_rouse_raises_hunger(self):
         """A failed Rouse (die 1-5) on a Rouse power raises Hunger by 1."""

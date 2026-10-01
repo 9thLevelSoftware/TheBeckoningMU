@@ -4,7 +4,7 @@ Background Utility Functions
 Helper functions for Background mechanics and benefits.
 """
 
-from world.v5_data import BACKGROUNDS, UnknownTrait
+from world.v5_data import BACKGROUNDS, TRAIT_REGISTRY, UnknownTrait
 import random
 
 
@@ -38,9 +38,14 @@ def get_all_backgrounds(character):
         character: The character object
 
     Returns:
-        dict: {"background_name": level}
+        dict: {"background_key": level}; an instanced background (Allies,
+        Contacts, ...) rates as the total of its instances
     """
-    return character.advantages["backgrounds"]
+    return {
+        key: character.get_trait(key)
+        for key in character.advantages["backgrounds"]
+        if key in TRAIT_REGISTRY
+    }
 
 
 def get_background_benefits(character, background_name):

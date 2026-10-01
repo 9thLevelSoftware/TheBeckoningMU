@@ -9,7 +9,7 @@ with proper error handling and validation.
 """
 
 
-from world.v5_data import TRAIT_RANGES, UnknownTrait, find_power, resolve_trait
+from world.v5_data import DISCIPLINE_POWERS, TRAIT_RANGES, UnknownTrait, find_power, resolve_trait
 
 # ============================================================================
 # Lenient wrappers over the Character accessors
@@ -140,24 +140,24 @@ def remove_trait_dots(character, trait_name, dots=1, category=None):
     return new_value
 
 
-def get_specialty(character, skill_name):
+def get_specialties(character, skill_name):
     """
-    Get the specialty for a skill.
+    Get the specialties for a skill (a skill may have several).
 
     Args:
         character: Character object
         skill_name (str): Name of the skill
 
     Returns:
-        str or None: Specialty name, or None if no specialty
+        list: Specialty names (empty if none)
     """
     key = resolve_trait(skill_name, "skills").key
-    return character.specialties.get(key)
+    return character.specialties.get(key, [])
 
 
-def set_specialty(character, skill_name, specialty_name):
+def add_specialty(character, skill_name, specialty_name):
     """
-    Set a specialty for a skill.
+    Add a specialty to a skill, through Character.add_specialty.
 
     Args:
         character: Character object
@@ -165,14 +165,12 @@ def set_specialty(character, skill_name, specialty_name):
         specialty_name (str): Name of the specialty
 
     Returns:
-        bool: True if successful, False if the skill has no dots
+        bool: True if added; False if the skill has no dots or already has it
     """
-    key = resolve_trait(skill_name, "skills").key
-    if character.get_trait(key) < 1:
+    try:
+        return character.add_specialty(skill_name, specialty_name)
+    except ValueError:
         return False
-
-    character.db.stats["specialties"][key] = specialty_name
-    return True
 
 
 def get_discipline_powers(character, discipline_name):
@@ -187,8 +185,12 @@ def get_discipline_powers(character, discipline_name):
         list: List of power names
     """
     key = resolve_trait(discipline_name, "disciplines").key
-    entry = character.db.stats["disciplines"].get(key)
-    return list(entry.get("powers", [])) if entry else []
+    power_names = set(character.known_powers)
+    return [
+        power["name"]
+        for power in DISCIPLINE_POWERS.values()
+        if power["name"] in power_names and resolve_trait(power["discipline"]).key == key
+    ]
 
 
 def add_discipline_power(character, discipline_name, power_name):
