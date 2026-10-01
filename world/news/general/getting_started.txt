@@ -5,19 +5,8 @@
 
 |cSTEP 1: CREATE YOUR CHARACTER|n
 
-You have two options for character creation:
-
-|wWeb-based Chargen|n (Recommended for new players)
-  Visit: |yhttp://localhost:4001/character-creation/|n
-  - Visual interface with tooltips
-  - Validation to prevent errors
-  - Submit for staff approval when complete
-
-|wIn-Game Chargen|n
-  Command: |w+chargen/start|n
-  - Text-based step-by-step process
-  - Type |w+chargen/help|n for guidance
-  - Finalize with |w+chargen/finalize|n
+Characters are created on the game website, at its |y/character-creation/|n
+page. Submit your character there for staff approval (see |whelp chargen|n).
 
 |w═══════════════════════════════════════════════════════════════════|n
 

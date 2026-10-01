@@ -82,7 +82,7 @@ Your clan determines:
   - |yCompulsion|n (triggered by Bestial Failures)
   - |ySocial reputation|n among Kindred
 
-Command: |y+chargen|n to begin character creation
+Characters are created on the game website; see |yhelp chargen|n.
 
 |[r+===================================================================+|n
 

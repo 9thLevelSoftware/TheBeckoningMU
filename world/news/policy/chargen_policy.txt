@@ -9,8 +9,7 @@
 
 |yApproval Required|n
 - ALL characters must be approved by staff before play
-- Use web chargen OR in-game |w+chargen|n system
-- Submit with |w+chargen/finalize|n or web "Submit for Approval"
+- Create and submit your character on the game website (|w/character-creation/|n)
 - Approval typically within 24-48 hours
 
 |yWhat Staff Reviews|n
@@ -276,12 +275,12 @@ All 13 V5 core clans are available:
 |cCHARGEN HELP & RESOURCES|n
 
 |yIn-Game Help|n
-- |w+help chargen|n - Chargen command help
+- |w+help chargen|n - How character creation works
 - |w+help v5|n - V5 mechanics overview
 - |w+help <clan>|n - Specific clan info
 
 |yWeb Resources|n
-- Web chargen: |yhttp://localhost:4001/character-creation/|n
+- Web chargen: the game website's |y/character-creation/|n page
 - Character approval status: Check your |w+jobs|n
 
 |yStaff Assistance|n

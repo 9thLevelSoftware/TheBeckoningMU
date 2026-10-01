@@ -335,7 +335,7 @@ def validate_clan_selection(character, clan_name):
 
     # Check if already has clan
     if get_clan(character):
-        return (False, "You already have a clan selected. Use 'chargen/reset' to start over.")
+        return (False, "You already have a clan selected. Clans are chosen during character creation on the game website.")
 
     # Special clans (like Caitiff, Thin-Blood) might require staff approval
     restricted_clans = ["Thin-Blood", "Caitiff", "Salubri"]

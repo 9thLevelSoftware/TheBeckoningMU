@@ -24,11 +24,8 @@ If you're new to the game, try these commands:
   |y→|n |W+bbs|n                 - Read the bulletin boards
   |y→|n |W+who|n                 - See who's online
 
-For character creation, use the in-game chargen system:
-  |y→|n |W+chargen/start|n       - Begin character creation
-
-Or visit the web interface at:
-  |yhttp://localhost:4001/character-creation/|n
+Characters are created on the game website, at its |y/character-creation/|n
+page (see |Whelp chargen|n).
 
 |x════════════════════════════════════════════════════════════════════════════════|n
 
