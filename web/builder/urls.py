@@ -27,11 +27,9 @@ urlpatterns = [
         views.BuildSandboxView.as_view(),
         name="build_sandbox",
     ),
-    path(
-        "api/build/<int:pk>/cleanup/",
-        views.CleanupSandboxView.as_view(),
-        name="cleanup_sandbox",
-    ),
+    # api/build/<pk>/cleanup/ (CleanupSandboxView) is deliberately unrouted,
+    # like @cleanup_sandbox: its tag-based object selection can reach objects
+    # outside the sandbox. It returns once cleanup works from recorded ids.
     path("api/prototypes/", views.PrototypesView.as_view(), name="prototypes"),
     path("api/templates/", views.TemplatesView.as_view(), name="templates"),
     # Review endpoints (staff only)

@@ -7,6 +7,7 @@ the retired shortcuts comes back.
 """
 
 from django.test import Client, TestCase
+from evennia.utils.test_resources import EvenniaTest
 
 from commands.default_cmdsets import AccountCmdSet, CharacterCmdSet
 
@@ -29,11 +30,16 @@ class TestRemovedCommands(TestCase):
         self.assertIn("ic", keys)
         self.assertIn("roll", keys)
 
-    def test_ooc_menu_points_to_website(self):
-        from typeclasses.accounts import Account
 
-        self.assertNotIn("charcreate", Account.ooc_appearance_template)
-        self.assertIn("/character-creation/", Account.ooc_appearance_template)
+class TestOOCMenu(EvenniaTest):
+    def test_ooc_menu_points_to_website(self):
+        # target=[] renders the menu as for an account with no characters, which
+        # exercises the rewrite of Evennia's "Use charcreate" line as well as
+        # the menu template.
+        text = self.account.at_look(target=[], session=self.session)
+        self.assertIn("/character-creation/", text)
+        self.assertNotIn("charcreate", text)
+        self.assertIn("You don't have a character yet", text)
 
 
 class TestRemovedRoutes(TestCase):
@@ -45,3 +51,6 @@ class TestRemovedRoutes(TestCase):
 
     def test_character_import_route_removed(self):
         self.assertEqual(self.client.post("/api/traits/character/import/").status_code, 404)
+
+    def test_builder_cleanup_route_removed(self):
+        self.assertEqual(self.client.post("/builder/api/build/1/cleanup/").status_code, 404)
