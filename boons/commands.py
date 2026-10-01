@@ -28,6 +28,7 @@ from .utils import (
     call_in_boon,
     cancel_boon,
     decline_boon,
+    dispute_boon,
     force_fulfill_boon,
     format_boon_ledger,
     format_boons_with_character,
@@ -50,11 +51,14 @@ class CmdBoon(default_cmds.MuxCommand):
         +boon
         +boon <character>
         +boon/pending
+        +boon/dispute <boon #> = <reason>
 
     Displays your boons or boons with a specific character.
 
     Switches:
         /pending - View boons requiring your action
+        /dispute - Dispute an accepted or called-in boon you are party to.
+                   It stays owed until staff or a Harpy rules on it.
 
     Examples:
         +boon
@@ -72,6 +76,10 @@ class CmdBoon(default_cmds.MuxCommand):
 
         if "pending" in self.switches:
             self._show_pending()
+            return
+
+        if "dispute" in self.switches:
+            self._dispute()
             return
 
         if self.args:
@@ -98,6 +106,26 @@ class CmdBoon(default_cmds.MuxCommand):
         net_position = get_net_boon_position(self.caller, target)
         output = format_boons_with_character(self.caller, target, boons, net_position)
         self.caller.msg(output)
+
+    def _dispute(self):
+        """Dispute a boon you are party to."""
+        caller = self.caller
+        if not self.lhs or not self.rhs:
+            caller.msg("Usage: +boon/dispute <boon #> = <reason>")
+            return
+        try:
+            boon_id = int(self.lhs.strip())
+        except ValueError:
+            caller.msg("|rBoon ID must be a number.|n")
+            return
+
+        success, message = dispute_boon(boon_id, self.rhs.strip(), caller)
+        caller.msg(f"|g{message}|n" if success else f"|r{message}|n")
+        if success:
+            boon = Boon.objects.get(id=boon_id)
+            other = boon.creditor if boon.debtor == caller else boon.debtor
+            if other.sessions.all():
+                other.msg(f"\n{GOLD}[Boon Disputed]{RESET}\n{caller.key} disputes boon #{boon_id}: {self.rhs.strip()}")
 
     def _show_pending(self):
         """Show boons pending action."""
@@ -393,9 +421,13 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
 
     Switches:
         /acknowledge - Officially acknowledge a boon (Harpy only)
-        /cancel - Cancel a boon
-        /fulfill - Mark an outstanding boon fulfilled without both confirmations
+        /cancel - Cancel a boon (also resolves a dispute)
+        /fulfill - Mark an outstanding or disputed boon fulfilled without
+                   both confirmations
         /list - List all public boons
+
+    Staff (Builder+) may fulfil or cancel any boon. A Harpy may not
+    fulfil or cancel a boon they are the debtor or creditor of.
 
     Harpies can acknowledge boons to make them official in Kindred society.
     """
@@ -456,7 +488,7 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
 
         reason = self.rhs.strip()
 
-        success, message = cancel_boon(boon_id, reason)
+        success, message = cancel_boon(boon_id, reason, caller)
 
         if success:
             caller.msg(f"|g{message}|n")
@@ -477,8 +509,8 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
             caller.msg("|rBoon ID must be a number.|n")
             return
 
-        reason = self.rhs.strip() if self.rhs else f"Fulfilled by staff ({caller.key})"
-        success, message = force_fulfill_boon(boon_id, reason)
+        reason = self.rhs.strip() if self.rhs else "Ruled fulfilled without both confirmations"
+        success, message = force_fulfill_boon(boon_id, reason, caller)
         caller.msg(f"|g{message}|n" if success else f"|r{message}|n")
 
     def _list_boons(self):

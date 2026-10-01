@@ -36,6 +36,8 @@ class BoonLifecycleTests(EvenniaCommandTest):
         self.alice = self._puppet("Alice")
         self.bob = self._puppet("Bob")
         self.wren = self._puppet("Wren", "Builder")
+        self.hera = self._puppet("Hera", "Harpy")
+        self.iris = self._puppet("Iris", "Harpy")
 
     def _offer(self, boon_type="major"):
         """Alice offers to owe Bob a boon."""
@@ -93,7 +95,11 @@ class BoonLifecycleTests(EvenniaCommandTest):
         self.call(CmdBoonAccept(), str(boon.id), caller=self.bob)
         # Not yet called in: nobody can mark it repaid.
         self.call(CmdBoonFulfill(), f"{boon.id} = Done", caller=self.alice)
+        self.call(CmdBoonFulfill(), f"{boon.id} = Done", caller=self.bob)
         self.assertEqual(self._status(boon), "accepted")
+        stored = Boon.objects.get(pk=boon.pk)
+        self.assertFalse(stored.debtor_confirmed)
+        self.assertFalse(stored.creditor_confirmed)
         self.call(CmdBoonCall(), f"{boon.id} = Hide me", caller=self.bob)
         self.call(CmdBoonFulfill(), f"{boon.id} = Done", caller=self.alice)
         self.call(CmdBoonFulfill(), f"{boon.id} = Done again", caller=self.alice)
@@ -136,3 +142,88 @@ class BoonLifecycleTests(EvenniaCommandTest):
         output = self.call(CmdBoonAdmin(), f"/cancel {boon.id} = Too late", caller=self.wren)
         self.assertIn("already fulfilled", output)
         self.assertEqual(self._status(boon), "fulfilled")
+
+    def _called_in(self, creditor=None):
+        """Alice owes `creditor` (default Bob) a called-in major boon."""
+        creditor = creditor or self.bob
+        self.call(CmdBoonGive(), f"{creditor.key} major = A favor", caller=self.alice)
+        boon = Boon.objects.get(debtor=self.alice, creditor=creditor)
+        self.call(CmdBoonAccept(), str(boon.id), caller=creditor)
+        self.call(CmdBoonCall(), f"{boon.id} = Pay up", caller=creditor)
+        return boon
+
+    def test_both_fulfilment_descriptions_are_kept(self):
+        boon = self._called_in()
+        self.call(CmdBoonFulfill(), f"{boon.id} = Voted as asked", caller=self.alice)
+        self.call(CmdBoonFulfill(), f"{boon.id} = Confirmed", caller=self.bob)
+        record = Boon.objects.get(pk=boon.pk).fulfillment_description
+        self.assertIn("Alice: Voted as asked", record)
+        self.assertIn("Bob: Confirmed", record)
+
+    def test_same_account_characters_cannot_trade_boons(self):
+        """Owner decision: alts on one account can't owe each other."""
+        account = self.alice.account
+        alt = create.create_object(settings.BASE_CHARACTER_TYPECLASS, key="Altea", location=self.room1, home=self.room1)
+        account.characters.add(alt)  # playable, not puppeted
+        output = self.call(CmdBoonGive(), "Altea minor = Self-dealing", caller=self.alice)
+        self.assertIn("same account", output)
+        alt.account = account  # puppeted / web-linked
+        output = self.call(CmdBoonGive(), "Alice minor = Self-dealing", caller=alt)
+        self.assertIn("same account", output)
+        self.assertFalse(Boon.objects.exists())
+
+    def test_harpy_cannot_rule_on_own_boon(self):
+        """Owner decision: a Harpy may not fulfil or cancel a boon they are party to."""
+        self.assertTrue(CmdBoonAdmin().access(self.hera, "cmd"))
+        boon = self._called_in(creditor=self.hera)
+        output = self.call(CmdBoonAdmin(), f"/fulfill {boon.id} = Mine", caller=self.hera)
+        self.assertIn("party to", output)
+        output = self.call(CmdBoonAdmin(), f"/cancel {boon.id} = Mine", caller=self.hera)
+        self.assertIn("party to", output)
+        self.assertEqual(self._status(boon), "called_in")
+        # As debtor too.
+        self.call(CmdBoonGive(), "Alice minor = Hera owes", caller=self.hera)
+        owed = Boon.objects.get(debtor=self.hera)
+        self.call(CmdBoonAccept(), str(owed.id), caller=self.alice)
+        self.call(CmdBoonAdmin(), f"/cancel {owed.id} = Wipe my debt", caller=self.hera)
+        self.assertEqual(self._status(owed), "accepted")
+        # A Harpy who is not a party may rule; so may staff.
+        self.call(CmdBoonAdmin(), f"/fulfill {boon.id} = Ruling", caller=self.iris)
+        self.assertEqual(self._status(boon), "fulfilled")
+        self.call(CmdBoonAdmin(), f"/cancel {owed.id} = Staff ruling", caller=self.wren)
+        self.assertEqual(self._status(owed), "canceled")
+
+    def test_staff_may_rule_on_own_boon(self):
+        boon = self._called_in(creditor=self.wren)
+        self.call(CmdBoonAdmin(), f"/fulfill {boon.id} = Staff", caller=self.wren)
+        self.assertEqual(self._status(boon), "fulfilled")
+
+    def test_dispute_and_resolution(self):
+        """Owner decision: either party disputes; it stays owed; a non-party resolves."""
+        boon = self._called_in()
+        self.assertIn("Usage", self.call(CmdBoon(), f"/dispute {boon.id}", caller=self.alice))
+        output = self.call(CmdBoon(), f"/dispute {boon.id} = I never agreed to that", caller=self.alice)
+        self.assertIn("disputed", output)
+        self.assertEqual(self._status(boon), "disputed")
+        self.assertIn("I never agreed to that", Boon.objects.get(pk=boon.pk).fulfillment_description)
+        # Still owed while disputed.
+        self.assertEqual(get_boon_totals(self.alice).total_debt_weight, 3)
+        self.assertEqual(get_boon_totals(self.bob).major_held, 1)
+        # Can't be disputed twice, nor by a non-party.
+        self.call(CmdBoon(), f"/dispute {boon.id} = Again", caller=self.bob)
+        self.assertIn("Only the debtor or creditor", self.call(CmdBoon(), f"/dispute {boon.id} = x", caller=self.iris))
+        # The parties can't confirm their way out of a dispute.
+        self.call(CmdBoonFulfill(), f"{boon.id} = Done", caller=self.alice)
+        self.assertEqual(self._status(boon), "disputed")
+        # A non-party Harpy rules it fulfilled.
+        self.call(CmdBoonAdmin(), f"/fulfill {boon.id} = Ruling for Bob", caller=self.iris)
+        self.assertEqual(self._status(boon), "fulfilled")
+        self.assertEqual(get_boon_totals(self.alice).total_debt_weight, 0)
+
+    def test_disputed_boon_can_be_canceled_by_staff(self):
+        boon = self._called_in()
+        self.call(CmdBoon(), f"/dispute {boon.id} = Coerced", caller=self.bob)
+        self.assertEqual(self._status(boon), "disputed")
+        self.call(CmdBoonAdmin(), f"/cancel {boon.id} = Coercion upheld", caller=self.wren)
+        self.assertEqual(self._status(boon), "canceled")
+        self.assertEqual(get_boon_totals(self.alice).total_debt_weight, 0)

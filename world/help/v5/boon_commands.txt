@@ -22,10 +22,15 @@ Shows:
 |y+boon/pending|n
   View boons requiring your action.
 
+|y+boon/dispute <boon #> = <reason>|n
+  Dispute an accepted or called-in boon you owe or are owed. A disputed
+  boon still counts as owed until staff or a Harpy rules on it.
+
 |yExamples:|n
   +boon
   +boon Marcus
   +boon/pending
+  +boon/dispute 42 = I never agreed to a major boon.
 
 |WOFFERING A BOON:|n
 
@@ -109,14 +114,18 @@ the second of them does.
 
 |WSTAFF/HARPY COMMANDS:|n
 
+Staff may rule on any boon. A Harpy may not fulfil or cancel a boon
+they owe or are owed.
+
 |y+boonadmin/acknowledge <boon #>|n
   Officially acknowledge a boon (Harpy function).
 
 |y+boonadmin/cancel <boon #> = <reason>|n
-  Cancel a boon.
+  Cancel a boon (one way to resolve a dispute).
 
 |y+boonadmin/fulfill <boon #> = <reason>|n
-  Mark an outstanding boon fulfilled without both confirmations.
+  Mark an outstanding or disputed boon fulfilled without both
+  confirmations (the other way to resolve a dispute).
 
 |y+boonadmin/list|n
   List all public boons.
@@ -128,7 +137,8 @@ the second of them does.
 |yCalled|n - Creditor has requested the favor
 |yFulfilled|n - Debt has been repaid
 |yCancelled|n - Boon was cancelled (rare)
-|yDisputed|n - Parties disagree (Harpy arbitration needed)
+|yDisputed|n - A party disputes it; still owed until staff or a Harpy
+  who is not a party fulfils or cancels it
 
 |WTIPS:|n
 

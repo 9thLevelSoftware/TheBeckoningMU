@@ -50,6 +50,38 @@ def is_character(obj):
     return inherits_from(obj, "typeclasses.characters.Character")
 
 
+def share_account(char1, char2):
+    """
+    True if both characters belong to one account (alts can't trade boons).
+
+    A character's account is its puppeting/linked account (`.account`, which
+    web chargen sets), or any account that lists it among its playable
+    characters.
+    """
+    for one, other in ((char1, char2), (char2, char1)):
+        account = one.account
+        if account and (other.account == account or other in account.characters.all()):
+            return True
+    return False
+
+
+def is_staff(character):
+    """Builder or higher on the character's account (superusers included)."""
+    account = getattr(character, "account", None)
+    return bool(account) and account.check_permstring("Builder")
+
+
+def can_resolve(actor, boon):
+    """
+    Staff may fulfil or cancel any boon; a Harpy only boons they're not party to.
+    """
+    if is_staff(actor):
+        return (True, "")
+    if actor in (boon.debtor, boon.creditor):
+        return (False, "You can't rule on a boon you are party to. Ask staff.")
+    return (True, "")
+
+
 def offer_boon(debtor, creditor, boon_type, description, witnesses=None, is_public=True):
     """
     Create a new boon offer.
@@ -76,6 +108,9 @@ def offer_boon(debtor, creditor, boon_type, description, witnesses=None, is_publ
 
     if not (is_character(debtor) and is_character(creditor)):
         return (False, None, "Boons can only be owed between characters.")
+
+    if share_account(debtor, creditor):
+        return (False, None, "Characters on the same account can't owe each other boons.")
 
     # Create boon
     boon = Boon.objects.create(
@@ -190,9 +225,10 @@ def fulfill_boon(boon_id, description, character):
     return boon.confirm_fulfilled(character, description)
 
 
-def force_fulfill_boon(boon_id, description=""):
+def force_fulfill_boon(boon_id, description="", actor=None):
     """
-    Staff override: mark an outstanding boon fulfilled without confirmations.
+    Staff/Harpy ruling: mark an outstanding (or disputed) boon fulfilled
+    without both confirmations. A Harpy can't rule on their own boon.
 
     Returns:
         tuple: (success: bool, message: str)
@@ -202,7 +238,11 @@ def force_fulfill_boon(boon_id, description=""):
     except Boon.DoesNotExist:
         return (False, "Boon not found.")
 
-    return boon.fulfill(description)
+    if actor is not None:
+        allowed, message = can_resolve(actor, boon)
+        if not allowed:
+            return (False, message)
+    return boon.fulfill(description, by=actor.key if actor else "")
 
 
 def cancel_boon(boon_id, reason="", character=None):
@@ -222,7 +262,11 @@ def cancel_boon(boon_id, reason="", character=None):
     except Boon.DoesNotExist:
         return (False, "Boon not found.")
 
-    return boon.cancel(reason)
+    if character is not None:
+        allowed, message = can_resolve(character, boon)
+        if not allowed:
+            return (False, message)
+    return boon.cancel(reason, by=character.key if character else "")
 
 
 def dispute_boon(boon_id, reason, character=None):
@@ -245,7 +289,7 @@ def dispute_boon(boon_id, reason, character=None):
     if character and character not in (boon.debtor, boon.creditor):
         return (False, "Only the debtor or creditor can dispute this boon.")
 
-    return boon.dispute(reason)
+    return boon.dispute(reason, by=character.key if character else "")
 
 
 def acknowledge_boon(boon_id, harpy_character):

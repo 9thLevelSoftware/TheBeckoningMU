@@ -7,8 +7,10 @@ Tracks political favors and debts (Prestation) in Kindred society.
 from django.db import models
 from evennia.typeclasses.models import SharedMemoryModel
 
-# A boon is owed from acceptance until it is fulfilled, called in or not.
-OUTSTANDING_STATUSES = ("accepted", "called_in")
+# A boon is owed from acceptance until it is fulfilled or canceled, whether
+# it has been called in or is under dispute.
+OUTSTANDING_STATUSES = ("accepted", "called_in", "disputed")
+DISPUTABLE_STATUSES = ("accepted", "called_in")
 TERMINAL_STATUSES = ("fulfilled", "declined", "canceled")
 BOON_WEIGHTS = {"trivial": 1, "minor": 2, "major": 3, "blood": 4, "life": 5}
 
@@ -22,8 +24,10 @@ class Boon(SharedMemoryModel):
 
     Lifecycle: the debtor offers (offered); the creditor accepts (accepted)
     or declines (declined); the creditor calls it in (called_in); it is
-    fulfilled when both parties confirm (fulfilled). Staff may cancel or
-    force fulfilment. A boon is outstanding while accepted or called in.
+    fulfilled when both parties confirm (fulfilled). Either party may
+    dispute an accepted or called-in boon (disputed); staff or a Harpy who
+    is not a party then resolve it by fulfilling or canceling it. A boon is
+    outstanding (still owed) while accepted, called in or disputed.
     """
 
     # Boon participants
@@ -190,12 +194,21 @@ class Boon(SharedMemoryModel):
 
         return (True, f"Boon called in: {description}")
 
+    def add_note(self, who, text):
+        """Append "<who>: <text>" to the boon's fulfilment record (nothing is overwritten)."""
+        if not text:
+            return
+        line = f"{who}: {text}"
+        self.fulfillment_description = (
+            f"{self.fulfillment_description}\n{line}" if self.fulfillment_description else line
+        )
+
     def confirm_fulfilled(self, character, description=""):
         """
         Record one party's confirmation that a called-in boon was repaid.
 
         The boon becomes fulfilled only when both the debtor and the
-        creditor have confirmed.
+        creditor have confirmed. Each party's description is kept.
         """
         if self.status != 'called_in':
             return (False, "Only a boon that has been called in can be fulfilled.")
@@ -206,50 +219,44 @@ class Boon(SharedMemoryModel):
         else:
             return (False, "Only the debtor or creditor can confirm this boon.")
 
-        if description:
-            self.fulfillment_description = description
+        self.add_note(character.key, description)
         if self.debtor_confirmed and self.creditor_confirmed:
-            return self.fulfill(self.fulfillment_description)
+            return self.fulfill()
 
         self.save()
         other = self.creditor if character == self.debtor else self.debtor
         return (True, f"Fulfilment confirmed. Waiting for {other.key} to confirm.")
 
-    def fulfill(self, description=""):
-        """Mark a boon fulfilled (both parties confirmed, or a staff override)."""
+    def fulfill(self, description="", by=""):
+        """Mark a boon fulfilled (both parties confirmed, or a staff/Harpy ruling)."""
         from django.utils import timezone
 
         if self.status not in OUTSTANDING_STATUSES:
             return (False, "This boon is not in a state to be fulfilled.")
 
         self.status = 'fulfilled'
-        if description:
-            self.fulfillment_description = description
+        self.add_note(by or "Fulfilled", description)
         self.fulfilled_date = timezone.now()
         self.save()
 
         return (True, "Boon fulfilled.")
 
-    def dispute(self, reason):
-        """Dispute an outstanding boon (requires Harpy intervention)."""
-        if self.status not in OUTSTANDING_STATUSES:
+    def dispute(self, reason, by=""):
+        """Dispute an accepted or called-in boon; it stays owed until resolved."""
+        if self.status not in DISPUTABLE_STATUSES:
             return (False, "Only an accepted or called-in boon can be disputed.")
         self.status = 'disputed'
-        if not self.fulfillment_description:
-            self.fulfillment_description = f"Disputed: {reason}"
-        else:
-            self.fulfillment_description += f"\nDisputed: {reason}"
+        self.add_note(f"Disputed by {by}" if by else "Disputed", reason)
         self.save()
 
-        return (True, "Boon disputed. A Harpy must adjudicate.")
+        return (True, "Boon disputed. Staff or a Harpy must adjudicate.")
 
-    def cancel(self, reason=""):
+    def cancel(self, reason="", by=""):
         """Cancel a boon (typically by mutual agreement or Harpy ruling)."""
         if self.status in TERMINAL_STATUSES:
             return (False, f"This boon is already {self.status}.")
         self.status = 'canceled'
-        if reason:
-            self.fulfillment_description = f"Canceled: {reason}"
+        self.add_note(f"Canceled by {by}" if by else "Canceled", reason)
         self.save()
 
         return (True, "Boon canceled.")
