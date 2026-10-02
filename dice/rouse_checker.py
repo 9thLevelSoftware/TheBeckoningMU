@@ -294,8 +294,10 @@ def _format_rouse_message(result: RouseResult) -> str:
             lines.append(f"Roll: |y{check.roll}|n")
         if check.success:
             lines.append(f"|gSuccess.|n Hunger stays at |r{result.hunger_after}|n.")
-        else:
+        elif result.hunger_change:
             lines.append(f"|rFailed.|n Hunger rises from |r{result.hunger_before}|n to |r{result.hunger_after}|n.")
+        else:
+            lines.append(f"|rFailed.|n Hunger stays at |r{result.hunger_after}|n (it can't rise past 5).")
         if result.frenzy_test:
             lines.append(format_rouse_lines(result)[-1])
         return "\n".join(lines)
