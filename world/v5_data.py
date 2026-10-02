@@ -1254,6 +1254,47 @@ GENERATION_BY_AGE = {
 }
 
 # ============================================================================
+# CHARACTER CREATION DISTRIBUTIONS
+# ============================================================================
+# Source: V5 Quick Reference 2.0 p.2 (Character Creation), citing V5 core
+# p.155 (Attributes), p.159 (Skills and specialties), p.244 (Disciplines),
+# p.179 (Advantages and Flaws) and p.236 (Humanity 7); QR p.3 (Hunger 1).
+# world/rules_chargen.py reads these; nothing else may hardcode them.
+# OWNER SIGN-OFF PENDING: this creation-distribution table is the plan's
+# merge gate for the web chargen rebuild.
+
+# One Attribute at 4, three at 3, four at 2, one at 1.
+CREATION_ATTRIBUTE_SPREAD = (4, 3, 3, 3, 2, 2, 2, 2, 1)
+
+# Pick one distribution: {rating: how many Skills}; every other Skill is 0.
+CREATION_SKILL_DISTRIBUTIONS = {
+    "Jack-of-all-Trades": {3: 1, 2: 8, 1: 10},
+    "Balanced": {3: 3, 2: 5, 1: 7},
+    "Specialist": {4: 1, 3: 3, 2: 3, 1: 3},
+}
+
+# A free specialty in each of these Skills the character has dots in, plus
+# this many more free specialties. Specialties need at least one dot in the
+# Skill. (The predator type's specialty comes on top.)
+CREATION_FREE_SPECIALTY_SKILLS = ("Academics", "Craft", "Performance", "Science")
+CREATION_EXTRA_FREE_SPECIALTIES = 1
+
+# Two dots in one in-clan Discipline and one in another (Caitiff: any two
+# Disciplines). Thin-bloods start with none (QR p.2).
+CREATION_DISCIPLINE_DOTS = (2, 1)
+
+# Advantage dots to spend (unspent dots may go to the coterie, QR p.2) and
+# flaw dots to take, before the age category's extra dots (GENERATION_BY_AGE)
+# and the predator type's grants. Thin-blood merits and flaws cost nothing and
+# are taken in 1-3 matched pairs instead (QR p.2, p.11).
+CREATION_ADVANTAGE_DOTS = 7
+CREATION_FLAW_DOTS = 2
+CREATION_THIN_BLOOD_PAIRS = (1, 3)
+
+CREATION_HUMANITY = 7
+CREATION_HUNGER = 1
+
+# ============================================================================
 # MERITS & FLAWS
 # ============================================================================
 # Source: V5 Quick Reference 2.0 pp.8-11 (Advantages & Flaws, compiled from
@@ -1383,6 +1424,7 @@ FLAWS = {
     # "Farmer" is the errata'd core name; the QR (and older printings) call
     # it "Vegan".
     "Farmer": {"category": "Feeding", "dots": (2,),
+               "excluded_clans": ["Ventrue"],
                "description": "You feed only on animals; feeding on humans costs 2 Willpower; not for Ventrue"},
     "Organovore": {"category": "Feeding", "dots": (2,),
                    "excluded_clans": ["Ventrue"],
