@@ -154,11 +154,6 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         self.add(CmdCoterie)
         self.add(CmdSocial)
 
-        # Add BBS commands
-        from bbs.commands import BBSCmdSet
-
-        self.add(BBSCmdSet)
-
         # Add V5 blood system (feeding, Blood Surge, Hunger tracking)
         from commands.v5.blood_cmdset import BloodCmdSet
 
@@ -208,6 +203,12 @@ class AccountCmdSet(default_cmds.AccountCmdSet):
         from jobs.cmdset import JobsCmdSet
 
         self.add(JobsCmdSet)
+
+        # The boards too, which the welcome news sends new players to.
+        # (Boards with required character flags stay closed to an OOC reader.)
+        from bbs.commands import BBSCmdSet
+
+        self.add(BBSCmdSet)
 
 
 class UnloggedinCmdSet(default_cmds.UnloggedinCmdSet):

@@ -84,7 +84,7 @@ class PlayerBucketTests(EvenniaCommandTest):
         keys = AccountCmdSet()
         keys.at_cmdset_creation()
         names = keys.get_all_cmd_keys_and_aliases()
-        for name in ("jobs", "job", "myjobs", "job/submit", "buckets"):
+        for name in ("jobs", "job", "myjobs", "job/submit", "buckets", "+bbs", "+bbread", "+bbpost"):
             self.assertIn(name, names)
         chars = CharacterCmdSet()
         chars.at_cmdset_creation()
@@ -95,6 +95,13 @@ class PlayerBucketTests(EvenniaCommandTest):
         self.assertEqual(job.creator, self.account2)
         out = self.call(CmdJobView(), job.ref, caller=self.account2)
         self.assertIn("From OOC", out)
+
+    def test_boards_readable_out_of_character(self):
+        from bbs.commands import CmdBBS, CmdBBSPost
+
+        self.call(CmdBBSPost(), "general=Hello/First post", caller=self.account2)
+        out = self.call(CmdBBS(), "general", caller=self.account2)
+        self.assertIn("Hello", out)
 
 
 class HuntStaffedJobTests(EvenniaCommandTest):
