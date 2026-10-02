@@ -92,7 +92,7 @@
 
 |yActivity Requirements|n
 - Log in at least once per week (minimum)
-- Notify staff of extended absences via |w+job|n
+- Notify staff of extended absences with |wjob/submit|n
 - Inactive characters (30+ days) may be frozen
 
 |yScene Etiquette|n
@@ -105,17 +105,19 @@
 |c6. POWER USAGE & MECHANICS|n
 
 |yDiscipline Usage|n
-- All discipline use requires proper commands (|w+power|n)
+- All discipline use requires proper commands (|wpower|n)
 - Describe HOW you use powers in your poses
 - Respect the rules for Rouse checks and Hunger
 
 |yDice Rolling|n
-- Use |w+roll|n for all contested actions
-- Don't cherry-pick good rolls or re-roll without ST approval
+- Use |wroll|n for all contested actions (|w+attack|n in combat)
+- Don't cherry-pick good rolls; the only re-roll is a Willpower
+  re-roll (|wroll/willpower|n)
 - Dice results are binding unless ST rules otherwise
 
 |yCombat|n
-- Use the combat system (|w+attack|n, |w+dodge|n, etc.)
+- Use the combat system (|w+attack|n, |w+health|n; staff mark
+  damage with |w+damage|n)
 - No god-moding (controlling others' actions)
 - Accept dice results, even if unfavorable
 
@@ -129,7 +131,7 @@
 - XP rates posted on |w+bbs policy|n
 
 |ySpending XP|n
-- Use |w+xp/spend|n to improve traits
+- Use |w+spend <type> <name>|n to improve traits (see |whelp xp-guide|n)
 - IC justification required for all purchases
 - Some purchases require ST approval (new Disciplines, etc.)
 
@@ -144,16 +146,17 @@
 
 |yStaff Authority|n
 - Staff decisions are final
-- Appeals can be made respectfully via |w+job|n
+- Appeals can be made respectfully with |wjob/submit|n
 - Don't argue with staff in public channels
 
 |yStaff Requests|n
-- Use |w+job/create|n for all staff requests
+- Use |wjob/submit <bucket> <title> = <description>|n for all staff
+  requests (staff announce the bucket names; |w+myjobs|n lists yours)
 - Be specific and provide relevant information
 - Be patient - staff are volunteers
 
 |yReporting Issues|n
-- Report rule violations via |w+job|n immediately
+- Report rule violations with |wjob/submit|n immediately
 - Don't take enforcement into your own hands
 - Staff will investigate and take appropriate action
 
@@ -191,12 +194,12 @@
 
 |cQUESTIONS?|n
 
-- Read |w+news policy/rp_policy|n for RP-specific guidelines
-- Read |w+news policy/chargen_policy|n for character creation details
-- Create a |w+job|n for staff clarification
+- Read |wnews policy/rp_policy|n for RP-specific guidelines
+- Read |wnews policy/chargen_policy|n for character creation details
+- Submit a job (|wjob/submit|n) for staff clarification
 - Ask on |w+bbs policy|n for community discussion
 
 |yThese rules exist to ensure everyone has fun. When in doubt,
 communicate with staff and other players!|n
 
-|rLast Updated: November 2025|n
+|rLast Updated: October 2026|n

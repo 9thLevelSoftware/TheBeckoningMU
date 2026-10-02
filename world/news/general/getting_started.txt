@@ -14,45 +14,47 @@ page. Submit your character there for staff approval (see |whelp chargen|n).
 
 |yEssential Commands|n
 
-  |w+help|n              - Access help system
+  |whelp|n               - Access the help system
   |w+sheet|n             - View your character sheet
-  |w+who|n               - See who's online
-  |w+where|n             - See where players are (if implemented)
+  |w+st|n                - One-line vitals (Hunger, Health, Willpower)
+  |wwho|n                - See who's online
   |wlook|n               - Look at your surroundings
   |winventory|n          - Check your inventory
 
 |yCommunication|n
 
-  |wpage <name>=<msg>|n  - Send private message to player
-  |w+bbs|n               - Read bulletin boards
-  |w+bbs/post <board>/<subject>=<message>|n - Post to boards
-  |wsay <text>|n         - Speak in current room
+  |wpage <name>=<msg>|n  - Send a private message to a player
+  |w+bbs|n               - List the bulletin boards
+  |w+bbread <board>/<#>|n - Read a post
+  |w+bbpost <board>=<title>/<body>|n - Post to a board
+  |wsay <text>|n         - Speak in the current room
   |wpose <action>|n      - Describe your actions
 
 |w═══════════════════════════════════════════════════════════════════|n
 
 |cSTEP 3: UNDERSTAND V5 MECHANICS|n
 
-|yCore Systems|n
+|yCore Systems|n (see |whelp v5-rules-guide|n)
 
-  |w+roll <pool>|n       - Roll dice (e.g., +roll strength + brawl)
-  |w+rouse|n             - Make a Rouse check to awaken blood
-  |w+hunt|n              - Feed on mortals
-  |w+hunger|n            - Check your Hunger level
+  |wroll <pool> [vs <difficulty>]|n - Roll dice (e.g. |wroll 5 vs 2|n)
+  |wrouse|n              - Make a Rouse check
+  |w+hunt <ground>|n     - Hunt and feed (once every 24 hours)
+  |w+hunt/staffed <ground>|n - Ask staff for a hunt scene
+  |whunger|n             - Check your Hunger
   |w+humanity|n          - View Humanity, Stains, Convictions
 
 |yDisciplines (Vampire Powers)|n
 
-  |w+disciplines|n       - List your disciplines
-  |w+power <name>|n      - Activate a discipline power
-  |w+powerinfo <name>|n  - Get info about a discipline power
+  |w+disciplines|n       - List your disciplines and powers
+  |wpower <name>|n       - Use a discipline power you know
+  |w+powerinfo <discipline>/<power>|n - Details of a power
 
 |yCombat (when needed)|n
 
-  |w+attack <target>|n   - Attack someone
-  |w+dodge|n             - Dodge an attack
-  |w+soak|n              - Soak damage
-  |w+heal|n              - Spend blood to heal
+  |w+attack <target>|n   - Contested attack; the target defends automatically
+  |w+health|n            - View your Health track
+  |w+heal|n              - Mend Superficial damage with a Rouse check
+  Staff mark damage with |w+damage|n (see |whelp combat|n).
 
 |w═══════════════════════════════════════════════════════════════════|n
 
@@ -60,7 +62,7 @@ page. Submit your character there for staff approval (see |whelp chargen|n).
 
 |yFind Roleplay|n
 
-  - Check |w+who|n to see who's online
+  - Check |wwho|n to see who's online
   - Read |w+bbs general|n for RP announcements
   - Visit public gathering locations
   - Join or form a Coterie with |w+coterie|n
@@ -73,9 +75,12 @@ page. Submit your character there for staff approval (see |whelp chargen|n).
 
 |yTrack Boons|n
 
-  - Boons are favors owed between vampires
-  - Check your boons with |w+boon|n
-  - Give boons with |w+boon/give <target>=<type>|n
+  - Boons are favors owed between vampires; check yours with |w+boon|n
+  - The debtor offers: |w+boongive <character> <type> = <description>|n
+  - The creditor accepts (|w+boonaccept|n) and later calls it in
+    (|w+booncall|n); both confirm repayment with |w+boonfulfill|n
+  - Disputes (|w+boon/dispute|n) are ruled on by a Harpy or staff
+    (see |whelp boons-guide|n)
 
 |w═══════════════════════════════════════════════════════════════════|n
 
@@ -83,19 +88,21 @@ page. Submit your character there for staff approval (see |whelp chargen|n).
 
 |yExperience & Advancement|n
 
-  |w+xp|n                - Check your XP
-  |w+xp/spend <trait>|n  - Spend XP to improve
+  |w+xp|n                - Check your XP (|w+xp/costs|n for the cost table)
+  |w+spend <type> <name>|n - Spend XP (e.g. |w+spend skill brawl|n)
 
 |yStaff Interaction|n
 
-  |w+job/create <category>=<message>|n - Create a staff request
-  |w+myjobs|n            - Check your jobs
+  |wjob/submit <bucket> <title> = <description>|n - Ask staff for something
+      (staff announce the bucket names, e.g. |wjob/submit Requests ...|n)
+  |w+myjobs|n            - List your jobs
+  |w+job <bucket>/<#>|n  - View one of your jobs
 
 |yHelp System|n
 
-  |w+help <topic>|n      - Get help on specific topics
-  |w+help v5|n           - V5 mechanics overview
-  |w+help commands|n     - Command reference
+  |whelp <topic>|n       - Get help on specific topics
+  |whelp v5-rules-guide|n - V5 rules summary
+  |whelp commands|n      - Command reference
 
 |w═══════════════════════════════════════════════════════════════════|n
 
@@ -103,9 +110,9 @@ page. Submit your character there for staff approval (see |whelp chargen|n).
 
 |yThe Hunger|n
 - Ranges from 0 (satiated) to 5 (ravenous)
-- Increases when you use Disciplines or take damage
-- Feed with |w+hunt|n to reduce Hunger
-- At Hunger 5, risk of frenzy is extreme
+- Rises when a Rouse check fails (Disciplines, Blood Surge, mending)
+- Feed with |w+hunt|n (once every 24 hours) or in a staff-run scene
+- At Hunger 5 you can't Rouse the Blood until you feed
 
 |yThe Masquerade|n
 - NEVER reveal your vampire nature to mortals
@@ -114,14 +121,14 @@ page. Submit your character there for staff approval (see |whelp chargen|n).
 - Clean up after feeding
 
 |yHumanity & Stains|n
-- Humanity measures your moral compass (1-10)
+- Humanity measures your hold on the Beast (0-10)
 - Stains accumulate from immoral acts
-- Roll Remorse at session end with |w+remorse|n
-- Lose Humanity if you fail Remorse roll
+- Make your Remorse test at session end with |w+remorse|n
+- Lose 1 Humanity if it scores no successes
 
 |yFrenzy|n
 - The Beast taking control
-- Triggered by fire, hunger, provocation
+- Provoked by fire and sunlight, hunger, or fury (|w+frenzy/check <type>|n)
 - Resist with |w+frenzy/resist <difficulty>|n
 - Consequences can be severe
 
@@ -129,10 +136,10 @@ page. Submit your character there for staff approval (see |whelp chargen|n).
 
 |cNEED MORE HELP?|n
 
-- Read all |w+help v5|n topics for detailed mechanics
-- Check |w+news policy|n for game rules
+- Read all |whelp v5-rules-guide|n topics for detailed mechanics
+- Check |wnews policy|n for game rules
 - Post questions on |w+bbs general|n
-- Create a |w+job|n for staff assistance
+- Submit a job (|wjob/submit|n) for staff assistance
 - Ask experienced players for guidance
 
 |yMost importantly: Have fun and embrace the darkness!|n

@@ -14,7 +14,6 @@
 - Proofread for clarity (typos happen, but try!)
 
 |yGood Posing Practices|n
-```
 |gGood Example:|n
   Sophia leans against the bar, her eyes tracking the newcomer with
   predatory interest. "You're new here," she purrs, voice barely above
@@ -23,7 +22,6 @@
 
 |rPoor Example:|n
   She looks at him. "Hi."
-```
 
 |yPose Content|n
 - Describe your character's actions and demeanor
@@ -50,7 +48,7 @@
 |gProper Posing (Good):|n
   Marcus lunges forward, attempting to grab the Tremere by the throat
   and pin him against the wall.
-  OOC: |w+roll dexterity + brawl|n
+  OOC: |w+attack Tremere=Dexterity + Brawl|n (or |wroll <pool>|n)
 
 |w═══════════════════════════════════════════════════════════════════|n
 
@@ -71,14 +69,12 @@
 - Plots that significantly affect others' stories
 
 |yHow to Request Consent|n
-```
 OOC: Hey, I was thinking Marcus might try to blood bond your
       character over the next few scenes. Is that something
       you'd be interested in exploring?
 
 OOC: My character might attack yours if provoked. Are you okay
       with that? We can use the combat system or narrate it.
-```
 
 |yFade to Black|n
 - Any player can call for FTB at any time
@@ -91,9 +87,10 @@ OOC: My character might attack yours if provoked. Are you okay
 
 |yJoining Scenes|n
 - Check if scene is open: read room desc or ask OOC
-- Private scenes: |w@lock here=enter:perm(Builder)|n
+- Private scenes: say so OOC in the room; ask staff if you need a
+  private room
 - Don't interrupt intimate/private RP without invitation
-- Use |w+where|n (if available) to find public scenes
+- Use |wwho|n and |w+bbs rp|n to find public scenes
 
 |yPosting Order|n
 - 2-3 person scenes: Natural flow, no strict order
@@ -126,7 +123,7 @@ OOC: My character might attack yours if provoked. Are you okay
 - Use OOC knowledge IC
 - Have your character "happen to" know things they shouldn't
 - Use alt characters to spy or gather intel
-- Read +bbs IC that your character wouldn't have access to
+- Read IC boards (|w+bbs|n) your character wouldn't have access to
 
 |gDo:|n
 - Keep IC and OOC information separate
@@ -173,7 +170,7 @@ Give OOC warning before RPing:
 
 |yPlayer-Run Plots|n
 - Players are encouraged to run plots for others!
-- Notify staff via |w+job|n before major plots
+- Notify staff with |wjob/submit|n before major plots
 - Don't break continuity or theme
 - Share spotlight - don't make it all about your character
 
@@ -216,11 +213,11 @@ Give OOC warning before RPing:
 |yActivity Requirements|n
 - Minimum 1 login per week
 - Participate in at least 1-2 scenes per week
-- Post to |w+bbs|n or +jobs if going inactive
+- Post to |w+bbs|n or submit a job (|wjob/submit|n) if going inactive
 - Characters idle 30+ days may be frozen/retired
 
 |yFinding RP|n
-- Check |w+who|n for online players
+- Check |wwho|n for online players
 - Post RP availability on |w+bbs rp|n
 - Join public scenes in common locations
 - Reach out via page to arrange scenes
@@ -263,11 +260,11 @@ Give OOC warning before RPing:
 
 |cQUESTIONS OR CONCERNS?|n
 
-- Read |w+news policy/rules|n for overall game rules
-- Create a |w+job|n for staff guidance
+- Read |wnews policy/rules|n for overall game rules
+- Submit a job (|wjob/submit|n) for staff guidance
 - Ask on |w+bbs policy|n for clarification
 - Talk to other players - community helps community!
 
 |yRemember: We're all here to tell great stories together!|n
 
-|rLast Updated: November 2025|n
+|rLast Updated: October 2026|n

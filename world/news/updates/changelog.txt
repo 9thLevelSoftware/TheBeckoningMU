@@ -5,18 +5,74 @@
 
 |w═══════════════════════════════════════════════════════════════════|n
 
+|c[OCTOBER 2026] - RULES AND SYSTEMS UPDATE|n
+
+The game now follows the V5 core book. What changed for players
+(details in |whelp v5-rules-guide|n and the guides it points to):
+
+|yDice and the Blood|n
+- A lone 10 is one success; each |wpair of 10s|n is 4 successes
+- Messy critical: a critical where a Hunger die shows one of the 10s.
+  Bestial failure: a failed roll with any Hunger die showing 1
+- Willpower re-roll: |wroll/willpower <die> [<die> <die>]|n re-rolls up
+  to three regular dice of your last roll (|whelp roll-guide|n)
+- Rouse checks are rolled with the action they fuel; the Hunger they
+  cost is added afterwards. At Hunger 5 you can't Rouse the Blood
+- |wbloodsurge <trait>|n readies a surge for your next |wroll|n or |wpower|n roll
+- |wpower <name>|n uses a discipline power you know, with its pool,
+  Rouse checks and effect (|whelp discipline_commands|n)
+
+|yHumanity and Frenzy|n
+- Remorse rolls one die per unmarked Humanity box (minimum one)
+- The frenzy test is current Willpower + Humanity / 3, with no Hunger
+  dice (|w+frenzy|n, |whelp frenzy-guide|n)
+- A Rouse that would take you past Hunger 5 means a hunger frenzy test
+  at Difficulty 4; |wrouse/wake|n rises for the night and
+  |w+frenzy/pending|n rolls a test you still owe
+- Touchstones go with Convictions; Humanity no longer caps them
+
+|yDamage and Combat|n
+- Vampires halve mundane Superficial damage (rounding up); you are
+  Impaired only when your Health track is full
+- |w+attack|n is contested: the target defends automatically, and
+  staff mark the damage with |w+damage|n. Only staff can use
+  |w+damage|n, |w+heal|n or |w+stain|n on someone else
+
+|yFeeding and Advancement|n
+- |w+hunt <ground>|n rolls your predator type's hunting pool against the
+  hunting ground's difficulty, once every 24 hours; |w+hunt/staffed|n
+  asks staff for a hunt scene (|whelp hunt-guide|n)
+- |w+spend <type> <name>|n uses the V5 core XP costs (|w+xp/costs|n)
+- Thin-Blood Alchemy: |w+alchemy/distill|n and |w+alchemy/use|n; formulas
+  need no ingredients
+
+|ySocial Systems|n
+- Boons: the debtor offers (|w+boongive|n), the creditor accepts
+  (|w+boonaccept|n) and calls it in (|w+booncall|n), both confirm it
+  repaid (|w+boonfulfill|n); |w+boon/dispute|n goes to a Harpy or staff
+- Jobs are named |w<bucket>/<number>|n (e.g. |w+job Hunt Scenes/3|n);
+  file one with |wjob/submit <bucket> <title> = <description>|n
+
+|yCharacters and Help|n
+- Characters are created only on the website (|w/character-creation/|n)
+  and played once staff approve them (|whelp chargen|n)
+- Long guides in the help system now end in |w-guide|n (|whelp roll-guide|n,
+  |whelp hunger-guide|n, ...) so they no longer hide behind commands
+
+|w═══════════════════════════════════════════════════════════════════|n
+
 |c[NOVEMBER 2025] - ROADMAP COMPLETION|n
 
 |yPhase 1b: News System Implemented|n
-- Added news system for game announcements and information
-- Commands: |w+news|n, |w+news <category>|n, |w+news <category>/<topic>|n
+- Added the news command for game announcements and information
+- Commands: |wnews|n, |wnews <category>|n, |wnews <category>/<topic>|n
 - Categories: general, updates, policy
 - Files support ANSI colors and formatting
 
 |yRoadmap Status: 100% COMPLETE|n
 - All 20 phases of V5 implementation complete
-- 13/13 clans implemented
-- 11/11 disciplines implemented
+- Clans and disciplines implemented (since limited to the V5 core
+  book's clans, Caitiff and thin-bloods)
 - Full V5 mechanics: Dice, Hunger, Blood, Combat, Humanity, Frenzy
 - MUSH infrastructure: BBS, Jobs, Help, News, Status, Boons
 - Advanced systems: XP, Thin-Blood Alchemy, Coteries, Backgrounds
@@ -55,8 +111,7 @@
 - Amalgam power framework
 
 |yPhase 15: Combat & Conflict|n
-- Full V5 combat system
-- Commands: |w+attack|n, |w+dodge|n, |w+soak|n, |w+heal|n
+- Combat system: |w+attack|n, |w+damage|n, |w+heal|n, |w+health|n
 - Damage types, Health tracking, Willpower
 
 |w═══════════════════════════════════════════════════════════════════|n
@@ -64,12 +119,12 @@
 |c[AUGUST 2025] - CORE SYSTEMS COMPLETE|n
 
 |yPhase 4-10: Core V5 Mechanics|n
-- Trait system with database-driven models
+- Trait system (since replaced by the V5 rules data)
 - Dice rolling engine with Hunger dice and Rouse checks
 - Blood/Hunger systems with feeding mechanics
-- Clan system with all 13 clans
-- Discipline framework with all 11 disciplines
-- Character creation (web + in-game)
+- Clan system
+- Discipline framework
+- Character creation (now on the website only)
 - Character sheet display
 
 |yPhase 11-13: Social Systems|n
@@ -94,7 +149,6 @@
 |yHigh Priority|n
 - Scene system with automatic effect expiration
 - Active effects display in character sheet
-- Automatic Stain application from Messy Criticals
 
 |yMedium Priority|n
 - Social conflict mechanics
@@ -104,16 +158,16 @@
 
 |yLow Priority|n
 - Automated nightly blood expenditure ticker
-- BBS anonymous posting
-- Additional social commands (+where, +mail)
+- Additional social commands (where, mail)
 - Wiki integration
 
 |w═══════════════════════════════════════════════════════════════════|n
 
 |cSTAY INFORMED|n
 
-Check |w+news updates|n regularly for new announcements and changes.
+Check |wnews updates|n regularly for new announcements and changes.
 
-Report bugs or request features using |w+job/create|n.
+Report bugs or request features with
+|wjob/submit <bucket> <title> = <description>|n.
 
 |yThe night is long, but development never sleeps!|n
