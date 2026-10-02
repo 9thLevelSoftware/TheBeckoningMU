@@ -13,7 +13,9 @@ text: |
 
   Players create characters only on the website form (|y/character-creation/|n).
   Each submission is an application, with a job in the |yApproval|n bucket
-  that follows it (|yjobs Approval|n).
+  that follows it (|yjobs Approval|n). The job commands work in or out of
+  character, so staff without a character can use them, and an applicant
+  can follow their own Approval job with |y+myjobs|n before approval.
 
   Review on the website at |y/staff/character-approval/|n (Builder and above):
     - |wApprove|n: the character can be puppeted and is moved to the
@@ -34,18 +36,19 @@ text: |
 
   |WNON-PLAYER CHARACTERS|n
 
-  Staff NPCs are made in game, not on the website:
+  Staff NPCs are made in game, not on the website, with one command:
 
-    |y@create <name>:typeclasses.characters.Character|n
-    |y@lock <name> = puppet:perm(Builder)|n
-    |y@set <name>/splat = mortal|n      (or |yghoul|n; leave it unset for a vampire)
+    |y+npc/create <name>[=<splat>]|n     splat: mortal (default), ghoul or vampire
 
-  Every Character is created with the player locks (owner and approval),
-  so the |y@lock|n line is what lets a Builder |yic|n into the NPC. The
-  |wsplat|n decides Hunger dice and whether Superficial damage is halved:
-  mortals and ghouls roll no Hunger dice and take full damage. Give an NPC
-  traits with |y@py|n through the Character accessors (|yset_trait|n), not by
-  editing |ydb.stats|n.
+  It creates a Character in your room that belongs to no account and needs
+  no approval, locked so any Builder can |yic <name>|n, |y@set|n and |y@desc|n
+  it, and remove it. The |wsplat|n decides Hunger dice and whether
+  Superficial damage is halved: mortals and ghouls roll no Hunger dice and
+  take full damage. Give an NPC traits with |y@py|n through the Character
+  accessors (|yset_trait|n), not by editing |ydb.stats|n.
+
+  Don't make NPCs with |y@create|n: a plain Character gets the player locks
+  (owner and approval), and only an Admin can change them.
 
   |WSTAFF-RUN SCENES AND RECORDS|n
 
@@ -58,16 +61,24 @@ text: |
     |y+xpaward <character> = <amount>[/<reason>]|n   award XP
     |y+alchemy/teach <character>=<formula>|n   grant a formula with no XP
 
-  Hunt scene requests arrive as jobs in the |yHunt Scenes|n bucket
-  (|yjob/claim Hunt Scenes/<n>|n). Players file other requests with
-  |yjob/submit <bucket> <title> = <description>|n; they can't list buckets,
-  so tell them which bucket names to use.
+  |wJob buckets|n are created at server start if missing: |yRequests|n and
+  |yBugs|n (players may submit), |yApproval|n, |yHunt Scenes|n and |yBuilds|n
+  (staff only). Players list theirs with |ybuckets|n and file with
+  |yjob/submit <bucket> <title> = <description>|n. Hunt scene requests
+  arrive in Hunt Scenes (|yjob/claim Hunt Scenes/<n>|n). Make another
+  bucket with |ybucket/create <name> = <description>|n, adding |y/player|n
+  to let players submit to it. The server also creates the default
+  Camarilla positions (|y+positions|n) and BBS boards (general,
+  introductions, rp, chargen, policy) if they are missing.
+
+  |wHarpies:|n holding the Harpy position doesn't open |y+boonadmin|n. Give
+  the player's account the permission with |yperm *<account> = Harpy|n.
 
   |wTorpor:|n a vampire who fails to rise at Hunger 5 (|yrouse/wake|n) is put
-  in torpor, shown on |y+sheet|n. There is no command to end it yet. When
-  the Storyteller decides it is over, a Developer clears it with:
-    |y@py me.search("<name>", global_search=True).torpor = None|n
-  Aggravated damage that put a vampire in torpor is healed with
+  in torpor, shown on |y+sheet|n; so is one whose Health track is full of
+  Aggravated damage. |y+torpor <character>|n shows both. When the
+  Storyteller decides it is over, end it with |y+torpor/end <character>|n.
+  Torpor from damage ends when the damage is healed:
   |y+heal <target>=<amount>/aggravated|n.
 
   |WWEB BUILDER|n (|y/builder/|n, Builder and above)
@@ -86,6 +97,8 @@ text: |
     4. The owner (or an Admin) builds the approved snapshot as a sandbox.
        |y@goto_sandbox|n lists your sandboxes; |y@goto_sandbox <project id>|n
        takes you to its entry room. |y@list_sandboxes|n (Admin) lists all.
+       An unpromoted sandbox has no exit back, and Builders can't |y@tel|n
+       their own character, so leave with |yhome|n.
     5. Promote it from the website: it uses only the reviewed connection,
        is refused if that direction is taken at either end, and creates
        the two connecting exits.
@@ -97,8 +110,9 @@ text: |
   built, never objects found by tag (anyone with |y@tag|n can forge a
   tag). It refuses and deletes nothing when a character is inside the
   sandbox, an exit it didn't build leads into or out of it, or a recorded
-  object no longer matches what was built. Clear the problem and run it
-  again. A project with a sandbox can't be deleted until it is cleaned up.
+  object no longer matches what was built. Clear the problem (if it is
+  you, |yhome|n) and run it again. A project with a sandbox can't be
+  deleted until it is cleaned up.
 
   |wRoom triggers:|n |wentry|n and |wexit|n fire on movement; |wOn Look|n fires
   when someone looks at the room, including on arrival; |wtimed|n triggers
@@ -108,4 +122,4 @@ text: |
   The in-game |y@dig|n and |y@open|n stay available to Builders for small
   jobs.
 
-  |ySee also:|n help chargen, help jobs, help feed, help combat_commands
+  |ySee also:|n help chargen, help jobs, help feed, help +torpor, help +npc, help combat_commands

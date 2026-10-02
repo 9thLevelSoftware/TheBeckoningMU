@@ -98,8 +98,10 @@ Suspect, Shunned, ...).
 - Allies, Influence, Mawla and Resources have [dots] uses per session,
   Contacts [dots x 2]; the others are unlimited or passive, and Herd
   is weekly.
-- Staff reset the per-session uses at the start of a session; the Herd
-  week is kept.
+- Per-session uses don't refill on their own. |y+background/reset|n
+  (staff) resets only the uses of the character running it, and no
+  command yet resets another character's uses. The Herd week is never
+  reset: it counts 7 days from your last Herd feeding.
 - Backgrounds can be raised with XP (|y+spend advantage <name>|n).
 
 |[r+===================================================================+|n

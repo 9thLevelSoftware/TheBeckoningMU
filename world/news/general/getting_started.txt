@@ -93,8 +93,9 @@ page. Submit your character there for staff approval (see |whelp chargen|n).
 
 |yStaff Interaction|n
 
-  |wjob/submit <bucket> <title> = <description>|n - Ask staff for something
-      (staff announce the bucket names, e.g. |wjob/submit Requests ...|n)
+  |wjob/submit Requests <title> = <description>|n - Ask staff for something
+  |wjob/submit Bugs <title> = <description>|n     - Report a bug
+  |wbuckets|n            - The buckets you can submit to
   |w+myjobs|n            - List your jobs
   |w+job <bucket>/<#>|n  - View one of your jobs
 
@@ -128,7 +129,8 @@ page. Submit your character there for staff approval (see |whelp chargen|n).
 
 |yFrenzy|n
 - The Beast taking control
-- Provoked by fire and sunlight, hunger, or fury (|w+frenzy/check <type>|n)
+- Three types: fury, hunger or terror (fire and sunlight cause terror);
+  |w+frenzy/check <type>|n lists each type's provocations
 - Resist with |w+frenzy/resist <difficulty>|n
 - Consequences can be severe
 
@@ -138,7 +140,7 @@ page. Submit your character there for staff approval (see |whelp chargen|n).
 
 - Read all |whelp v5-rules-guide|n topics for detailed mechanics
 - Check |wnews policy|n for game rules
-- Post questions on |w+bbs general|n
+- Post questions on the general board (|w+bbpost general=<title>/<body>|n)
 - Submit a job (|wjob/submit|n) for staff assistance
 - Ask experienced players for guidance
 

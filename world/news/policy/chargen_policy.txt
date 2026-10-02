@@ -26,7 +26,8 @@
 |yRevisions|n
 - Staff may reject a character with notes saying what to change
 - You are told in game; edit and resubmit it on the website
-- Until it is approved you can delete it with |wchardelete <name>|n
+- You can delete your own character at any time, approved or not, with
+  |wchardelete <name>|n (this cannot be undone)
 - Staff can revoke an approval; the character is taken out of play.
   Revoking only pauses play: your sheet, XP and everything bought in play
   are kept. Resubmit it on the website (you may update the concept,
@@ -53,7 +54,6 @@
 - Werewolves, Mages, or other supernatural types (Vampire game only)
 
 |yGrey Area (Requires Staff Approval)|n
-- Ancillae (older than 100 years)
 - Characters with exotic bloodlines
 - Characters involved in major historical events
 - Characters with unusual merits or flaws
@@ -72,7 +72,8 @@ is kept in step with the website's checks, so it is not repeated here.
 
 |yHouse notes|n
 - Ancillae take more advantage and flaw dots (9 and 4) but start at
-  Humanity -1; staff look closely at Ancilla concepts (see section 2)
+  Humanity -1. Ancilla is a standard choice on the form and is
+  reviewed like any other character
 - Instanced backgrounds (Allies, Contacts, Influence, Mawla, Retainers,
   Status) need a note saying who or what they are
 - A Clan Curse flaw names the clan whose Bane you carry
@@ -158,7 +159,7 @@ Tzimisce, Ravnos, Salubri) are not available.
 - |wOsiris|n - Feed on the followers of your cult, band or fandom
 - |wSandman|n - Feed on sleeping victims
 - |wScene Queen|n - Feed within a subculture where you have status
-- |wSiren|n - Feed under the guise of sex or seduction
+- |wSiren|n - Feed under the guise of sex or seduction (not Nosferatu)
 
 |yConsiderations|n
 - How does this fit your Humanity?
@@ -241,8 +242,8 @@ Tzimisce, Ravnos, Salubri) are not available.
 
 |yFirst Steps|n
 1. Read |wnews general/welcome|n and |wnews general/getting_started|n
-2. Post introduction on |w+bbs introductions|n
-3. Set your |w@desc me|n with full description
+2. Post an introduction with |w+bbpost introductions=<title>/<text>|n
+3. Set your description with |wsetdesc <description>|n
 4. Find RP! Use |wwho|n and |w+bbs rp|n
 5. Join or form a Coterie with |w+coterie|n
 
@@ -256,7 +257,7 @@ Tzimisce, Ravnos, Salubri) are not available.
 - Use |w+spend <type> <name>|n to improve your character over time
   (see |whelp xp-guide|n and |w+xp/costs|n)
 - Out-of-clan Disciplines and story-heavy merits need a staff job
-  first (|wjob/submit <bucket> <title> = <description>|n)
+  first (|wjob/submit Requests <title> = <description>|n)
 - Character growth should be reflected in RP
 
 |w═══════════════════════════════════════════════════════════════════|n
@@ -274,9 +275,9 @@ Tzimisce, Ravnos, Salubri) are not available.
   lists your characters, and you are told in game when staff decide
 
 |yStaff Assistance|n
-- |wjob/submit <bucket> <title> = <question>|n for help (staff announce
-  the bucket names; |w+myjobs|n lists your jobs)
-- Ask on |w+bbs chargen|n for advice from community
+- |wjob/submit Requests <title> = <question>|n for help (|wbuckets|n lists
+  the buckets you can use; |w+myjobs|n lists your jobs)
+- Ask the community for advice on the chargen board (|w+bbpost chargen=<title>/<question>|n)
 - Page staff if online for quick questions
 
 |w═══════════════════════════════════════════════════════════════════|n

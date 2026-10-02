@@ -14,7 +14,8 @@ Characters are created on the game website, not in the game.
 
 A character can't be played, roll or spend XP until it is approved.
 Once it is, connect to the game and use |yic <name>|n to start playing.
-Until then you can delete it with |ychardelete <name>|n. If staff revoke
+You can delete your own character at any time, approved or not, with
+|ychardelete <name>|n; deleting cannot be undone. If staff revoke
 an approval, the character keeps its sheet and XP; resubmit it on the
 website and staff review it as it stands.
 

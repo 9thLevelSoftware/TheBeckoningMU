@@ -150,8 +150,9 @@
 - Don't argue with staff in public channels
 
 |yStaff Requests|n
-- Use |wjob/submit <bucket> <title> = <description>|n for all staff
-  requests (staff announce the bucket names; |w+myjobs|n lists yours)
+- Use |wjob/submit Requests <title> = <description>|n for staff requests
+  and |wjob/submit Bugs <title> = <description>|n for bugs (|wbuckets|n
+  lists the buckets you can use; |w+myjobs|n lists yours)
 - Be specific and provide relevant information
 - Be patient - staff are volunteers
 
@@ -165,7 +166,8 @@
 |c9. MULTI-CHAR & ALT POLICY|n
 
 |yMultiple Characters|n
-- Players may have up to 2 active characters
+- Players may have up to 10 characters, counting both pending and
+  approved applications (the website refuses more)
 - Characters must be in different spheres/coteries
 - No IC interaction between your own characters
 
@@ -197,7 +199,7 @@
 - Read |wnews policy/rp_policy|n for RP-specific guidelines
 - Read |wnews policy/chargen_policy|n for character creation details
 - Submit a job (|wjob/submit|n) for staff clarification
-- Ask on |w+bbs policy|n for community discussion
+- Discuss on the policy board (|w+bbs policy|n to read it)
 
 |yThese rules exist to ensure everyone has fun. When in doubt,
 communicate with staff and other players!|n

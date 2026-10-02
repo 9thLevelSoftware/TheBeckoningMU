@@ -218,7 +218,7 @@ Give OOC warning before RPing:
 
 |yFinding RP|n
 - Check |wwho|n for online players
-- Post RP availability on |w+bbs rp|n
+- Post RP availability on the rp board (|w+bbpost rp=<title>/<text>|n)
 - Join public scenes in common locations
 - Reach out via page to arrange scenes
 
@@ -262,7 +262,7 @@ Give OOC warning before RPing:
 
 - Read |wnews policy/rules|n for overall game rules
 - Submit a job (|wjob/submit|n) for staff guidance
-- Ask on |w+bbs policy|n for clarification
+- Ask for clarification on the policy board (|w+bbs policy|n to read it)
 - Talk to other players - community helps community!
 
 |yRemember: We're all here to tell great stories together!|n

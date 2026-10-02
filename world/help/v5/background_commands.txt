@@ -86,7 +86,9 @@ These are this game's conventions, not V5 book rules (see
 
 |y+background/reset|n
   (Staff only) Reset the per-session background uses of the character
-  running the command; the Herd week is kept. It takes no target.
+  running the command; the Herd week is kept. It takes no target, so
+  there is no command yet to reset a player's uses, and uses don't
+  refill on their own.
 
 |WTIPS:|n
 

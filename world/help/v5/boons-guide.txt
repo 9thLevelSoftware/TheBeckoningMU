@@ -82,6 +82,10 @@ The |yHarpy|n maintains the boon ledger:
     except on boons they or their own characters are party to
   - Enforces boon payment
 
+A Harpy uses |y+boonadmin|n only once staff grant their account the
+|wHarpy|n permission (|yperm *<account> = Harpy|n); holding the Harpy
+position with |y+statusadmin/position|n doesn't grant it.
+
 |WBOON ETIQUETTE:|n
 
 |yDO:|n

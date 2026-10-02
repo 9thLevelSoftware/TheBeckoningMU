@@ -42,8 +42,9 @@ Will you embrace the Beast, or fight to maintain your Humanity?
 |W▸ NEED HELP?|n
 
   |y●|n Read |Wnews general/getting_started|n for a full new player guide
-  |y●|n Ask questions on |W+bbs general|n
-  |y●|n Use |Wjob/submit <bucket> <title> = <description>|n to ask staff for help
+  |y●|n Ask questions on the general board (|W+bbpost general=<title>/<question>|n)
+  |y●|n Use |Wjob/submit Requests <title> = <description>|n to ask staff for help
+      (|Wbuckets|n lists the buckets you can use)
   |y●|n Contact staff with |Wpage <staffname>=<message>|n
 
 |x════════════════════════════════════════════════════════════════════════════════|n

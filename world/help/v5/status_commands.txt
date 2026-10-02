@@ -125,7 +125,9 @@ Shows:
 Higher Status provides:
   - Greater political influence
   - More weight in formal votes
-  - Bonus dice for social rolls in sect matters
+  - Possibly extra dice on social rolls in sect matters, if the
+    Storyteller adds them (no roll adds Status automatically; the game
+    only displays it)
   - Priority access to domain resources
   - Protection from minor slights
 

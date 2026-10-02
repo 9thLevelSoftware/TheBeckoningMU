@@ -75,8 +75,8 @@ Herd or Contacts) are separate: see |yhelp backgrounds-guide|n.
 |WVIEWING:|n
 
 |y+coterie|n
-  Your coterie, your role and its resources (the leader also sees the
-  member list).
+  Your coterie and your role. The leader also sees its resources and
+  the member list; members see the resources with |y+coterie/resources|n.
 
 |y+social|n
 |y+social <character>|n

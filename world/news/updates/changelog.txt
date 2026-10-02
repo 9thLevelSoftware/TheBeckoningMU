@@ -51,7 +51,8 @@ The game now follows the V5 core book. What changed for players
   (|w+boonaccept|n) and calls it in (|w+booncall|n), both confirm it
   repaid (|w+boonfulfill|n); |w+boon/dispute|n goes to a Harpy or staff
 - Jobs are named |w<bucket>/<number>|n (e.g. |w+job Hunt Scenes/3|n);
-  file one with |wjob/submit <bucket> <title> = <description>|n
+  file one with |wjob/submit Requests <title> = <description>|n
+  (|wbuckets|n lists the buckets you can use)
 
 |yCharacters and Help|n
 - Characters are created only on the website (|w/character-creation/|n)
@@ -167,7 +168,7 @@ The game now follows the V5 core book. What changed for players
 
 Check |wnews updates|n regularly for new announcements and changes.
 
-Report bugs or request features with
-|wjob/submit <bucket> <title> = <description>|n.
+Report bugs with |wjob/submit Bugs <title> = <description>|n and request
+features with |wjob/submit Requests <title> = <description>|n.
 
 |yThe night is long, but development never sleeps!|n

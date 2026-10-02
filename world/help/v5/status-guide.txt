@@ -50,7 +50,8 @@ Your total Status is the sum of the three, from 0 to 5.
   - Equal Status = yield to elder or position
 
 |yPolitical Influence:|n
-  - Status adds to social rolls in Camarilla contexts
+  - The Storyteller may add Status to social pools in Camarilla
+    contexts; the game only displays Status and no roll adds it
   - Higher Status gets better hunting grounds
   - Access to domain resources and protection
 
@@ -93,6 +94,10 @@ The |yHarpy|n is the social arbiter who tracks Status:
   - Announces Status changes at Elysium
   - Supports requests for Status changes
   - Acts as neutral observer of social combat
+
+The position is a title only. To rule on boons with |y+boonadmin|n, the
+Harpy's account needs the |wHarpy|n permission, which staff grant with
+|yperm *<account> = Harpy|n.
 
 |WSTATUS VS BOONS:|n
 

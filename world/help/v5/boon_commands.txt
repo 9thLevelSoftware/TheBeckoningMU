@@ -120,6 +120,10 @@ Staff may rule on any boon. A Harpy may not fulfil, cancel or uphold
 a boon that they, or another character on their account, owe or are
 owed.
 
+A Harpy uses |y+boonadmin|n only once staff grant their account the
+|wHarpy|n permission (|yperm *<account> = Harpy|n); holding the Harpy
+position with |y+statusadmin/position|n doesn't grant it.
+
 |y+boonadmin/acknowledge <boon #>|n
   Officially acknowledge a boon (Harpy function).
 
