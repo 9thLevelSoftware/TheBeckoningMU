@@ -90,7 +90,12 @@ PROSE = {
     "you",
     "your",
 }
-MARKDOWN = re.compile(r"\*\*|`|^\s*#{1,6}\s", re.MULTILINE)
+MARKDOWN = re.compile(
+    r"\*\*|`|^\s*#{1,6}\s"  # bold, code, headings
+    r"|\[[^\]]+\]\([^)]+\)"  # [links](url)
+    r"|(?<![\w*])\*[^*\s][^*\n]*\*(?![\w*])",  # *emphasis*
+    re.MULTILINE,
+)
 
 
 def _no_prefix(name):
@@ -119,14 +124,30 @@ def _source(cmd_class):
         return ""
 
 
+_LITERAL = re.compile(r"""["']([A-Za-z][\w\-]*)["']""")
+
+
+@cache
+def _switch_literals(cmd_class):
+    """
+    String literals the class compares its switches against: those on a line
+    that mentions `switch` ('"x" in self.switches', 'switch == "x"',
+    'if switch in ("a", "b")'), not every string in the code.
+    """
+    names = set()
+    for line in _source(cmd_class).splitlines():
+        if "switch" in line:
+            names.update(lit.lower() for lit in _LITERAL.findall(line))
+    return names
+
+
 def _handles_switch(cmd, switch):
-    """True if `cmd` accepts `/switch` (its switch_options, else a literal in its code)."""
+    """True if `cmd` accepts `/switch` (its switch_options, else a literal it tests switches against)."""
     switch = switch.lower()
     options = getattr(cmd, "switch_options", None)
     if options:
         return switch in [opt.lower() for opt in options]
-    source = _source(type(cmd))
-    return f'"{switch}"' in source or f"'{switch}'" in source
+    return switch in _switch_literals(type(cmd))
 
 
 def resolve_token(token):
@@ -147,6 +168,32 @@ def resolve_token(token):
                     return f"{cmd.key} has no /{switch} switch"
             return None
     return "no such command"
+
+
+def command_for(token):
+    """The command a `+cmd/sw` token names, or None."""
+    index = command_index()
+    parts = token.split("/")
+    for cut in range(len(parts), 0, -1):
+        cmd = index.get("/".join(parts[:cut]).lower())
+        if cmd is not None:
+            return cmd
+    return None
+
+
+def player_tokens():
+    """(entry key, command) for every command token in help/news a player can read."""
+    index = command_index()
+    for entry in [*HELP_ENTRY_DICTS, *NEWS_ENTRY_DICTS]:
+        if "perm(" in (entry.get("locks", "") or ""):
+            continue
+        text = strip_ansi(entry["text"])
+        tokens = set(PREFIXED.findall(text))
+        tokens |= {t for t in SWITCHED.findall(text) if t.split("/")[0] in index}
+        for token in sorted(tokens):
+            cmd = command_for(token)
+            if cmd is not None:
+                yield entry["key"], token, cmd
 
 
 @cache
@@ -294,6 +341,10 @@ class HelpReferenceTests(SimpleTestCase):
         self.assertIsNotNone(resolve_token("+chargen"))
         self.assertIsNotNone(resolve_token("+roll"))  # the command is `roll`
         self.assertIsNotNone(resolve_token("+hunt/nosuchswitch"))
+        self.assertIsNotNone(resolve_token("roll/name"))  # 'name' is a string in CmdRoll, not a switch
+        self.assertIsNone(resolve_token("roll/willpower"))
+        self.assertIsNotNone(MARKDOWN.search("See [the guide](http://x)"))
+        self.assertIsNotNone(MARKDOWN.search("an *italic* word"))
         self.assertNotIn("nosuchtopic", topic_index())
 
 
@@ -349,6 +400,33 @@ class PowerListTests(SimpleTestCase):
                     cost = f"{power['rouse']} Rouse" if power["rouse"] else "free"
                     expected[power["name"].lower()] = (level, cost)
         self.assertEqual(listed, expected)
+
+
+class PlayerLockTests(EvenniaCommandTest):
+    """Commands named in player-readable help and news are ones a player may use."""
+
+    # Deliberate "staff do this with X" mentions in player-facing text.
+    STAFF_MENTIONS = {
+        "boons-guide": {"+boonadmin", "+statusadmin"},
+        "boon_commands": {"+boonadmin", "+statusadmin"},
+        "status-guide": {"+statusadmin", "+boonadmin"},
+        "status_commands": {"+statusadmin"},
+        "social_commands": {"+statusadmin"},
+        "xp-guide": {"+xpaward"},
+    }
+
+    def test_player_text_names_only_player_commands(self):
+        player = self.char2
+        player.permissions.remove("Developer")
+        self.account2.permissions.remove("Developer")
+        problems = []
+        for key, token, cmd in player_tokens():
+            if cmd.access(player, "cmd"):
+                continue
+            if cmd.key in self.STAFF_MENTIONS.get(key, set()):
+                continue
+            problems.append(f"{key}: {token} ({cmd.key} is locked {cmd.locks!r})")
+        self.assertEqual(problems, [], "\n" + "\n".join(problems))
 
 
 class CmdsetSurvivalTests(SimpleTestCase):
