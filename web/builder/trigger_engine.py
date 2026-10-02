@@ -1,17 +1,26 @@
 """
-Trigger execution engine for the trigger system.
+Trigger execution engine for room triggers.
 
-This module provides the core trigger execution functionality:
-- Trigger validation
-- Trigger execution
-- Error handling and logging
+Triggers are stored on rooms as `room.db.triggers`. Evennia hands stored
+lists and dicts back as `_SaverList` / `_SaverDict`, which are not `list` /
+`dict` subclasses, so this module never type-checks against `list`/`dict`:
+it accepts any `Mapping` / non-string `Sequence` and copies the stored list
+before iterating.
+
+`validate_trigger` is the single rule set. The editor API runs it when a
+trigger is saved, submission and the sandbox build run it over the whole
+map, and `execute_trigger` runs it again before every action, so a stored
+trigger that breaks the rules (say, a `set_attribute` aimed at a
+character's `experience`) is refused at save and at run.
 """
 
 import logging
-from typing import Dict, Any, Tuple, List, Optional
+import re
+from collections.abc import Mapping, Sequence
+from typing import Any
 
-from .trigger_actions import ACTION_REGISTRY
-from .v5_conditions import check_condition
+from .trigger_actions import ACTION_REGISTRY, validate_set_attribute
+from .v5_conditions import check_condition, list_condition_types
 
 logger = logging.getLogger(__name__)
 
@@ -19,41 +28,44 @@ logger = logging.getLogger(__name__)
 class TriggerError(Exception):
     """Exception raised for trigger execution errors."""
 
-    pass
-
 
 VALID_TRIGGER_TYPES = {"entry", "exit", "timed", "interaction"}
+TRIGGER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+MAX_MESSAGE_LENGTH = 2000
+MIN_TIMED_INTERVAL = 10
+MAX_TIMED_INTERVAL = 86400
 
 
-def validate_trigger(trigger_data: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+def _is_sequence(value):
+    return isinstance(value, Sequence) and not isinstance(value, (str, bytes))
+
+
+def validate_trigger(trigger_data: Any) -> tuple[bool, str | None]:
     """
-    Validate trigger data structure.
-
-    Args:
-        trigger_data: Dictionary containing trigger configuration
+    Validate one trigger's structure and parameters.
 
     Returns:
-        Tuple of (is_valid: bool, error_message: Optional[str])
-        If valid, error_message is None
+        (is_valid, error_message); error_message is None when valid.
     """
-    # Check required fields
-    if not isinstance(trigger_data, dict):
+    if not isinstance(trigger_data, Mapping):
         return False, "Trigger data must be a dictionary"
 
     required_fields = {"type", "action", "parameters"}
     missing_fields = required_fields - set(trigger_data.keys())
     if missing_fields:
-        return False, f"Missing required fields: {', '.join(missing_fields)}"
+        return False, f"Missing required fields: {', '.join(sorted(missing_fields))}"
 
-    # Validate trigger type
+    trigger_id = trigger_data.get("id")
+    if trigger_id is not None and (not isinstance(trigger_id, str) or not TRIGGER_ID_RE.match(trigger_id)):
+        return False, "Trigger id must be 1-64 letters, digits, '_' or '-'"
+
     trigger_type = trigger_data.get("type")
     if trigger_type not in VALID_TRIGGER_TYPES:
         return (
             False,
-            f"Invalid trigger type '{trigger_type}'. Must be one of: {', '.join(VALID_TRIGGER_TYPES)}",
+            f"Invalid trigger type '{trigger_type}'. Must be one of: {', '.join(sorted(VALID_TRIGGER_TYPES))}",
         )
 
-    # Validate action exists in registry
     action_name = trigger_data.get("action")
     if action_name not in ACTION_REGISTRY:
         return (
@@ -61,187 +73,196 @@ def validate_trigger(trigger_data: Dict[str, Any]) -> Tuple[bool, Optional[str]]
             f"Unknown action '{action_name}'. Available actions: {', '.join(ACTION_REGISTRY.keys())}",
         )
 
-    # Validate parameters is a dict
     parameters = trigger_data.get("parameters")
-    if not isinstance(parameters, dict):
+    if not isinstance(parameters, Mapping):
         return (
             False,
             f"Parameters must be a dictionary, got {type(parameters).__name__}",
         )
 
-    # Check enabled field if present
     enabled = trigger_data.get("enabled", True)
     if not isinstance(enabled, bool):
         return False, "Enabled field must be a boolean"
 
-    # Validate conditions if present
+    if action_name in ("send_message", "emit_message"):
+        message = parameters.get("message", "")
+        if not isinstance(message, str) or len(message) > MAX_MESSAGE_LENGTH:
+            return False, f"message must be text of at most {MAX_MESSAGE_LENGTH} characters"
+    elif action_name == "set_attribute":
+        error = validate_set_attribute(
+            parameters.get("target", "room"), parameters.get("attr_name"), parameters.get("value")
+        )
+        if error:
+            return False, error
+
     conditions = trigger_data.get("conditions", [])
     if conditions:
-        if not isinstance(conditions, list):
+        if not _is_sequence(conditions):
             return False, "conditions must be a list"
-
-        from .v5_conditions import list_condition_types
-
         valid_conditions = list_condition_types()
-
         for condition in conditions:
-            if not isinstance(condition, dict):
+            if not isinstance(condition, Mapping):
                 return False, "each condition must be a dictionary"
             if "type" not in condition:
                 return False, "condition missing 'type' field"
             if condition["type"] not in valid_conditions:
                 return False, f"invalid condition type: {condition['type']}"
+            if not isinstance(condition.get("parameters", {}), Mapping):
+                return False, "condition parameters must be a dictionary"
 
-    # Validate timed trigger has interval
-    if trigger_data.get("type") == "timed":
+    if trigger_type == "timed":
         interval = trigger_data.get("interval")
-        if not interval or not isinstance(interval, int) or interval < 10:
-            return False, "timed triggers must have interval >= 10 seconds"
+        if (
+            not isinstance(interval, int)
+            or isinstance(interval, bool)
+            or not MIN_TIMED_INTERVAL <= interval <= MAX_TIMED_INTERVAL
+        ):
+            return (
+                False,
+                f"timed triggers must have an interval of {MIN_TIMED_INTERVAL}-{MAX_TIMED_INTERVAL} seconds",
+            )
+        if not trigger_id:
+            return False, "timed triggers must have an id"
 
     return True, None
 
 
-def execute_trigger(trigger_data: Dict[str, Any], room, character, **context) -> bool:
+def stored_triggers(room) -> list:
+    """The room's triggers as a plain list (empty if unset or malformed)."""
+    triggers = room.attributes.get("triggers", default=None)
+    if not triggers:
+        return []
+    if not _is_sequence(triggers):
+        logger.warning("Room %s has invalid triggers data (not a list)", room)
+        return []
+    return list(triggers)
+
+
+def _trigger_label(trigger_data):
+    if isinstance(trigger_data, Mapping):
+        return trigger_data.get("id", "unknown")
+    return "?"
+
+
+def execute_trigger(trigger_data, room, character, **context) -> bool:
     """
     Execute a single trigger.
 
-    Args:
-        trigger_data: Dictionary containing trigger configuration
-        room: The room where the trigger is firing
-        character: The character who triggered it
-        **context: Additional context (e.g., target_location for exit triggers)
-
     Returns:
-        bool: True if trigger executed successfully, False otherwise
+        True if the trigger's action ran, False otherwise.
     """
-    # Validate trigger data
     is_valid, error_message = validate_trigger(trigger_data)
     if not is_valid:
-        logger.warning(f"Skipping invalid trigger: {error_message}")
+        logger.warning(
+            "Skipping invalid trigger %s in %s: %s",
+            _trigger_label(trigger_data),
+            room,
+            error_message,
+        )
         return False
 
-    # Check if trigger is enabled
     if not trigger_data.get("enabled", True):
-        logger.debug(f"Skipping disabled trigger: {trigger_data.get('id', 'unknown')}")
+        logger.debug("Skipping disabled trigger: %s", _trigger_label(trigger_data))
         return False
 
     action_name = trigger_data["action"]
     parameters = trigger_data["parameters"]
+    action_func = ACTION_REGISTRY[action_name]
 
-    # Get the action function from registry
-    action_func = ACTION_REGISTRY.get(action_name)
-    if not action_func:
-        logger.error(f"Action '{action_name}' not found in registry")
-        return False
-
-    # Prepare parameters based on action type
     try:
         if action_name == "send_message":
-            # Send message to the character
             message = parameters.get("message", "")
-            if message:
-                action_func(character, message)
-                logger.debug(f"Executed send_message trigger for {character}")
+            if not message or character is None:
+                return False
+            action_func(character, message)
 
         elif action_name == "emit_message":
-            # Emit message to room
             message = parameters.get("message", "")
-            if message:
-                action_func(room, message, exclude=[character])
-                logger.debug(f"Executed emit_message trigger in {room}")
+            if not message:
+                return False
+            action_func(room, message, exclude=[character] if character else None)
 
         elif action_name == "set_attribute":
-            # Set attribute on room or character
-            target = parameters.get("target", "room")  # "room" or "character"
-            attr_name = parameters.get("attr_name", "")
+            target = parameters.get("target", "room")
+            attr_name = parameters.get("attr_name")
             value = parameters.get("value")
+            if target == "character":
+                if character is None:
+                    # A timed trigger has no character; never fall back to
+                    # writing on the room instead.
+                    return False
+                action_func(character, attr_name, value, target="character")
+            else:
+                action_func(room, attr_name, value, target="room")
 
-            if attr_name:
-                if target == "character" and character:
-                    action_func(character, attr_name, value)
-                else:
-                    action_func(room, attr_name, value)
-                logger.debug(
-                    f"Executed set_attribute trigger: {target}.{attr_name} = {value}"
-                )
-
-        else:
-            # Unknown action - should not reach here due to validation
-            logger.warning(f"Unhandled action type: {action_name}")
+        else:  # pragma: no cover - validate_trigger rejects unknown actions
             return False
 
         return True
 
-    except Exception as e:
-        logger.exception(
-            f"Error executing trigger {trigger_data.get('id', 'unknown')}: {e}"
-        )
+    except Exception:
+        logger.exception("Error executing trigger %s in %s", _trigger_label(trigger_data), room)
         return False
 
 
-def execute_triggers(
-    room, trigger_type: str, character, trigger_id: Optional[str] = None, **context
-) -> Tuple[int, int]:
+def execute_triggers(room, trigger_type: str, character, trigger_id: str | None = None, **context) -> tuple[int, int]:
     """
-    Execute all triggers of a specific type for a room.
+    Execute all triggers of one type stored on a room.
 
     Args:
-        room: The room where triggers should fire
-        trigger_type: Type of trigger to execute ("entry", "exit", "timed", "interaction")
-        character: The character who triggered the event
-        trigger_id: Optional specific trigger ID to execute (for timed triggers)
-        **context: Additional context (e.g., target_location for exit triggers)
+        room: The room where triggers fire.
+        trigger_type: "entry", "exit", "timed" or "interaction".
+        character: The character who caused the event (None for timed).
+        trigger_id: Only run the trigger with this id (timed scripts).
 
     Returns:
-        Tuple of (executed_count: int, failed_count: int)
+        (executed_count, failed_count)
     """
-    # Get triggers from room.db.triggers (default to empty list)
-    triggers = getattr(room.db, "triggers", None)
+    triggers = stored_triggers(room)
     if not triggers:
-        return 0, 0
-
-    if not isinstance(triggers, list):
-        logger.warning(f"Room {room} has invalid triggers data (not a list)")
         return 0, 0
 
     executed_count = 0
     failed_count = 0
 
     for trigger_data in triggers:
-        # Filter by trigger type
+        if not isinstance(trigger_data, Mapping):
+            failed_count += 1
+            continue
         if trigger_data.get("type") != trigger_type:
             continue
-
-        # Filter by trigger_id if specified (for timed triggers)
         if trigger_id and trigger_data.get("id") != trigger_id:
             continue
 
-        # Check conditions
-        conditions = trigger_data.get("conditions", [])
+        conditions = trigger_data.get("conditions") or []
+        if not _is_sequence(conditions):
+            failed_count += 1
+            continue
         conditions_met = True
         for condition in conditions:
-            if not check_condition(
+            if not isinstance(condition, Mapping) or not check_condition(
                 condition.get("type"),
-                condition.get("parameters", {}),
+                condition.get("parameters") or {},
                 character=character,
                 room=room,
             ):
                 conditions_met = False
                 break
-
         if not conditions_met:
             continue
 
-        # Execute the trigger
-        success = execute_trigger(trigger_data, room, character, **context)
-        if success:
+        if execute_trigger(trigger_data, room, character, **context):
             executed_count += 1
         else:
             failed_count += 1
 
-    if executed_count > 0 or failed_count > 0:
+    if executed_count or failed_count:
         logger.info(
-            f"Executed {executed_count} {trigger_type} triggers in {room} ({failed_count} failed)"
+            "Executed %s %s triggers in %s (%s failed)",
+            executed_count,
+            trigger_type,
+            room,
+            failed_count,
         )
 
     return executed_count, failed_count
