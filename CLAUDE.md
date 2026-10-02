@@ -17,7 +17,6 @@ evennia reload
 evennia stop
 evennia status
 evennia makemigrations <app>              # bbs, jobs, status, boons, traits, builder
-evennia seed_traits                       # copy world/v5_data.py into the traits DB tables the web API serves (re-run after a rules-data change)
 
 evennia test --settings settings.py .                              # all tests
 evennia test --settings settings.py dice.tests                     # one module
@@ -27,7 +26,6 @@ ruff check . && ruff format .             # also run by pre-commit (pre-commit r
 ```
 
 - `server/conf/settings.py` refuses to load (ImproperlyConfigured) if `server/conf/secret_settings.py` is missing or its `SECRET_KEY` is still Evennia's default. That applies to every `evennia` command, tests included, so run `evennia --initmissing` first in a fresh clone or worktree. `server/conf/secret_settings.example.py` documents the other per-host settings.
-- `evennia seed_traits` updates existing rows in place and removes rows that are no longer in `v5_data` (rows a character still uses are only marked inactive), so plain re-seeding applies a rules-data change. `--clear` deletes the trait tables, and every character's `CharacterTrait`/`CharacterPower` rows cascade with them (in-game code no longer reads those rows; the web chargen API still writes them). Never run it on a database you want to keep.
 - The database is the single SQLite file `server/evennia.db3`. Back up by stopping the server and copying it.
 - Web authority uses Evennia permission strings, not Django's `is_staff`: `web/permissions.has_perm(user, perm)` wraps `check_permstring` (superusers pass). The web builder requires `Builder` on the account (`perm *<account> = Builder`).
 - Tests run through Evennia's Django runner (there is no pytest setup). Command tests must subclass `evennia.utils.test_resources.EvenniaCommandTest` to get `self.call` (its `msg` argument matches the *start* of the output; use the returned string with `assertIn` for fragments). A test directory is only discovered if every parent directory is a package, so keep the `__init__.py` files.

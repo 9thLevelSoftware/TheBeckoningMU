@@ -6,8 +6,7 @@ skills, clans, disciplines with their powers, rituals and formulas,
 predator types, backgrounds, merits and flaws, the Blood Potency table,
 generation tables, resonances and frenzy provocations). Game code imports
 from here; nothing reads rules data from the database, and no other module
-may hardcode these values. The `traits` app's legacy reference tables are
-seeded from these constants by `seed_traits`.
+may hardcode these values. The web API (/api/traits/) serves them as JSON.
 
 The content follows the V5 core book (2018) with Renegade's official
 errata. Each table's comment cites its source: a core-book page, the V5

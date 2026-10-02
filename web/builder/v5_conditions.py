@@ -173,17 +173,15 @@ def _check_character_clan(character, clan: str) -> bool:
 
 
 def _check_character_splat(character, splat: str) -> bool:
-    """Check if character is of specified splat type."""
+    """Check if character is of specified splat type.
+
+    Every player character is a vampire (web chargen makes only vampires);
+    a character with no clan (an NPC object, say) counts as mortal.
+    """
     if not character or not splat:
         return False
-
-    try:
-        from traits.models import CharacterBio
-
-        bio = CharacterBio.objects.get(character_id=character.id)
-        return bio.splat.lower() == splat.lower()
-    except Exception:
-        return False
+    actual = "vampire" if getattr(character, "clan", None) else "mortal"
+    return actual == splat.lower()
 
 
 def _check_character_hunger(character, operator: str, value: int) -> bool:

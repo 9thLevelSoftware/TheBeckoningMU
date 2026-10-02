@@ -45,15 +45,7 @@ The repository root **is** the Evennia game directory, so run every `evennia` co
    evennia migrate
    ```
 
-5. Load the V5 trait reference data:
-
-   ```bash
-   evennia seed_traits
-   ```
-
-   > **Warning:** `evennia seed_traits --clear` deletes the trait tables *and every character's stored traits with them*. Never run it on a database you want to keep.
-
-6. Start the server:
+5. Start the server:
 
    ```bash
    evennia start
@@ -61,7 +53,7 @@ The repository root **is** the Evennia game directory, so run every `evennia` co
 
    The first start asks you to create the superuser account (the email is optional). This is the game owner's account.
 
-7. Connect with a telnet/MUD client on port `6660`, or open the web client at `http://localhost:6665/webclient/`, and log in as the superuser. Players create characters on the website at `http://localhost:6665/character-creation/`; staff approve them at `/staff/character-approval/`.
+6. Connect with a telnet/MUD client on port `6660`, or open the web client at `http://localhost:6665/webclient/`, and log in as the superuser. Players create characters on the website at `http://localhost:6665/character-creation/`; staff approve them at `/staff/character-approval/`.
 
 ### Day to day
 
