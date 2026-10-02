@@ -14,7 +14,9 @@ Characters are created on the game website, not in the game.
 
 A character can't be played, roll or spend XP until it is approved.
 Once it is, connect to the game and use |yic <name>|n to start playing.
-Until then you can delete it with |ychardelete <name>|n.
+Until then you can delete it with |ychardelete <name>|n. If staff revoke
+an approval, the character keeps its sheet and XP; resubmit it on the
+website and staff review it as it stands.
 
 |wThe V5 creation rules the website checks|n
   Age: Childer (12th-13th generation, or thin-bloods of the 14th-16th),
@@ -30,11 +32,17 @@ Until then you can delete it with |ychardelete <name>|n.
   Disciplines: 2 dots in one in-clan Discipline and 1 in another
        (Caitiff: any two; thin-bloods: none), plus 1 from your predator
        type. One power per dot, at or below the Discipline's rating.
-  Predator type: everyone except thin-bloods and Childer. Its
-       specialty, Discipline dot and backgrounds/merits/flaws are free.
+  Predator type: required for Neonates and Ancillae, optional for
+       Childer, none for thin-bloods. Its specialty, Discipline dot and
+       backgrounds/merits/flaws are free.
+  Rituals/formulas: Blood Sorcery gives one free level-1 ritual;
+       Thin-blood Alchemist gives one free formula.
   Advantages and flaws: up to 7 dots of backgrounds and merits and
-       exactly 2 of flaws. Thin-bloods add 1-3 free thin-blood merits
-       and as many thin-blood flaws.
+       exactly 2 of flaws. Thin-bloods (only) add 1-3 free thin-blood
+       merits and as many thin-blood flaws. Caitiff take Suspect and
+       can't buy Status; Nosferatu take Repulsive.
+  Convictions: 1-3, each with a Touchstone. Ambition and Desire are
+       required.
   Clans: the V5 core clans, Caitiff and thin-bloods.
 
 For the setting and the V5 rules behind the choices on the form, see
