@@ -169,7 +169,7 @@ def assign_position(character, position_name, assigned_by=None):
         return (False, f"Character requires {position.requires_status} earned Status to hold this position.")
 
     if position.requires_clan:
-        char_clan = character.db.vampire.get('clan', '') if hasattr(character.db, 'vampire') else ''
+        char_clan = getattr(character, "clan", None) or ""
         if char_clan.lower() != position.requires_clan.lower():
             return (False, f"Position requires clan {position.requires_clan}.")
 
@@ -270,7 +270,15 @@ def create_status_request(character, request_type, reason, **kwargs):
 
     Returns:
         StatusRequest: Created request
+
+    Raises:
+        ValueError: for a request type that isn't implemented (sect_change).
     """
+    from .models import UNSUPPORTED_REQUEST_TYPES
+
+    if request_type in UNSUPPORTED_REQUEST_TYPES:
+        raise ValueError(f"{request_type} requests aren't implemented yet.")
+
     request = StatusRequest.objects.create(
         character=character,
         request_type=request_type,

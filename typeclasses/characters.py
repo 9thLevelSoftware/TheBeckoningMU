@@ -1266,35 +1266,7 @@ class Character(ObjectParent, DefaultCharacter):
         # If the character is the looker, show 0s.
         if self == looker:
             return "|g0s|n"
-        time = self.idle_time or self.connection_time
-        if time is None:
-            return "|g0s|n"
-        minutes, seconds = divmod(time, 60)
-        hours, minutes = divmod(minutes, 60)
-        days, hours = divmod(hours, 24)
-
-        # round seconds
-        seconds = int(round(seconds, 0))
-        minutes = int(round(minutes, 0))
-        hours = int(round(hours, 0))
-        days = int(round(days, 0))
-
-        if days > 0:
-            time_str = f"|x{days}d|n"
-        elif hours > 0:
-            time_str = f"|x{hours}h|n"
-        elif minutes > 0:
-            if minutes > 10 and minutes < 15:
-                time_str = f"|G{minutes}m|n"
-            elif minutes > 15 and minutes < 20:
-                time_str = f"|y{minutes}m|n"
-            elif minutes > 20 and minutes < 30 or minutes >= 30:
-                time_str = f"|r{minutes}m|n"
-            else:
-                time_str = f"|g{minutes}m|n"
-        elif seconds > 0:
-            time_str = f"|g{seconds}s|n"
-        return time_str.strip()
+        return format_idle_seconds(self.idle_time or self.connection_time)
 
     def get_display_name(self, looker, **kwargs):
         """
@@ -1308,6 +1280,35 @@ class Character(ObjectParent, DefaultCharacter):
             name = f"{name} ({self.clan}, H:{self.hunger})"
 
         return name
+
+
+def format_idle_seconds(seconds):
+    """Colour-coded idle time for the room display ("|g0s|n" when unknown or under 0.5s).
+
+    Green under 10 minutes, bright green from 11, yellow from 15, red from 20.
+    """
+    if not seconds:
+        return "|g0s|n"
+    total = int(round(seconds))
+    minutes, secs = divmod(total, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+
+    if days:
+        return f"|x{days}d|n"
+    if hours:
+        return f"|x{hours}h|n"
+    if minutes:
+        if minutes >= 20:
+            color = "|r"
+        elif minutes >= 15:
+            color = "|y"
+        elif minutes > 10:
+            color = "|G"
+        else:
+            color = "|g"
+        return f"{color}{minutes}m|n"
+    return f"|g{secs}s|n"
 
 
 def _canonical_name(value, table, label):
