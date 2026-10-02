@@ -35,11 +35,14 @@ CONDITION_TYPES = {
     },
     "character_splat": {
         "label": "Character Type",
-        "description": "Check if character is vampire, ghoul, etc.",
+        "description": "Check what the character is (Character.splat): vampire, ghoul or mortal",
         "parameters": {
             "splat": {
                 "type": "select",
-                "options": ["vampire", "ghoul", "mortal", "hunter"],
+                # Filled from typeclasses.characters.SPLATS by
+                # list_condition_types(), so it offers exactly what
+                # Character.splat can return.
+                "options": [],
                 "required": True,
             }
         },
@@ -92,8 +95,16 @@ CONDITION_TYPES = {
 }
 
 
+def splat_values() -> tuple[str, ...]:
+    """The values Character.splat can return (typeclasses.characters.SPLATS)."""
+    from typeclasses.characters import SPLATS
+
+    return tuple(SPLATS)
+
+
 def list_condition_types() -> dict[str, Any]:
     """Return condition type definitions for UI rendering."""
+    CONDITION_TYPES["character_splat"]["parameters"]["splat"]["options"] = list(splat_values())
     return CONDITION_TYPES
 
 
@@ -163,14 +174,15 @@ def _check_character_clan(character, clan: str) -> bool:
 
 
 def _check_character_splat(character, splat: str) -> bool:
-    """Check if character is of specified splat type.
-
-    Every player character is a vampire (web chargen makes only vampires);
-    a character with no clan (an NPC object, say) counts as mortal.
-    """
-    if not character or not splat:
+    """Check the character's splat (Character.splat: vampire, ghoul or mortal)."""
+    if not isinstance(splat, str) or splat.lower() not in splat_values():
+        return _bad_parameter("character_splat", "splat", splat)
+    if not character:
         return False
-    actual = "vampire" if getattr(character, "clan", None) else "mortal"
+    actual = getattr(character, "splat", None)
+    if actual is None:
+        logger.warning("Condition character_splat: %s has no splat", character)
+        return False
     return actual == splat.lower()
 
 

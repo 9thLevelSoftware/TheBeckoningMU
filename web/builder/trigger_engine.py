@@ -114,6 +114,11 @@ def validate_trigger(trigger_data: Any) -> tuple[bool, str | None]:
                 return False, f"invalid condition type: {condition['type']}"
             if not isinstance(condition.get("parameters", {}), Mapping):
                 return False, "condition parameters must be a dictionary"
+            if condition["type"] == "character_splat":
+                splat = (condition.get("parameters") or {}).get("splat")
+                allowed = valid_conditions["character_splat"]["parameters"]["splat"]["options"]
+                if splat not in allowed:
+                    return False, f"character type must be one of: {', '.join(allowed)}"
 
     if trigger_type == "timed":
         interval = trigger_data.get("interval")

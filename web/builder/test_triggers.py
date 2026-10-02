@@ -191,3 +191,36 @@ class LookTriggerTests(TestCase):
         with mock.patch.object(char, "msg") as msg:
             char.at_look(room)
         self.assertNotIn(mock.call("Bones everywhere."), msg.call_args_list)
+
+
+class SplatConditionTests(TestCase):
+    """(e): the Character Type condition reads Character.splat (PR 6)."""
+
+    def setUp(self):
+        self.char = create.create_object("typeclasses.characters.Character", key="Nina", nohome=True)
+
+    def test_reads_the_splat_accessor(self):
+        self.assertTrue(check_condition("character_splat", {"splat": "vampire"}, character=self.char))
+        self.char.splat = "ghoul"
+        self.assertTrue(check_condition("character_splat", {"splat": "ghoul"}, character=self.char))
+        self.assertFalse(check_condition("character_splat", {"splat": "vampire"}, character=self.char))
+        self.char.splat = "mortal"
+        self.assertTrue(check_condition("character_splat", {"splat": "mortal"}, character=self.char))
+
+    def test_select_offers_exactly_the_accessor_values(self):
+        from typeclasses.characters import SPLATS
+        from web.builder.v5_conditions import list_condition_types
+
+        options = list_condition_types()["character_splat"]["parameters"]["splat"]["options"]
+        self.assertEqual(options, list(SPLATS))
+        self.assertNotIn("hunter", options)
+
+    def test_unknown_splat_refused_at_save_and_logged_at_run(self):
+        trigger = _trigger(conditions=[{"type": "character_splat", "parameters": {"splat": "hunter"}}])
+        ok, error = validate_trigger(trigger)
+        self.assertFalse(ok)
+        self.assertIn("character type", error)
+        with self.assertLogs("web.builder.v5_conditions", level="WARNING"):
+            self.assertFalse(check_condition("character_splat", {"splat": "hunter"}, character=self.char))
+        good = _trigger(conditions=[{"type": "character_splat", "parameters": {"splat": "ghoul"}}])
+        self.assertTrue(validate_trigger(good)[0])
