@@ -109,9 +109,12 @@ def get_background_uses_remaining(character, background_name):
     elif uses_per_session == "dots * 2":
         max_uses = level * 2
     elif uses_per_session == "1 per week":
-        # Check if used this week
-        if background_name.lower() in uses:
-            return 0
+        # Herd keeps the time of its last use (use_herd_to_feed)
+        import time
+
+        last = uses.get(background_name.lower())
+        if isinstance(last, (int, float)) and not isinstance(last, bool) and last > 1:
+            return 0 if time.time() - last < 7 * 24 * 3600 else 1
         return 1
     else:
         max_uses = level
@@ -183,54 +186,58 @@ def calculate_background_bonus(character, background_name, task_description):
     return level
 
 
-def use_herd_to_feed(character):
-    """Use Herd background to reduce Hunger without hunting.
+HERD_WEEK = 7 * 24 * 3600
 
-    Args:
-        character: The character object
+
+def use_herd_to_feed(character, now=None):
+    """Feed on your Herd: slake up to your Herd dots of Hunger, once a week, with no
+    hunting roll (core p.189; BACKGROUNDS["Herd"]).
+
+    The Blood Potency rules still apply: only a kill takes Hunger below
+    min_hunger_without_kill, and high Blood Potency slakes less per human
+    (hunting_utils.slake). The week is counted from the last Herd feeding
+    (stored as a timestamp in db.background_uses["herd"]).
 
     Returns:
         dict: {"success": bool, "message": str, "hunger_reduced": int}
     """
+    import time
+
+    from world.v5_data import BLOOD_POTENCY
+
     level = get_background_level(character, "Herd")
-
     if level == 0:
+        return {"success": False, "message": "You don't have the Herd background", "hunger_reduced": 0}
+
+    now = time.time() if now is None else now
+    uses = _background_uses(character)
+    last = uses.get("herd")
+    if isinstance(last, (int, float)) and not isinstance(last, bool) and last > 1 and now - last < HERD_WEEK:
+        days = max(1, int((HERD_WEEK - (now - last)) // 86400) + 1)
         return {
             "success": False,
-            "message": "You don't have the Herd background",
-            "hunger_reduced": 0
+            "message": f"You've already fed from your Herd this week (again in about {days} day(s)).",
+            "hunger_reduced": 0,
         }
 
-    # Check if already used this week
-    uses = get_background_uses_remaining(character, "Herd")
-    if uses == 0:
+    row = BLOOD_POTENCY.get(character.blood_potency, BLOOD_POTENCY[0])
+    floor = row["min_hunger_without_kill"]
+    current = character.hunger
+    reduction = max(0, min(level - row["human_slake_penalty"], current - floor))
+    if reduction <= 0:
         return {
             "success": False,
-            "message": "You've already fed from your Herd this week",
-            "hunger_reduced": 0
+            "message": f"Your Hunger is already as low as feeding without a kill can take it ({floor}).",
+            "hunger_reduced": 0,
         }
 
-    # Reduce Hunger by level (max to 1)
-    current_hunger = character.hunger
-    reduction = min(level, current_hunger - 1)
-
-    if reduction > 0:
-        character.hunger = current_hunger - reduction
-
-        # Mark as used
-        _background_uses(character)["herd"] = 1
-
-        return {
-            "success": True,
-            "message": f"You feed safely from your Herd. Hunger reduced by {reduction}.",
-            "hunger_reduced": reduction
-        }
-    else:
-        return {
-            "success": False,
-            "message": "Your Hunger is already at minimum (1)",
-            "hunger_reduced": 0
-        }
+    character.hunger = current - reduction
+    uses["herd"] = now
+    return {
+        "success": True,
+        "message": f"You feed safely from your Herd. Hunger reduced by {reduction}.",
+        "hunger_reduced": reduction,
+    }
 
 
 def use_resources_to_acquire(character, item_description, item_rating):
