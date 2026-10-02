@@ -30,8 +30,8 @@ Commands for rolling V5 dice pools.
   Roll a discipline power automatically.
 
 |yExamples:|n
-  power Corrosive Vitae          # Auto-calculate pool
-  power Corrosive Vitae vs 3     # vs difficulty 3
+  power Scry the Soul            # Auto-calculate pool
+  power Scry the Soul vs 3       # vs difficulty 3
   power/norouse Heightened Senses # Skip Rouse check
 
 The system automatically:

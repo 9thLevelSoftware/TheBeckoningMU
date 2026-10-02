@@ -186,7 +186,7 @@ class ResonanceManagementTests(EvenniaTest):
 
     def test_set_resonance_all_types(self):
         """Test setting all resonance types."""
-        types = ['Choleric', 'Melancholic', 'Phlegmatic', 'Sanguine']
+        types = ['Choleric', 'Melancholy', 'Phlegmatic', 'Sanguine']
         for res_type in types:
             resonance = blood_utils.set_resonance(self.char, res_type, intensity=1)
             self.assertEqual(resonance['type'], res_type)
@@ -248,10 +248,10 @@ class ResonanceManagementTests(EvenniaTest):
     def test_resonance_replaces_previous(self):
         """Test that setting new resonance replaces previous."""
         blood_utils.set_resonance(self.char, 'Choleric', intensity=1)
-        blood_utils.set_resonance(self.char, 'Melancholic', intensity=2)
+        blood_utils.set_resonance(self.char, 'Melancholy', intensity=2)
 
         resonance = blood_utils.get_resonance(self.char)
-        self.assertEqual(resonance['type'], 'Melancholic')
+        self.assertEqual(resonance['type'], 'Melancholy')
         self.assertEqual(resonance['intensity'], 2)
 
 
@@ -272,9 +272,9 @@ class ResonanceDisplayTests(EvenniaTest):
 
     def test_format_resonance_display_intense(self):
         """Test resonance display for intense intensity."""
-        blood_utils.set_resonance(self.char, 'Melancholic', intensity=2)
+        blood_utils.set_resonance(self.char, 'Melancholy', intensity=2)
         display = blood_utils.format_resonance_display(self.char)
-        self.assertIn('Melancholic', display)
+        self.assertIn('Melancholy', display)
         self.assertIn('Intense', display)
 
     # F-096, fixed in PR 5: intensity 3 is labelled "Dyscrasia". In V5 the
@@ -309,7 +309,7 @@ class ResonanceDisplayTests(EvenniaTest):
         """Test color coding for different resonance types."""
         color_tests = [
             ('Choleric', '|r'),      # Red
-            ('Melancholic', '|c'),    # Cyan
+            ('Melancholy', '|c'),    # Cyan
             ('Phlegmatic', '|g'),     # Green
             ('Sanguine', '|y')        # Yellow
         ]
@@ -391,13 +391,11 @@ class BloodSurgeManagementTests(EvenniaTest):
         self.assertEqual(blood_utils.get_blood_potency(self.char), 3)
         self.assertTrue(can_reroll_rouse(self.char, 1))
 
-    # F-022/F-093, fixed in PR 5: the surge bonus is "equal to Blood Potency"
-    # and BP always reads 0. The values below are the current, errata'd Blood
+    # F-022/F-093. The values below are the current, errata'd Blood
     # Potency table (Renegade "V5 Blood Potency Correction" sheet; The
     # Companion 2020 p.63; Players Guide p.248; later core printings). The
     # Quick Reference 2.0 p.14 shows the pre-errata 2018 printing, one die
     # lower at every BP.
-    @unittest.expectedFailure
     def test_blood_surge_bonus_follows_bp_table(self):
         expected = {0: 1, 1: 2, 2: 2, 3: 3, 4: 3, 5: 4, 6: 4, 7: 5, 8: 5, 9: 6, 10: 6}
         for bp, bonus in expected.items():

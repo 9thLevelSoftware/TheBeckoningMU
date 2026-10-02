@@ -3,84 +3,81 @@
 |[R+===================================================================+|n
 
 Each vampire belongs to a |yclan|n - a bloodline with distinct traits,
-disciplines, and a supernatural |[Rbane|n.
+disciplines, and a supernatural |[Rbane|n. This game uses the clans of the
+V5 core book (p.63-113). A bane's strength is your |yBane Severity|n, which
+comes from your Blood Potency (BP 0: 0, BP 1-2: 2, BP 3-4: 3, BP 5-6: 4,
+BP 7-8: 5, BP 9-10: 6). A |yCompulsion|n strikes on a bestial failure.
 
-|WCAMARILLA CLANS:|n
-
-|yBrujah|n - The Rabble, passionate rebels and philosophers
+|yBrujah|n - The Rabble, rebels who rage against tyranny
   - Disciplines: |wCelerity, Potence, Presence|n
-  - Bane: |[RViolent temper|n - frenzy tests at +2 difficulty
-  - Compulsion: |[RRebellion|n - must resist authority
+  - Bane: |[RViolent Temper|n - subtract Bane Severity dice from rolls to
+    resist fury frenzy
+  - Compulsion: |[RRebellion|n - -2 dice to all pools until you defy an
+    order or expectation, or change someone's mind
 
-|yGangrel|n - The Outlanders, feral nomads and survivalists
+|yGangrel|n - The Outlanders, who blend vampire and beast
   - Disciplines: |wAnimalism, Fortitude, Protean|n
-  - Bane: |[RBestial features|n - animal traits appear when Hungry
-  - Compulsion: |[RFeral Impulses|n - revert to animal instincts
+  - Bane: |[RBestial Features|n - in frenzy you gain animal features equal to
+    Bane Severity, each -1 to an Attribute, for one more night
+  - Compulsion: |[RFeral Impulses|n - for a scene, -3 dice to Manipulation and
+    Intelligence rolls, and you speak only in one-word sentences
 
-|yMalkavian|n - The Lunatics, seers cursed with madness
+|yMalkavian|n - The Lunatics, whose madness conceals and reveals truths
   - Disciplines: |wAuspex, Dominate, Obfuscate|n
-  - Bane: |[ROracle's Curse|n - plagued by visions and fractured insight
-  - Compulsion: |[RDelusion|n - act on fractured perceptions
+  - Bane: |[RFractured Perspective|n - on a bestial failure or compulsion, a
+    penalty equal to Bane Severity to one category of pools for the scene
+  - Compulsion: |[RDelusion|n - for a scene, -2 dice to Dexterity,
+    Manipulation, Composure and Wits rolls and to resist terror frenzy
 
-|yNosferatu|n - The Sewer Rats, hideously deformed information brokers
+|yNosferatu|n - The Sewer Rats, hideous gatherers of secrets
   - Disciplines: |wAnimalism, Obfuscate, Potence|n
-  - Bane: |[RRepulsiveness|n - all social rolls at +2 difficulty
-  - Compulsion: |[RCryptophilia|n - must hoard secrets
+  - Bane: |[RRepulsiveness|n - you take the Repulsive flaw and can't buy Looks
+    merits; passing as undeformed loses Bane Severity dice
+  - Compulsion: |[RCryptophilia|n - -2 dice to actions not aimed at learning
+    a secret, until you learn a useful one
 
-|yToreador|n - The Degenerates, artists and hedonists
+|yToreador|n - The Degenerates, seekers of art, romance and thrills
   - Disciplines: |wAuspex, Celerity, Presence|n
-  - Bane: |[RAesthetic Fixation|n - entranced by beauty
-  - Compulsion: |[RObsession|n - fixate on beauty to exclusion of all else
+  - Bane: |[RAesthetic Fixation|n - in ugly surroundings, subtract Bane
+    Severity dice from Discipline pools
+  - Compulsion: |[RObsession|n - -2 dice to actions unrelated to your
+    fixation, until you can't perceive it or the scene ends
 
-|yTremere|n - The Warlocks, blood sorcerers and scholars
+|yTremere|n - The Warlocks, sorcerers rebuilding their power
   - Disciplines: |wAuspex, Blood Sorcery, Dominate|n
-  - Bane: |[RDeficient Blood|n - blood bonds form easier on them
-  - Compulsion: |[RPerfectionism|n - cannot accept failure
+  - Bane: |[RDeficient Blood|n - you can't Blood Bond Kindred; mortals and
+    ghouls need Bane Severity extra drinks to be bound
+  - Compulsion: |[RPerfectionism|n - -2 dice to all pools until a critical win
+    on a Skill roll or the scene ends
 
-|yVentrue|n - The Blue Bloods, nobles and leaders
+|yVentrue|n - The Blue Bloods, aristocrats who enforce the Traditions
   - Disciplines: |wDominate, Fortitude, Presence|n
-  - Bane: |[RRarefied Taste|n - can only feed on specific type of victim
-  - Compulsion: |[RArrogance|n - must assert dominance
+  - Bane: |[RRarefied Taste|n - feeding outside your chosen prey costs
+    Willpower equal to Bane Severity, or the blood won't stay down
+  - Compulsion: |[RArrogance|n - -2 dice to actions not related to leadership,
+    until someone obeys an order you gave without supernatural compulsion
 
-|WANNARCHIST & INDEPENDENT CLANS:|n
+|yCaitiff|n - The Clanless, outcasts with no common traits
+  - No in-clan disciplines (choose any two at creation); disciplines cost
+    new level x 6 XP
+  - No bane or compulsion, but you start with the Suspect flaw
 
-|yBanu Haqim|n - The Assassins, judges and executioners
-  - Disciplines: |wBlood Sorcery, Celerity, Obfuscate|n
-  - Bane: |[RBlood Addiction|n - crave vampire blood
-  - Compulsion: |[RJudgment|n - must punish wrongdoers
+|yThin-blood|n - The Duskborn, too diluted to share the full curse
+  - Generation 14th-16th, Blood Potency 0, no in-clan disciplines
+  - No bane or compulsion; take thin-blood merits and flaws instead
+  - See |yhelp thinblood|n
 
-|yHecata|n - The Necromancers, death cultists (Giovanni, Harbingers, etc.)
-  - Disciplines: |wAuspex, Fortitude, Oblivion|n
-  - Bane: |[RPainful Kiss|n - bite causes agony, feeding is obvious
-  - Compulsion: |[RMorbidity|n - obsess over death
+|WOTHER CLANS:|n
 
-|yLasombra|n - The Night Clan, shadow-wielding predators
-  - Disciplines: |wDominate, Oblivion, Potence|n
-  - Bane: |[RDistortion|n - don't appear in mirrors/recordings
-  - Compulsion: |[RRuthlessness|n - must dominate and exploit
-
-|yMinistry|n - The Setites, corrupters and tempters
-  - Disciplines: |wObfuscate, Presence, Protean|n
-  - Bane: |[RLight Sensitivity|n - penalty in bright light
-  - Compulsion: |[RTransgression|n - must corrupt others
-
-|yTzimisce|n - The Fiends, fleshcrafters and territorial lords
-  - Disciplines: |wAnimalism, Dominate, Protean|n
-  - Bane: |[RCohesion|n - must sleep near haven soil or take damage
-  - Compulsion: |[RCovetousness|n - obsess over possessions
-
-|yRavnos|n - The Charlatans, tricksters and wanderers
-  - Disciplines: |wAnimalism, Obfuscate, Presence|n
-  - Bane: |[RDoomed|n - tied to vice, frenzy when denied
-  - Compulsion: |[RTemptation|n - must indulge vice
+The Banu Haqim, Ministry, Lasombra, Hecata, Tzimisce, Ravnos and Salubri
+come from later V5 books, not the core book, and are not available.
 
 |WCHOOSING YOUR CLAN:|n
 
 Your clan determines:
   - |yStarting disciplines|n (in-clan are cheaper)
   - |ySupernatural bane|n (permanent curse)
-  - |yCompulsion|n (triggered by Bestial Failures)
-  - |ySocial reputation|n among Kindred
+  - |yCompulsion|n (triggered by bestial failures)
 
 Characters are created on the game website; see |yhelp chargen|n.
 

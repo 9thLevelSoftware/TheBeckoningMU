@@ -218,7 +218,8 @@ class RulesDataTests(EvenniaTest):
 
     def test_every_discipline_has_powers(self):
         for name, data in v5_data.DISCIPLINES.items():
-            self.assertTrue(data["powers"], name)
+            # Thin-Blood Alchemy has formulas, not powers.
+            self.assertTrue(data["powers"] or data.get("formulas"), name)
         self.assertTrue(v5_data.DISCIPLINES["Potence"]["powers"])
 
     def test_power_index_matches_disciplines(self):

@@ -103,8 +103,17 @@ def get_inclan_disciplines(character):
     if not clan:
         return []
 
-    clan_data = get_clan_info(clan)
-    return clan_data.get("disciplines", [])
+    # A clan no longer in CLANS (e.g. a non-core clan stored before it was
+    # parked) has no in-clan disciplines here.
+    return (get_clan_info(clan) or {}).get("disciplines", [])
+
+
+def unavailable_clan(character):
+    """Return the character's stored clan if it is not offered (not in CLANS), else None."""
+    clan = get_clan(character)
+    if clan and clan not in CLANS:
+        return clan
+    return None
 
 
 def is_discipline_inclan(character, discipline_name):
@@ -238,6 +247,8 @@ def format_clan_display(character):
         return "Clan: |xNot Set|n"
 
     clan_data = get_clan_info(clan)
+    if clan_data is None:
+        return f"Clan: {clan} |r(not available in this game)|n"
 
     lines = []
     lines.append(f"|wClan:|n {clan}")

@@ -19,20 +19,24 @@ based on your Predator Type and reduces your Hunger on success.
   +hunt nightclub          Hunt at a nightclub (Siren/Osiris bonus)
   +hunt hospital           Hunt at a hospital (Bagger/Cleaver bonus)
 
-|WPREDATOR TYPE BONUSES:|n
+|WPREDATOR TYPES:|n (V5 core p.175-178, hunting pools p.307-308)
 
-Your Predator Type determines your hunting dice pool and bonus dice:
+Your Predator Type sets your hunting dice pool:
 
-|yAlleycat|n (Strength + Brawl +1) - Aggressive street feeding
-|yBagger|n (Intelligence + Streetwise) - Stealing blood bags
-|yBlood Leech|n (Strength + Brawl) - Feeding on other vampires
-|yCleaver|n (Manipulation + Subterfuge +1) - Feeding from institutions
-|yConsensualist|n (Charisma + Persuasion +1) - Willing vessels
-|yFarmer|n (Composure + Animal Ken +1) - Feeding from animals
-|yOsiris|n (Charisma + Performance +2) - Fame-based feeding
-|ySandman|n (Dexterity + Stealth +1) - Breaking and entering
-|yScene Queen|n (Manipulation + Persuasion) - Social scene feeding
-|ySiren|n (Charisma + Subterfuge +2) - Seduction-based feeding
+|yAlleycat|n (Strength + Brawl) - Take blood by force or threat
+|yBagger|n (Intelligence + Streetwise) - Blood bags, corpses, preserved blood
+|yBlood Leech|n (no single roll) - Feeding on other vampires
+|yCleaver|n (Manipulation + Subterfuge) - Your own mortal family or friends
+|yConsensualist|n (Manipulation + Persuasion) - Willing vessels only
+|yFarmer|n (Composure + Animal Ken) - Animals only
+|yOsiris|n (Manipulation + Subterfuge) - Your cult, band or fans
+|ySandman|n (Dexterity + Stealth) - Sleeping victims
+|yScene Queen|n (Manipulation + Persuasion) - A subculture you rule
+|ySiren|n (Charisma + Subterfuge) - Seduction
+
+The hunting ground sets the Difficulty (QR p.12): slums 2, bohemian or
+blighted neighborhoods 3, working-class or downtown districts 4,
+industrial areas or suburbs 5, wealthy neighborhoods 6.
 
 |WHUNT LOCATIONS:|n
 
@@ -63,7 +67,7 @@ and roleplayed feeding.
 
 Staff-run hunts provide:
   - Full roleplay with mortal NPCs
-  - Resonance selection (Choleric, Melancholic, Phlegmatic, Sanguine)
+  - Resonance selection (Choleric, Melancholy, Phlegmatic, Sanguine)
   - Potential for Dyscrasia (powerful temporary blood)
   - Complications and Masquerade threats
   - Better Hunger reduction (up to 3 Hunger)

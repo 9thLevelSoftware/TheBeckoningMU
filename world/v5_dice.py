@@ -18,7 +18,7 @@ import random
 from typing import Dict, List, Tuple, Optional
 
 from dice.dice_roller import MAX_DIFFICULTY, MAX_POOL, MIN_DIFFICULTY
-from world.v5_data import BLOOD_POTENCY, DISCIPLINES, RESONANCES, FRENZY_TRIGGERS
+from world.v5_data import BLOOD_POTENCY, DISCIPLINES, RESONANCES, FRENZY_PROVOCATIONS
 from world.ansi_theme import (
     DICE_CRITICAL, DICE_SUCCESS, DICE_FAILURE,
     DICE_HUNGER_CRITICAL, DICE_HUNGER_SUCCESS, DICE_HUNGER_FAILURE,
@@ -304,23 +304,26 @@ def apply_discipline_modifiers(pool: int, character, discipline_name: str = None
     return pool
 
 
-def check_frenzy(character, trigger_type: str) -> Tuple[bool, Optional[str]]:
+def check_frenzy(character, trigger_type: str, difficulty: int | None = None) -> Tuple[bool, Optional[str]]:
     """
     Check if a character resists frenzy.
 
     Args:
         character: The character object.
-        trigger_type (str): The type of frenzy trigger (e.g., "hunger", "rage").
+        trigger_type (str): The frenzy type: "fury", "hunger" or "terror".
+        difficulty: The provocation's difficulty (v5_data.FRENZY_PROVOCATIONS);
+            defaults to the type's lowest.
 
     Returns:
-        Tuple[bool, Optional[str]]: (resisted, compulsion_on_failure)
+        Tuple[bool, Optional[str]]: (resisted, frenzy goal on failure)
     """
-    trigger_data = FRENZY_TRIGGERS.get(trigger_type.lower())
+    trigger_data = FRENZY_PROVOCATIONS.get(trigger_type.lower())
     if not trigger_data:
         return (True, None)  # Unknown trigger, assume resistance
 
-    difficulty = trigger_data["difficulty"]
-    compulsion = trigger_data["compulsion"]
+    if difficulty is None:
+        difficulty = min(trigger_data["provocations"].values())
+    compulsion = trigger_data["goal"]
 
     # Hunger 5 is an automatic hunger frenzy
     if trigger_type == "hunger" and character.hunger >= 5:
@@ -335,7 +338,7 @@ def check_frenzy(character, trigger_type: str) -> Tuple[bool, Optional[str]]:
         pool = min(pool, humanity)
 
     # Brujah bane
-    if character.clan == "Brujah" and compulsion == "Fight":
+    if character.clan == "Brujah" and trigger_type.lower() == "fury":
         difficulty += 2
 
     if pool <= 0:
