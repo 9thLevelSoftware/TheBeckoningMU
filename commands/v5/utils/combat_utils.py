@@ -9,7 +9,7 @@ This module provides functions for:
 - Impairment penalties
 """
 
-from world.v5_dice import roll_pool, DiceResult
+from dice.dice_roller import roll_v5_pool
 from .discipline_effects import get_active_effects
 from .trait_utils import get_trait_value
 from world.ansi_theme import BLOOD_RED, DARK_RED, RESET, GOLD, PALE_IVORY, SHADOW_GREY
@@ -27,7 +27,7 @@ def calculate_attack(attacker, defender, attack_pool_desc):
     Returns:
         dict with keys:
             - success: bool
-            - result: DiceResult object
+            - result: RollResult object
             - defense: int
             - margin: int (successes - defense)
             - message: str
@@ -64,20 +64,20 @@ def calculate_attack(attacker, defender, attack_pool_desc):
             break
 
     # Roll the attack
-    result = roll_pool(pool=total_pool, hunger=hunger, difficulty=defense)
+    result = roll_v5_pool(max(1, total_pool), hunger, defense)
 
     # Calculate margin of success
-    margin = max(0, result.successes - defense)
+    margin = max(0, result.total_successes - defense)
 
     # Build response message
-    if result.successes >= defense:
-        message = f"{BLOOD_RED}Attack succeeds!{RESET} {result.successes} successes vs {defense} defense.\n"
+    if result.total_successes >= defense:
+        message = f"{BLOOD_RED}Attack succeeds!{RESET} {result.total_successes} successes vs {defense} defense.\n"
         message += f"Margin of success: {GOLD}{margin}{RESET}"
         if potence_bonus > 0:
             message += f"\n{DARK_RED}Potence active:{RESET} +{potence_bonus} damage bonus"
         success = True
     else:
-        message = f"{SHADOW_GREY}Attack fails.{RESET} {result.successes} successes vs {defense} defense."
+        message = f"{SHADOW_GREY}Attack fails.{RESET} {result.total_successes} successes vs {defense} defense."
         success = False
 
     return {

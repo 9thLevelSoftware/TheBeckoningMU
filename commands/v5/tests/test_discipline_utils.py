@@ -6,7 +6,6 @@ typeclass shape (``db.stats['disciplines'][name] = {'level': n, 'powers': [...]}
 Only the die is patched.
 """
 
-import unittest
 from unittest.mock import patch
 
 from evennia.utils.test_resources import EvenniaTest
@@ -26,10 +25,8 @@ class ActivateDisciplinePowerTests(EvenniaTest):
         }
         self.char.hunger = 2
 
-    # F-038, fixed in PR 5: activate_discipline_power calls
-    # roll_rouse_check(character, reason=...), which takes no arguments, so
-    # every Rouse-costing power raises TypeError.
-    @unittest.expectedFailure
+    # F-038: activate_discipline_power makes the power's Rouse checks through
+    # perform_rouse_check.
     def test_rouse_power_failed_rouse_raises_hunger(self):
         """A failed Rouse (die 1-5) on a 1-Rouse power raises Hunger by 1."""
         with patch("dice.dice_roller.randint", return_value=3):
@@ -52,8 +49,7 @@ class TurnDurationPowerTests(EvenniaTest):
         char = self.char1
         char.db.stats["disciplines"]["celerity"] = {"level": 3, "powers": ["Blink"]}
         char.hunger = 1
-        passed = {"hunger_increased": False, "die": 8}
-        with patch("commands.v5.utils.discipline_utils.roll_rouse_check", return_value=passed):
+        with patch("dice.dice_roller.randint", return_value=8):
             result = discipline_utils.activate_discipline_power(char, "Celerity", "Blink")
         self.assertTrue(result["success"])
         effects = [e for e in char.db.active_effects if e["power"] == "Blink"]

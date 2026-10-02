@@ -96,6 +96,9 @@ class CmdAttack(Command):
             return
 
         # Calculate attack
+        from dice.commands import forget_roll
+
+        forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
         result = calculate_attack(caller, target, pool_desc)
 
         # Build output
@@ -130,7 +133,7 @@ class CmdAttack(Command):
 
         # Notify target
         target_msg = f"\n{BLOOD_RED}{caller.name} attacks you!{RESET}\n"
-        target_msg += f"Their attack roll: {dice_result.successes} successes vs your defense of {result['defense']}\n"
+        target_msg += f"Their attack roll: {dice_result.total_successes} successes vs your defense of {result['defense']}\n"
         if result['success']:
             target_msg += f"{DARK_RED}The attack succeeds!{RESET} Margin: {result['margin']}\n"
         else:

@@ -33,18 +33,21 @@ Feeding requires a roll based on your Predator Type. On success:
 
 |ybloodsurge <attribute or physical skill>|n
 |ysurge <attribute or physical skill>|n
-  Surge your blood to enhance a trait temporarily.
+  Surge your blood to add dice to your next roll.
 
 |yExamples:|n
-  bloodsurge strength            # Boost Strength
-  surge brawl                    # Boost Brawl
-  bloodsurge dexterity           # Boost Dexterity
+  bloodsurge strength            # Then: roll 5 (rolls 5 + surge dice)
+  surge brawl
 
 |yEffects:|n
   - Adds dice by |WBlood Potency|n: BP 0 +1, BP 1-2 +2, BP 3-4 +3,
     BP 5-6 +4, BP 7-8 +5, BP 9-10 +6
-  - Lasts for one scene (1 hour)
-  - Requires a |WRouse check|n (may increase Hunger)
+  - The dice go on your next |yroll|n or |ypower|n roll only, then the
+    surge is used up; an unused surge lapses after an hour and costs
+    nothing. One surge at a time.
+  - Costs one |WRouse check|n, made with the surged roll: the roll uses
+    your Hunger from before it, and a failure raises Hunger afterwards.
+    Refused at Hunger 5.
 
 |yValid Attributes:|n
   Strength, Dexterity, Stamina, Charisma, Manipulation,

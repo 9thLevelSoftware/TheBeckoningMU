@@ -11,7 +11,6 @@ tagged with their finding id, or are left to the PR that rebuilds them.
 """
 
 import time
-import unittest
 from unittest.mock import patch
 
 from evennia.utils.test_resources import EvenniaCommandTest
@@ -135,16 +134,20 @@ class CmdBloodSurgeTestCase(BloodCommandTestBase):
     def test_bloodsurge_requires_character(self):
         self.call(CmdBloodSurge(), "strength", "You must be in character", caller=self.account)
 
-    # F-017, fixed in PR 5: activate_blood_surge calls
-    # roll_rouse_check(character, reason=...), which takes no arguments, so
-    # every bloodsurge raises TypeError.
-    @unittest.expectedFailure
+    # F-017: bloodsurge makes one Rouse check, with the roll it surges. The
+    # Hunger it costs is added after that roll (core pp.211-212).
     def test_bloodsurge_costs_a_rouse_check(self):
-        """A failed Rouse (die 1-5) raises Hunger by 1 and the surge activates."""
+        """A failed surge Rouse raises Hunger by 1 after the surged roll."""
+        from dice.commands import CmdRoll
+
         self.char.hunger = 2
-        with patch(RANDINT, return_value=3):
-            output = self.call(CmdBloodSurge(), "strength")
+        output = self.call(CmdBloodSurge(), "strength")
         self.assertIn("Blood Surge activated", output)
+        self.assertEqual(blood_utils.get_hunger_level(self.char), 2)
+
+        with patch(RANDINT, return_value=3):
+            self.call(CmdRoll(), "3")
+        self.assertEqual(len(self.char.ndb.last_roll["result"].hunger_dice), 2)
         self.assertEqual(blood_utils.get_hunger_level(self.char), 3)
 
 
@@ -192,7 +195,7 @@ class CmdHungerTestCase(BloodCommandTestBase):
         self.assertNotIn("Resonance:", output)
 
     def test_hunger_with_blood_surge_display(self):
-        self.char.ndb.blood_surge = {
+        self.char.db.blood_surge = {
             "trait": "Strength",
             "bonus": 3,
             "expires": time.time() + 1800,
@@ -203,11 +206,11 @@ class CmdHungerTestCase(BloodCommandTestBase):
         self.assertIn("minutes remaining", output)
 
     def test_hunger_without_blood_surge(self):
-        self.char.ndb.blood_surge = None
+        blood_utils.deactivate_blood_surge(self.char)
         self.assertNotIn("Blood Surge Active", self.hunger_output(2))
 
     def test_hunger_expired_surge_not_shown(self):
-        self.char.ndb.blood_surge = {
+        self.char.db.blood_surge = {
             "trait": "Strength",
             "bonus": 3,
             "expires": time.time() - 1,

@@ -106,6 +106,9 @@ class CmdHunt(default_cmds.MuxCommand):
         skill_name = predator_skills.get(predator_type, "streetwise")
 
         # Perform hunt
+        from dice.commands import forget_roll
+
+        forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
         result = hunt_prey(
             caller,
             location=location,
