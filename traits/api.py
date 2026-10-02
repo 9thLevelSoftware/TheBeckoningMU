@@ -239,6 +239,125 @@ class DisciplinePowersAPI(BaseAPIView):
         return JsonResponse({"powers": powers})
 
 
+def chargen_rules():
+    """Everything the creation form needs to guide a player, from world/v5_data.py.
+
+    The form reads its constants from here (GET /api/traits/rules/) so it
+    can't drift from the server's validator, which reads the same tables.
+    """
+
+    def advantage_table(table):
+        return {
+            name: {
+                "dots": list(data["dots"]),
+                "group": data.get("category"),
+                "description": data.get("description", ""),
+                "thin_blood": bool(data.get("thin_blood")),
+                "excluded_clans": list(data.get("excluded_clans", [])),
+                "excludes": list(data.get("excludes", [])),
+                "requires": list(data.get("requires", [])),
+            }
+            for name, data in table.items()
+        }
+
+    return {
+        "attribute_spread": list(v5_data.CREATION_ATTRIBUTE_SPREAD),
+        "skill_distributions": {
+            name: {str(rating): count for rating, count in dist.items()}
+            for name, dist in v5_data.CREATION_SKILL_DISTRIBUTIONS.items()
+        },
+        "free_specialty_skills": list(v5_data.CREATION_FREE_SPECIALTY_SKILLS),
+        "extra_free_specialties": v5_data.CREATION_EXTRA_FREE_SPECIALTIES,
+        "discipline_dots": list(v5_data.CREATION_DISCIPLINE_DOTS),
+        "advantage_dots": v5_data.CREATION_ADVANTAGE_DOTS,
+        "flaw_dots": v5_data.CREATION_FLAW_DOTS,
+        "thin_blood_pairs": list(v5_data.CREATION_THIN_BLOOD_PAIRS),
+        "humanity": v5_data.CREATION_HUMANITY,
+        "attributes": v5_data.ATTRIBUTES,
+        "skills": v5_data.SKILLS,
+        "ages": {
+            name: {
+                "embraced": age["embraced"],
+                "options": [
+                    {
+                        "generations": list(o["generations"]),
+                        "blood_potency": o["blood_potency"],
+                        "thin_blood": o["thin_blood"],
+                    }
+                    for o in age["options"]
+                ],
+                "xp": age["xp"],
+                "extra_advantage_dots": age["extra_advantage_dots"],
+                "extra_flaw_dots": age["extra_flaw_dots"],
+                "humanity_change": age["humanity_change"],
+            }
+            for name, age in v5_data.GENERATION_BY_AGE.items()
+        },
+        "clans": {
+            name: {
+                "disciplines": list(clan["disciplines"]),
+                "bane": clan.get("bane"),
+                "compulsion": clan.get("compulsion"),
+                "required_flaws": list(clan.get("required_flaws", [])),
+                "excluded_merit_categories": list(clan.get("excluded_merit_categories", [])),
+            }
+            for name, clan in v5_data.CLANS.items()
+        },
+        "predator_types": {
+            name: {
+                "description": pred.get("description", ""),
+                "specialties": [list(pair) for pair in pred.get("specialties", [])],
+                "disciplines": list(pred.get("disciplines", [])),
+                "discipline_clans": pred.get("discipline_clans", {}),
+                "humanity": pred.get("humanity", 0),
+                "blood_potency": pred.get("blood_potency", 0),
+                "backgrounds": pred.get("backgrounds", []),
+                "merits": pred.get("merits", []),
+                "flaws": pred.get("flaws", []),
+                "advantage_choices": pred.get("advantage_choices", []),
+                "flaw_choices": pred.get("flaw_choices", []),
+                "excluded_clans": pred.get("excluded_clans", []),
+                "max_blood_potency": pred.get("max_blood_potency"),
+                "note": pred.get("note", ""),
+            }
+            for name, pred in v5_data.PREDATOR_TYPES.items()
+        },
+        "disciplines": {
+            name: {
+                "description": data.get("description", ""),
+                "powers": [
+                    {
+                        "name": power["name"],
+                        "level": level,
+                        "amalgam": power.get("amalgam"),
+                        "description": power.get("description", ""),
+                    }
+                    for level, powers in sorted(data.get("powers", {}).items())
+                    for power in powers
+                ],
+            }
+            for name, data in v5_data.DISCIPLINES.items()
+        },
+        "backgrounds": {
+            name: {
+                "max_dots": data.get("max_dots", 5),
+                "instanced": bool(data.get("instanced")),
+                "description": data.get("description", ""),
+            }
+            for name, data in v5_data.BACKGROUNDS.items()
+        },
+        "merits": advantage_table(v5_data.MERITS),
+        "flaws": advantage_table(v5_data.FLAWS),
+    }
+
+
+class ChargenRulesAPI(BaseAPIView):
+    """GET /api/traits/rules/: the creation rules the form applies."""
+
+    def get(self, request):
+        return JsonResponse(chargen_rules())
+
+
 # ----------------------------------------------------------------------------
 # Character sheet (read through the Character accessors)
 # ----------------------------------------------------------------------------
