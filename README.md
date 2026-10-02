@@ -45,15 +45,7 @@ The repository root **is** the Evennia game directory, so run every `evennia` co
    evennia migrate
    ```
 
-5. Load the V5 trait reference data:
-
-   ```bash
-   evennia seed_traits
-   ```
-
-   > **Warning:** `evennia seed_traits --clear` deletes the trait tables *and every character's stored traits with them*. Never run it on a database you want to keep.
-
-6. Start the server:
+5. Start the server:
 
    ```bash
    evennia start
@@ -61,7 +53,7 @@ The repository root **is** the Evennia game directory, so run every `evennia` co
 
    The first start asks you to create the superuser account (the email is optional). This is the game owner's account.
 
-7. Connect with a telnet/MUD client on port `6660`, or open the web client at `http://localhost:6665/webclient/`, and log in as the superuser. Players create characters on the website at `http://localhost:6665/character-creation/`; staff approve them at `/staff/character-approval/`.
+6. Connect with a telnet/MUD client on port `6660`, or open the web client at `http://localhost:6665/webclient/`, and log in as the superuser. Players create characters on the website at `http://localhost:6665/character-creation/`; staff approve them at `/staff/character-approval/`.
 
 ### Day to day
 
@@ -73,7 +65,10 @@ evennia status
 
 - After each `git pull`, run `evennia migrate` before starting the server.
 - **Backups:** stop the server (`evennia stop`), then copy `server/evennia.db3`. The database is a single SQLite file.
-- **Web builder access:** the builder currently admits any account with Django's `is_staff` flag. Until the builder's permission checks land, do not grant `is_staff` to builders you don't fully trust.
+- **Characters and approval:** players create characters only on the website (`/character-creation/`), which enforces the V5 core creation rules. A new character can't be played (no `ic`, rolls or XP) until staff approve it at `/staff/character-approval/`, which needs the in-game `Builder` permission on the account (`is_staff` grants nothing). Builders never approve their own character; Admins may, and every decision records the reviewer. Approval places the character in `START_LOCATION` (refused if that room doesn't exist). Admins can revoke an approval, which takes the character away from anyone playing it; the character keeps its sheet and XP, and the player resubmits it for review as it stands. Each application has a job in the `Approval` bucket that follows it (commented on each decision, closed on approval or deletion). The approval page flags an application made from the reviewer's own address (shown to staff only); approving a character on your own second account is forbidden. That flag is a hint only, and only meaningful behind a trusted front proxy (see Deployment notes below). `traits` migration 0003 re-locks every existing character with the approval gate, so staff NPCs made before it need `lock <obj> = puppet:perm(Builder)` again. Players can delete their own pending characters with `chardelete`. For staff NPCs, use `create` and then `lock <obj> = puppet:perm(Builder)`.
+- **Web builder access:** the web builder (`/builder/`) and its review page require the in-game `Builder` permission or higher (grant it on the **account** in game with `perm *<account> = Builder`; without the `*` the permission lands on a character, which the website ignores). Django's `is_staff` flag grants nothing there. Builders can review other people's projects but never their own; Admins and above may approve their own, and every review records who made it (shown under "Recently Reviewed" on the review page). A project's map and its live connection room are locked once it is submitted, and the sandbox is built from the snapshot taken at approval. Only drafts can be deleted by their owner; Admins can delete any project.
+
+- **Deployment notes (client addresses):** Evennia's Portal proxies web requests to the Server from 127.0.0.1 without an `X-Forwarded-For` header, and the Server trusts the first `X-Forwarded-For` entry from any address in `UPSTREAM_IPS` (default `["127.0.0.1"]`). So without a front proxy every request looks like 127.0.0.1, and a client can forge its address by sending the header itself. For recorded applicant/reviewer addresses to mean anything, run a trusted reverse proxy (nginx, Caddy) that *overwrites* `X-Forwarded-For` with the real client address (nginx: `proxy_set_header X-Forwarded-For $remote_addr;`, not `$proxy_add_x_forwarded_for`), and set `UPSTREAM_IPS` in `secret_settings.py` to that proxy only. Loopback addresses are never flagged as "same origin". The flag is a hint for staff; `reviewed_by` and the staff policy are the control.
 
 The server is fully headless. Connect with a telnet/MUD client or use the bundled web client.
 
@@ -95,7 +90,7 @@ Web routes (assuming the default web port):
 - **Homepage / public site**: `http://localhost:6665/`
 - **Character creation**: `http://localhost:6665/character-creation/`
 - **Staff character approval**: `http://localhost:6665/staff/character-approval/`
-- **Builder (staff)**: `http://localhost:6665/builder/`
+- **Builder (in-game `Builder` permission)**: `http://localhost:6665/builder/`
 - **Admin**: `http://localhost:6665/admin/`
 - **Traits API**: `http://localhost:6665/api/traits/`
 

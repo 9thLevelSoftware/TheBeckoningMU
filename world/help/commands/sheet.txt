@@ -27,7 +27,6 @@ reading of all your character's capabilities.
 
 |y+st|n
 |yst|n
-|ystatus|n
   Display abbreviated character stats.
 
 Shows vital statistics in a compact one-line format:

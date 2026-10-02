@@ -71,6 +71,7 @@ def create_sandbox_from_project(project_id: int) -> Tuple[bool, Dict[str, Any]]:
     1. Loads the BuildProject from the database
     2. Validates the project is in 'approved' status
     3. Calls build_sandbox_area in the main thread to create rooms/exits
+       from the approval snapshot (approved_map_data), not map_data
     4. Updates the project with the sandbox_room_id on success
     5. Transitions project status to 'built'
 
@@ -102,9 +103,13 @@ def create_sandbox_from_project(project_id: int) -> Tuple[bool, Dict[str, Any]]:
                 "sandbox_id": project.sandbox_room_id,
             }
 
-        # Get map data
-        map_data = project.map_data
-        if not map_data or not map_data.get("rooms"):
+        # Build only what was reviewed: the snapshot taken at approval, never
+        # the live map_data.
+        snapshot = project.approved_map_data or {}
+        map_data = snapshot.get("map_data")
+        if not map_data:
+            return False, {"error": "Project has no approved snapshot to build"}
+        if not map_data.get("rooms"):
             return False, {"error": "Project has no rooms to build"}
 
         logger.info(f"Starting sandbox build for project {project_id}: {project.name}")

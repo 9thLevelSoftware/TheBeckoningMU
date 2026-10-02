@@ -6,8 +6,7 @@ skills, clans, disciplines with their powers, rituals and formulas,
 predator types, backgrounds, merits and flaws, the Blood Potency table,
 generation tables, resonances and frenzy provocations). Game code imports
 from here; nothing reads rules data from the database, and no other module
-may hardcode these values. The `traits` app's legacy reference tables are
-seeded from these constants by `seed_traits` for the web chargen API.
+may hardcode these values. The web API (/api/traits/) serves them as JSON.
 
 The content follows the V5 core book (2018) with Renegade's official
 errata. Each table's comment cites its source: a core-book page, the V5
@@ -36,14 +35,6 @@ ATTRIBUTES = {
     "Mental": ["Intelligence", "Wits", "Resolve"]
 }
 
-# Helper function to create attribute dict with default value
-def _create_attribute_dict(default_value=1):
-    """Create a dict of all attributes with default value."""
-    attrs = {}
-    for category_attrs in ATTRIBUTES.values():
-        for attr in category_attrs:
-            attrs[attr.lower()] = default_value
-    return attrs
 
 # ============================================================================
 # SKILLS (organized by category)
@@ -64,14 +55,6 @@ SKILLS = {
     ]
 }
 
-# Helper function to create skills dict with default value
-def _create_skills_dict(default_value=0):
-    """Create a dict of all skills with default value."""
-    skills = {}
-    for category_skills in SKILLS.values():
-        for skill in category_skills:
-            skills[skill.lower()] = default_value
-    return skills
 
 # ============================================================================
 # CLANS (with in-clan disciplines, banes, compulsions)
@@ -154,9 +137,12 @@ CLANS = {
         "compulsion": ("Arrogance: -2 dice to actions not related to leadership, until someone "
                        "obeys an order you gave without supernatural compulsion"),
     },
+    # Core p.107: "The character begins with the Flaw Suspect (•) and they may
+    # not purchase positive status during Character Creation."
     "Caitiff": {
         "disciplines": [],
         "required_flaws": [{"name": "Suspect", "dots": 1}],
+        "excluded_backgrounds": ["Status"],
         "bane": None,
         "compulsion": None,
     },
@@ -1274,6 +1260,47 @@ GENERATION_BY_AGE = {
 }
 
 # ============================================================================
+# CHARACTER CREATION DISTRIBUTIONS
+# ============================================================================
+# Source: V5 Quick Reference 2.0 p.2 (Character Creation), citing V5 core
+# p.155 (Attributes), p.159 (Skills and specialties), p.244 (Disciplines),
+# p.179 (Advantages and Flaws) and p.236 (Humanity 7); QR p.3 (Hunger 1).
+# world/rules_chargen.py reads these; nothing else may hardcode them.
+# OWNER SIGN-OFF PENDING: this creation-distribution table is the plan's
+# merge gate for the web chargen rebuild.
+
+# One Attribute at 4, three at 3, four at 2, one at 1.
+CREATION_ATTRIBUTE_SPREAD = (4, 3, 3, 3, 2, 2, 2, 2, 1)
+
+# Pick one distribution: {rating: how many Skills}; every other Skill is 0.
+CREATION_SKILL_DISTRIBUTIONS = {
+    "Jack-of-all-Trades": {3: 1, 2: 8, 1: 10},
+    "Balanced": {3: 3, 2: 5, 1: 7},
+    "Specialist": {4: 1, 3: 3, 2: 3, 1: 3},
+}
+
+# A free specialty in each of these Skills the character has dots in, plus
+# this many more free specialties. Specialties need at least one dot in the
+# Skill. (The predator type's specialty comes on top.)
+CREATION_FREE_SPECIALTY_SKILLS = ("Academics", "Craft", "Performance", "Science")
+CREATION_EXTRA_FREE_SPECIALTIES = 1
+
+# Two dots in one in-clan Discipline and one in another (Caitiff: any two
+# Disciplines). Thin-bloods start with none (QR p.2).
+CREATION_DISCIPLINE_DOTS = (2, 1)
+
+# Advantage dots to spend (unspent dots may go to the coterie, QR p.2) and
+# flaw dots to take, before the age category's extra dots (GENERATION_BY_AGE)
+# and the predator type's grants. Thin-blood merits and flaws cost nothing and
+# are taken in 1-3 matched pairs instead (QR p.2, p.11).
+CREATION_ADVANTAGE_DOTS = 7
+CREATION_FLAW_DOTS = 2
+CREATION_THIN_BLOOD_PAIRS = (1, 3)
+
+CREATION_HUMANITY = 7
+CREATION_HUNGER = 1
+
+# ============================================================================
 # MERITS & FLAWS
 # ============================================================================
 # Source: V5 Quick Reference 2.0 pp.8-11 (Advantages & Flaws, compiled from
@@ -1402,10 +1429,14 @@ FLAWS = {
                             "description": "Your Hunger can't drop below 1 except on supernatural blood"},
     # "Farmer" is the errata'd core name; the QR (and older printings) call
     # it "Vegan".
+    # Ventrue ban: QR p.9 (PDF p.11), on "Vegan" (= Farmer): "(Ventrue may
+    # not take this flaw.)"
     "Farmer": {"category": "Feeding", "dots": (2,),
+               "excluded_clans": ["Ventrue"],
                "description": "You feed only on animals; feeding on humans costs 2 Willpower; not for Ventrue"},
+    # No clan ban: QR p.9 puts "(Ventrue may not take this flaw)" on Vegan only,
+    # and vtm.paradoxwikis.com (core p.181) gives Organovore none.
     "Organovore": {"category": "Feeding", "dots": (2,),
-                   "excluded_clans": ["Ventrue"],
                    "description": "You must eat your victim's organs when you feed"},
     "Stake Bait": {"category": "Mythical", "dots": (2,),
                    "description": "A stake through the heart brings Final Death"},
@@ -1563,93 +1594,6 @@ RESONANCE_INTENSITIES = {
     2: {"name": "Intense", "discipline_dice": 1, "dyscrasia": False},
     3: {"name": "Acute", "discipline_dice": 1, "dyscrasia": True},
 }
-
-# ============================================================================
-# STATS TEMPLATE (legacy flat shape)
-# ============================================================================
-# Legacy: only traits/utils.py (web chargen) still uses this; it goes when
-# web chargen writes through the Character accessors. The character schema
-# is the nested one in typeclasses/characters.py.
-
-def _get_default_stats_template():
-    """
-    Returns the default character stats template structure.
-    This is used to initialize character.db.stats in the legacy system.
-    """
-    return {
-        # Attributes (default value 1)
-        "attributes": _create_attribute_dict(1),
-        
-        # Skills (default value 0)
-        "skills": _create_skills_dict(0),
-        
-        # Disciplines (populated based on clan)
-        "disciplines": {},
-        
-        # Backgrounds/Advantages
-        "backgrounds": {},
-        
-        # Specialties
-        "specialties": {},
-        
-        # Core stats
-        "humanity": 7,
-        "willpower": 0,  # Calculated
-        "health": 0,     # Calculated
-        "hunger": 1,
-        "blood_potency": 0,
-        
-        # Character info
-        "splat": "mortal",
-        "clan": None,
-        "generation": 13,
-        
-        # Admin tracking
-        "xp": 0,
-        "approved": False,
-        "approved_by": None,
-        "notes": ""
-    }
-
-# STATS is the base template for character stats
-STATS = _get_default_stats_template()
-
-# ============================================================================
-# TRAIT CATEGORY LOOKUP
-# ============================================================================
-
-def get_trait_category(trait_name):
-    """
-    Legacy lookup used only by traits/utils.py (web chargen). It treats every
-    unknown name as a background; game code uses resolve_trait() instead.
-
-    Get the category (attributes, skills, disciplines) for a given trait name.
-    
-    Args:
-        trait_name: Name of the trait to look up
-        
-    Returns:
-        String category name or None if not found
-    """
-    trait_lower = trait_name.lower()
-    
-    # Check attributes
-    for attr in _create_attribute_dict().keys():
-        if attr == trait_lower:
-            return "attributes"
-    
-    # Check skills
-    for skill in _create_skills_dict().keys():
-        if skill == trait_lower:
-            return "skills"
-    
-    # Check disciplines
-    if trait_name in DISCIPLINES:
-        return "disciplines"
-
-    # Check if it's a background (anything else is assumed to be background/advantage)
-    return "backgrounds"
-
 
 # ============================================================================
 # DISCIPLINE POWER INDEX

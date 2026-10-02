@@ -181,8 +181,9 @@ class CmdHunt(default_cmds.MuxCommand):
 
         output = _banner("HUNT SCENE REQUESTED")
         output.append(f"{PALE_IVORY}Your hunt request has been submitted to staff.{RESET}")
-        output.append(f"{PALE_IVORY}Job #{job.sequence_number}:{RESET} Hunt Scene at {GOLD}{ground}{RESET}")
+        output.append(f"{PALE_IVORY}Job {job.ref}:{RESET} Hunt Scene at {GOLD}{ground}{RESET}")
         output.append(f"{SHADOW_GREY}Staff will contact you when they're ready to run the scene.{RESET}")
+        output.append(f"{SHADOW_GREY}You can check the status with: |w+job {job.ref}|x{RESET}")
         caller.msg("\n".join(output))
 
 
