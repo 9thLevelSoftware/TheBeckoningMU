@@ -1,0 +1,111 @@
+# Staff-only help: Builders and above. Both locks are needed: `view` hides
+# the entry from the help index and `read` refuses `help staff-approval`.
+key: staff-approval
+aliases: [staff-guide]
+category: Staff
+locks: "read:perm(Builder);view:perm(Builder)"
+text: |
+  |[R+===================================================================+
+  |W|              CHARACTER APPROVAL AND STAFF TASKS                  |
+  |[R+===================================================================+|n
+
+  |WCHARACTER APPROVAL|n
+
+  Players create characters only on the website form (|y/character-creation/|n).
+  Each submission is an application, with a job in the |yApproval|n bucket
+  that follows it (|yjobs Approval|n).
+
+  Review on the website at |y/staff/character-approval/|n (Builder and above):
+    - |wApprove|n: the character can be puppeted and is moved to the
+      starting room. Approval is refused if that room doesn't exist.
+    - |wReject|n: you must say what needs to change. The player edits the
+      sheet on the website and resubmits it.
+    - |wRevoke|n (Admins only): unpuppets the character at once. It keeps
+      its played sheet and XP; the player resubmits narrative changes only.
+  The player is told in game when the status changes.
+
+  |wSelf-approval rule:|n Builders never review their own applications.
+  Admins and above may; the reviewer and time are recorded either way.
+  The page flags an application made from the same address as the
+  reviewer. That is a hint (shared or proxied addresses happen), not
+  proof; addresses are never shown to the player.
+
+  An unapproved character can't be puppeted, so it can't roll or spend XP.
+
+  |WNON-PLAYER CHARACTERS|n
+
+  Staff NPCs are made in game, not on the website:
+
+    |y@create <name>:typeclasses.characters.Character|n
+    |y@lock <name> = puppet:perm(Builder)|n
+    |y@set <name>/splat = mortal|n      (or |yghoul|n; leave it unset for a vampire)
+
+  Every Character is created with the player locks (owner and approval),
+  so the |y@lock|n line is what lets a Builder |yic|n into the NPC. The
+  |wsplat|n decides Hunger dice and whether Superficial damage is halved:
+  mortals and ghouls roll no Hunger dice and take full damage. Give an NPC
+  traits with |y@py|n through the Character accessors (|yset_trait|n), not by
+  editing |ydb.stats|n.
+
+  |WSTAFF-RUN SCENES AND RECORDS|n
+
+    |yfeed <character>=<source>[/<resonance>[/<intensity>]]|n
+                       record a hunt scene's feeding (help feed)
+    |y+hunt/reset <character>|n   let a character hunt again before 24 hours
+    |y+damage <target>=<amount>[/<type>]|n, |y+heal <target>=<amount>[/<type>]|n,
+    |y+stain <target>=<count>|n, |y+remorse <character>|n
+                       damage, healing, Stains and Remorse on others
+    |y+xpaward <character> = <amount>[/<reason>]|n   award XP
+    |y+alchemy/teach <character>=<formula>|n   grant a formula with no XP
+
+  Hunt scene requests arrive as jobs in the |yHunt Scenes|n bucket
+  (|yjob/claim Hunt Scenes/<n>|n). Players file other requests with
+  |yjob/submit <bucket> <title> = <description>|n; they can't list buckets,
+  so tell them which bucket names to use.
+
+  |wTorpor:|n a vampire who fails to rise at Hunger 5 (|yrouse/wake|n) is put
+  in torpor, shown on |y+sheet|n. There is no command to end it yet. When
+  the Storyteller decides it is over, a Developer clears it with:
+    |y@py me.search("<name>", global_search=True).torpor = None|n
+  Aggravated damage that put a vampire in torpor is healed with
+  |y+heal <target>=<amount>/aggravated|n.
+
+  |WWEB BUILDER|n (|y/builder/|n, Builder and above)
+
+  An area goes |wdraft -> submitted -> approved -> built (sandbox) -> live|n:
+    1. Draw the area in the editor and save it. Tick |wEntry room|n on the
+       room players arrive in (without one, the first room is used).
+    2. Submit it with a live room to connect to and a direction. Submit
+       checks the map: at most 100 rooms, 200 exits, 10 triggers per room,
+       30 timed triggers per project, timed intervals of at least 60
+       seconds, exit locks limited to traverse/view, and no MXP link
+       markup (||lc, ||lu, ||lt, ||le) anywhere in builder text.
+    3. Another Builder reviews it on |y/builder/review/|n. You can't
+       approve or reject your own project (Admins may). A rejection sends
+       it back to draft with notes; edit and resubmit.
+    4. The owner (or an Admin) builds the approved snapshot as a sandbox.
+       |y@goto_sandbox|n lists your sandboxes; |y@goto_sandbox <project id>|n
+       takes you to its entry room. |y@list_sandboxes|n (Admin) lists all.
+    5. Promote it from the website: it uses only the reviewed connection,
+       is refused if that direction is taken at either end, and creates
+       the two connecting exits.
+    6. To throw a sandbox away, |y@cleanup_sandbox <project id>|n (or the
+       website's cleanup). The project goes back to approved so it can be
+       rebuilt; the project itself is kept.
+
+  Cleanup deletes only the rooms and exits recorded when the sandbox was
+  built, never objects found by tag (anyone with |y@tag|n can forge a
+  tag). It refuses and deletes nothing when a character is inside the
+  sandbox, an exit it didn't build leads into or out of it, or a recorded
+  object no longer matches what was built. Clear the problem and run it
+  again. A project with a sandbox can't be deleted until it is cleaned up.
+
+  |wRoom triggers:|n |wentry|n and |wexit|n fire on movement; |wOn Look|n fires
+  when someone looks at the room, including on arrival; |wtimed|n triggers
+  repeat on their interval (60 seconds or more) and first fire one
+  interval after the build, not at once.
+
+  The in-game |y@dig|n and |y@open|n stay available to Builders for small
+  jobs.
+
+  |ySee also:|n help chargen, help jobs, help feed, help combat_commands
