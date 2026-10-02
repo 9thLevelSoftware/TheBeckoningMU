@@ -64,7 +64,7 @@
 |c4. CHARACTER CREATION & APPROVAL|n
 
 |yCharacter Approval Process|n
-- Submit character via web interface or |w+chargen/finalize|n
+- Submit your character on the game website (|w/character-creation/|n)
 - Staff reviews for theme compliance and balance
 - Approval typically within 24-48 hours
 - Revisions may be requested

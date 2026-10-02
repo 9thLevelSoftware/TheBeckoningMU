@@ -22,17 +22,14 @@ urlpatterns = [
         views.SubmitProjectView.as_view(),
         name="submit_project",
     ),
-    path("api/build/<int:pk>/", views.BuildProjectView.as_view(), name="build_project"),
     path(
         "api/build/<int:pk>/build-sandbox/",
         views.BuildSandboxView.as_view(),
         name="build_sandbox",
     ),
-    path(
-        "api/build/<int:pk>/cleanup/",
-        views.CleanupSandboxView.as_view(),
-        name="cleanup_sandbox",
-    ),
+    # api/build/<pk>/cleanup/ (CleanupSandboxView) is deliberately unrouted,
+    # like @cleanup_sandbox: its tag-based object selection can reach objects
+    # outside the sandbox. It returns once cleanup works from recorded ids.
     path("api/prototypes/", views.PrototypesView.as_view(), name="prototypes"),
     path("api/templates/", views.TemplatesView.as_view(), name="templates"),
     # Review endpoints (staff only)
@@ -50,8 +47,6 @@ urlpatterns = [
         views.ApproveRejectProjectView.as_view(),
         name="reject_project",
     ),
-    # Export
-    path("export/<int:pk>/", views.ExportProjectView.as_view(), name="export_project"),
     # Promotion endpoints
     path(
         "api/connection-rooms/",

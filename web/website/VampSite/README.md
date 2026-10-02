@@ -1,97 +1,27 @@
 # The Beckoning - Vampire: The Masquerade Website
 
-A website for "The Beckoning", an Athens By Night Vampire: The Masquerade chronicle. The site includes an interactive character creation tool that generates JSON data for import into an Evennia-based MU*.
+A static website for "The Beckoning", an Athens By Night Vampire: The Masquerade chronicle. It is plain HTML/CSS/JS served outside Django (the `.shtml` error pages and `cgi-bin/` are for a traditional web host).
 
-## Features
+## Character Creation
 
-- Interactive Vampire: The Masquerade 5th Edition character creation
-- Rule validation to ensure characters follow V5 creation guidelines
-- JSON export for character data
-- Integration with Evennia-based MU* systems
+Character creation happens on the game website. The pages here (`character-creation-new.html` and the older `character-creation.html`) only explain that and link to the game's `/character-creation/` form, where players build a character and submit it for staff approval. The homepage's "Create a Character" button links there too.
 
-## Character Creation Tool
+These static pages no longer validate creation rules or produce character JSON, and the game has no import path for pasted character data.
 
-The character creation tool allows players to create Vampire: The Masquerade 5th Edition characters following the official rules. The tool includes:
+### Game website address
 
-- Character information (name, concept, etc.)
-- Clan selection with automatic discipline assignment
-- Attribute distribution (following the 4/3/2 dot rule)
-- Skill distribution (following the 13/9/5 dot rule)
-- Discipline selection based on clan
-- Background selection
-- JSON export for integration with Evennia
+The game website is currently `https://beckon.vineyard.haus/`. It is set in exactly one place: `GAME_SITE_URL` at the top of `assets/js/game-site.js`. **When the game website moves (for example to Cloudflare), change that one line.** Every link with a `data-game-path` attribute (the "Create a Character" buttons in `index.html` and both creation pages) is pointed at `GAME_SITE_URL` + that path when the page loads. Without JavaScript the links fall back to a root-relative `/character-creation/`, which works only if this site is served from the same origin as the game.
 
-### Using the Character Creation Tool
-
-1. Navigate to the character creation page by clicking the "Create a Character" button on the homepage
-2. Fill out the character information
-3. Select a clan
-4. Distribute attribute dots (4/3/2 across Physical, Social, Mental)
-5. Distribute skill dots (13/9/5 across Physical, Social, Mental)
-6. Assign discipline dots based on clan
-7. Select backgrounds
-8. Click "Generate JSON" to create the character data
-9. Copy the JSON data for import into the Evennia-based MU*
-
-### Evennia Integration
-
-The character creation tool generates a JSON representation of the character that can be imported into an Evennia-based MU*. The JSON structure includes all necessary character information:
-
-```json
-{
-  "name": "Character Name",
-  "concept": "Character Concept",
-  "chronicle": "The Beckoning",
-  "clan": "Clan Name",
-  "attributes": {
-    "physical": { "strength": 2, "dexterity": 3, "stamina": 2 },
-    "social": { "charisma": 3, "manipulation": 2, "composure": 2 },
-    "mental": { "intelligence": 3, "wits": 2, "resolve": 3 }
-  },
-  "skills": {
-    "physical": { ... },
-    "social": { ... },
-    "mental": { ... }
-  },
-  "disciplines": { ... },
-  "backgrounds": { ... },
-  "derived": {
-    "health": 5,
-    "willpower": 5,
-    "humanity": 7,
-    "bloodPotency": 1,
-    "hunger": 1
-  }
-}
-```
-
-To import this data into your Evennia-based MU*, you'll need to implement a command that:
-
-1. Accepts the JSON data
-2. Validates the data
-3. Creates a character with the specified attributes
-4. Assigns the appropriate skills, disciplines, and backgrounds
-
-## Development
-
-### Project Structure
+## Project Structure
 
 - `index.html` - Main landing page
-- `character-creation.html` - Character creation interface
-- `assets/css/` - CSS stylesheets
-  - `main.css` - Main site styles
-  - `character-sheet.css` - Character sheet specific styles
+- `character-creation-new.html`, `character-creation.html` - Pointers to the game website's character creation form
+- `assets/css/` - CSS stylesheets (`main.css` is the site style)
 - `assets/js/` - JavaScript files
   - `main.js` - Main site functionality
-  - `character-sheet.js` - Character creation functionality
-- `references/` - V5 reference materials
-
-### Technologies Used
-
-- HTML5
-- CSS3
-- JavaScript (ES6)
-- No external libraries or frameworks required
+  - `game-site.js` - The game website address (`GAME_SITE_URL`) and the code that points the creation links at it
+  - `character-sheet.js`, `character-sheet-new.js` - The retired client-side character builder. No page loads them any more; they are kept for reference.
+- `references/` - V5 reference materials (PDFs)
 
 ## License
 

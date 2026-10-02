@@ -7,46 +7,75 @@ A **Vampire: The Masquerade 5th Edition** MUD built on [Evennia](https://www.eve
 ## Requirements
 
 - Python **3.12+**
-- [uv](https://docs.astral.sh/uv/) (recommended) or another PEP 621-compatible tool
-- Evennia **6.x** (installed as a project dependency)
+- [uv](https://docs.astral.sh/uv/)
+- Evennia **6.x** (installed by `uv sync` as a project dependency)
 
 ## Quick Start
 
-The repository root **is** the Evennia game directory — run every `evennia` command from here.
+The repository root **is** the Evennia game directory, so run every `evennia` command from here.
 
-### With uv (recommended)
+### First run
+
+1. Install dependencies:
+
+   ```bash
+   uv sync
+   ```
+
+2. Activate the environment:
+
+   ```bash
+   source .venv/bin/activate        # macOS / Linux
+   .venv\Scripts\activate           # Windows (PowerShell or cmd)
+   ```
+
+   Or skip activation and prefix each command below with `uv run` (for example `uv run evennia migrate`). If PowerShell refuses to run the activation script ("running scripts is disabled on this system"), use `uv run` instead, or allow local scripts once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+3. Create the untracked per-host files (`server/conf/secret_settings.py` with a fresh random `SECRET_KEY`, and `server/logs/`):
+
+   ```bash
+   evennia --initmissing
+   ```
+
+   The server refuses to start without `secret_settings.py`, or if its `SECRET_KEY` is still Evennia's public default. See `server/conf/secret_settings.example.py` for the other per-host settings (`ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, and the HTTPS cookie settings a public deployment needs).
+
+4. Create the database:
+
+   ```bash
+   evennia migrate
+   ```
+
+5. Load the V5 trait reference data:
+
+   ```bash
+   evennia seed_traits
+   ```
+
+   > **Warning:** `evennia seed_traits --clear` deletes the trait tables *and every character's stored traits with them*. Never run it on a database you want to keep.
+
+6. Start the server:
+
+   ```bash
+   evennia start
+   ```
+
+   The first start asks you to create the superuser account (the email is optional). This is the game owner's account.
+
+7. Connect with a telnet/MUD client on port `6660`, or open the web client at `http://localhost:6665/webclient/`, and log in as the superuser. Players create characters on the website at `http://localhost:6665/character-creation/`; staff approve them at `/staff/character-approval/`.
+
+### Day to day
 
 ```bash
-# Install dependencies
-uv sync
-
-# Activate the environment
-source .venv/bin/activate
-
-# Initialize the database (first run only)
-evennia migrate
-
-# Start the server
-evennia start
-
-# Stop / reload / check status
 evennia stop
 evennia reload
 evennia status
 ```
 
-### With pip + venv
+- After each `git pull`, run `evennia migrate` before starting the server.
+- **Backups:** stop the server (`evennia stop`), then copy `server/evennia.db3`. The database is a single SQLite file.
+- **Web builder access:** the builder currently admits any account with Django's `is_staff` flag. Until the builder's permission checks land, do not grant `is_staff` to builders you don't fully trust.
 
-```bash
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -e .
-
-evennia migrate
-evennia start
-```
-
-The server is fully headless — connect with a telnet/MUD client or use the bundled web client.
+The server is fully headless. Connect with a telnet/MUD client or use the bundled web client.
 
 ## Access Points
 
@@ -68,7 +97,7 @@ Web routes (assuming the default web port):
 - **Staff character approval**: `http://localhost:6665/staff/character-approval/`
 - **Builder (staff)**: `http://localhost:6665/builder/`
 - **Admin**: `http://localhost:6665/admin/`
-- **API**: `http://localhost:6665/api/`
+- **Traits API**: `http://localhost:6665/api/traits/`
 
 ## Project Structure
 
@@ -81,7 +110,7 @@ TheBeckoningMU/
 ├── typeclasses/         # Account, Character, Room, Object, Exit, Script, Channel
 ├── commands/            # MuxCommand-based commands + default_cmdsets.py
 │   ├── v5/              # V5 commands; game logic lives in v5/utils/
-│   └── builder/         # sandbox / promote commands for the web builder
+│   └── builder/         # in-game sandbox commands for the web builder
 ├── dice/                # V5 dice roller, rouse checks, discipline rolls
 ├── bbs/ jobs/ status/ boons/ traits/   # Django apps (models + in-game commands)
 ├── web/                 # Django: website, webclient, admin, api, builder, templates, static
@@ -111,7 +140,7 @@ ruff format .
 
 ### Tests
 
-Tests use Evennia's Django test runner:
+Tests use Evennia's Django test runner. Settings now require `server/conf/secret_settings.py`, so run `evennia --initmissing` once in a fresh clone before testing:
 
 ```bash
 evennia test --settings settings.py .                 # everything
@@ -123,7 +152,7 @@ Test modules live alongside the code they exercise (e.g. `dice/tests.py`, `jobs/
 
 ### Secrets & per-host config
 
-Anything machine- or operator-specific (DB credentials, port overrides, secret keys) belongs in `server/conf/secret_settings.py`. That file is **not** committed.
+Anything machine- or operator-specific (port overrides, allowed hosts, the secret key) belongs in `server/conf/secret_settings.py`. That file is **not** committed. `evennia --initmissing` creates it, and `server/conf/secret_settings.example.py` documents what else can go in it.
 
 ## License
 

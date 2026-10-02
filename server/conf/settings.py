@@ -25,6 +25,8 @@ put secret game- or server-specific settings in secret_settings.py.
 """
 
 # Use the defaults from Evennia unless explicitly overridden
+from django.core.exceptions import ImproperlyConfigured
+from evennia import settings_default as _evennia_settings_default
 from evennia.contrib.base_systems import color_markups
 from evennia.settings_default import *
 
@@ -126,6 +128,13 @@ MAX_NR_SIMULTANEOUS_PUPPETS = 3
 AUTO_CREATE_CHARACTER_WITH_ACCOUNT = False
 
 ######################################################################
+# Error Reporting
+######################################################################
+
+# Never show Python tracebacks to players; they go to the server log.
+IN_GAME_ERRORS = False
+
+######################################################################
 # Help System Configuration
 ######################################################################
 
@@ -138,7 +147,34 @@ FILE_NEWS_ENTRY_MODULES = ["world.news_entries"]
 ######################################################################
 # Settings given in secret_settings.py override those in this file.
 ######################################################################
+# A missing secret_settings.py is a configuration error, not a warning: without
+# it the server would run on Evennia's public default SECRET_KEY. See
+# server/conf/secret_settings.example.py for what belongs in it.
 try:
     from server.conf.secret_settings import *
-except ImportError:
-    print("secret_settings.py file not found or failed to import.")
+except ModuleNotFoundError as err:
+    if err.name != "server.conf.secret_settings":
+        raise
+    raise ImproperlyConfigured(
+        "server/conf/secret_settings.py is missing. Run `evennia --initmissing` to create it."
+    ) from None
+
+if SECRET_KEY == _evennia_settings_default.SECRET_KEY:  # noqa: F405
+    raise ImproperlyConfigured(
+        "SECRET_KEY is still Evennia's public default. Set a unique SECRET_KEY in "
+        "server/conf/secret_settings.py (`evennia --initmissing` generates one)."
+    )
+
+# `evennia --initmissing` writes 40 random characters, so require at least that.
+# (Django's deploy check asks for 50; a 40-character Evennia key is still strong.)
+_SECRET_KEY_MIN_LENGTH = 40
+_SECRET_KEY_MIN_UNIQUE = 5
+if (
+    not isinstance(SECRET_KEY, str)  # noqa: F405
+    or len(SECRET_KEY.strip()) < _SECRET_KEY_MIN_LENGTH  # noqa: F405
+    or len(set(SECRET_KEY)) < _SECRET_KEY_MIN_UNIQUE  # noqa: F405
+):
+    raise ImproperlyConfigured(
+        f"SECRET_KEY in server/conf/secret_settings.py is too weak: use at least "
+        f"{_SECRET_KEY_MIN_LENGTH} random characters (`evennia --initmissing` generates one)."
+    )

@@ -17,6 +17,7 @@ See V5_REFERENCE_DATABASE.md for complete dice mechanics.
 import random
 from typing import Dict, List, Tuple, Optional
 
+from dice.dice_roller import MAX_DIFFICULTY, MAX_POOL, MIN_DIFFICULTY
 from world.v5_data import BLOOD_POTENCY, DISCIPLINES, RESONANCES, FRENZY_TRIGGERS
 from world.ansi_theme import (
     DICE_CRITICAL, DICE_SUCCESS, DICE_FAILURE,
@@ -104,10 +105,18 @@ def roll_pool(
 
     Returns:
         DiceResult: Object containing roll results and analysis
+
+    Raises:
+        ValueError: If the final pool exceeds MAX_POOL or difficulty is out of range
     """
     # Apply willpower bonus
     if willpower:
         pool += 3
+
+    if pool > MAX_POOL:
+        raise ValueError(f"Pool size cannot exceed {MAX_POOL} dice (got {pool})")
+    if not MIN_DIFFICULTY <= difficulty <= MAX_DIFFICULTY:
+        raise ValueError(f"Difficulty must be between {MIN_DIFFICULTY} and {MAX_DIFFICULTY} (got {difficulty})")
 
     # Determine how many dice are Hunger dice
     # Hunger dice replace normal dice, up to the pool size
