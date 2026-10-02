@@ -27,8 +27,10 @@ from world.ansi_theme import (
 from .utils.thin_blood_utils import (
     DEFAULT_DISTILL_DIFFICULTY,
     DISTILLATION_METHODS,
-    check_daylight_damage,
+    SUNLIGHT_AGGRAVATED_PER_TURN,
     craft_formula,
+    daylight_effect,
+    expose_to_sunlight,
     get_thin_blood_powers,
     is_thin_blood,
     use_alchemy,
@@ -225,18 +227,27 @@ class CmdAlchemy(default_cmds.MuxCommand):
 
 class CmdDaylight(default_cmds.MuxCommand):
     """
-    Check or expose to daylight (Thin-Blood specific).
+    See what sunlight does to you, or step into it.
 
     Usage:
         +daylight
-        +daylight/expose
+        +daylight/expose [<turns>] [obscured or direct]
 
-    Shows what sunlight would do to you. Neither form marks any damage:
-    the Storyteller marks sunlight damage with +damage.
+    A vampire in sunlight takes Aggravated damage every turn: 1 a turn in
+    obscured sun (through a window, heavy cloud) and 3 in direct sun (a
+    house convention; see help thinblood). Thin-bloods burn like any other
+    vampire unless they have the Day Drinker merit: then sunlight halves
+    their Health (rounded up) and stops their Disciplines, and does no
+    other damage (QR p.13). Mortals and ghouls are unharmed.
+
+    /expose marks the damage for the given number of turns (default 1,
+    direct sun) and shows the room. A Health track full of Aggravated
+    damage means torpor.
 
     Examples:
-        +daylight         - Check current sun exposure
-        +daylight/expose  - Expose yourself to sunlight
+        +daylight
+        +daylight/expose
+        +daylight/expose 2 obscured
     """
 
     key = "+daylight"
@@ -244,46 +255,52 @@ class CmdDaylight(default_cmds.MuxCommand):
     locks = "cmd:all()"
     help_category = "V5 - Thin-Blood"
 
+    MAX_TURNS = 10
+
     def func(self):
         """Execute command."""
         caller = self.caller
-
+        if not hasattr(caller, "is_kindred"):
+            caller.msg("Only characters are affected by sunlight.")
+            return
         if "expose" in self.switches:
             self.expose_to_daylight()
         else:
-            self.check_daylight()
+            caller.msg(f"{GOLD}Sunlight:{RESET} {daylight_effect(caller)['text']}")
 
-    def check_daylight(self):
-        """Check daylight status."""
-        caller = self.caller
-
-        damage_info = check_daylight_damage(caller)
-
-        if is_thin_blood(caller):
-            caller.msg(f"{GOLD}Thin-Blood Daylight Tolerance:{RESET}")
-            caller.msg(f"Damage Type: {damage_info['damage_type'].title()}")
-            caller.msg(f"Damage Amount: {damage_info['amount']}")
-            caller.msg(f"{SHADOW_GREY}You can survive in daylight, but it hurts.{RESET}")
-        else:
-            caller.msg(f"{BLOOD_RED}Daylight is lethal to you!{RESET}")
-            caller.msg(f"Damage Type: {damage_info['damage_type'].title()}")
-            caller.msg(f"Damage Amount: {damage_info['amount']}")
+    def _parse(self):
+        turns, exposure = 1, "direct"
+        for word in self.args.split():
+            word = word.lower()
+            if word.isdigit():
+                turns = int(word)
+            elif word in SUNLIGHT_AGGRAVATED_PER_TURN:
+                exposure = word
+            else:
+                return None
+        if not 1 <= turns <= self.MAX_TURNS:
+            return None
+        return turns, exposure
 
     def expose_to_daylight(self):
-        """Expose to sunlight."""
+        """Mark sunlight damage on the caller."""
         caller = self.caller
-
-        damage_info = check_daylight_damage(caller)
-
-        if is_thin_blood(caller):
-            caller.msg(f"{GOLD}You step into the sunlight...{RESET}")
-            caller.msg(f"{BLOOD_RED}The sun burns, but you endure!{RESET}")
-            caller.msg(f"Taking {damage_info['amount']} {damage_info['damage_type']} damage.")
-
-            # Apply damage (simplified - use combat_utils.apply_damage in full version)
-            # For now, just message
-            caller.msg(f"{SHADOW_GREY}(Damage applied){RESET}")
+        parsed = self._parse()
+        if parsed is None:
+            caller.msg(f"Usage: +daylight/expose [<turns 1-{self.MAX_TURNS}>] [obscured or direct]")
+            return
+        turns, exposure = parsed
+        outcome = expose_to_sunlight(caller, turns, exposure)
+        effect = outcome["effect"]
+        if not effect["harmed"]:
+            caller.msg(effect["text"])
+            return
+        lines = [f"{BLOOD_RED}{caller.key} steps into the sunlight.{RESET}", effect["text"]]
+        lines += [result["message"] for result in outcome["results"] if result.get("message")]
+        if effect["kind"] == "day_drinker" and not outcome["results"]:
+            lines.append("Your Health is already at half or less.")
+        text = "\n".join(lines)
+        if caller.location:
+            caller.location.msg_contents(text)
         else:
-            caller.msg(f"{BLOOD_RED}The sunlight incinerates you!{RESET}")
-            caller.msg(f"Taking {damage_info['amount']} {damage_info['damage_type']} damage.")
-            caller.msg(f"{SHADOW_GREY}(Damage applied){RESET}")
+            caller.msg(text)

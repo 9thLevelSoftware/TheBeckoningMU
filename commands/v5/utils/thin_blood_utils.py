@@ -18,7 +18,6 @@ dice.rouse_checker.perform_rouse_check; the Hunger they cost is added after
 the roll (core pp.211-212).
 """
 
-import random
 
 from dice.dice_roller import MAX_POOL, roll_v5_pool
 from dice.discipline_roller import calculate_pool_from_traits, parse_dice_pool
@@ -173,54 +172,62 @@ def use_alchemy(character, formula_name):
             "roll_result": roll_result, "rouse_result": rouse}
 
 
-def check_daylight_damage(character):
-    """Check if Thin-Blood takes damage from sunlight.
+# Sunlight. Source: V5 Quick Reference 2.0 p.13 (Day Drinker); p.5 (a Health
+# track full of Aggravated damage means torpor); p.9 (Fortitude resists fire
+# and sunlight). UNVERIFIED: the QR gives no per-turn amount for ordinary
+# exposure (core p.223 is not in the owner's PDFs), so the amounts below are a
+# game convention: Aggravated damage each turn, 1 for obscured sunlight (as
+# through a window) and 3 for direct sun. Also UNVERIFIED: thin-bloods without
+# Day Drinker burn like any vampire (the QR names Day Drinker as the only
+# thin-blood exception); Day Drinker's "halves your Health (rounded up)" is
+# read as Superficial damage, marked once, that leaves ceil(max / 2) boxes.
+SUNLIGHT_AGGRAVATED_PER_TURN = {"obscured": 1, "direct": 3}
 
-    Thin-Bloods take bashing damage from sun, not aggravated.
 
-    Args:
-        character: The character object
+def daylight_effect(character, exposure="direct"):
+    """
+    What sunlight does to `character`.
 
     Returns:
-        dict: {"takes_damage": bool, "damage_type": str, "amount": int}
+        dict: {"harmed": bool, "kind": "none"|"day_drinker"|"burn",
+               "damage_type": "aggravated"|"superficial"|None,
+               "per_turn": int, "text": str}
     """
-    if not is_thin_blood(character):
-        # Regular vampires take aggravated
-        return {
-            "takes_damage": True,
-            "damage_type": "aggravated",
-            "amount": 3
-        }
-
-    # Thin-Bloods take bashing
-    return {
-        "takes_damage": True,
-        "damage_type": "bashing",
-        "amount": 2
-    }
+    if not character.is_kindred:
+        return {"harmed": False, "kind": "none", "damage_type": None, "per_turn": 0,
+                "text": "Sunlight doesn't harm the living."}
+    if is_thin_blood(character) and "Day Drinker" in character.advantages["merits"]:
+        return {"harmed": True, "kind": "day_drinker", "damage_type": "superficial", "per_turn": 0,
+                "text": ("Day Drinker: sunlight halves your Health (rounded up) and stops your "
+                         "Disciplines, and does no other damage (QR p.13).")}
+    per_turn = SUNLIGHT_AGGRAVATED_PER_TURN[exposure]
+    return {"harmed": True, "kind": "burn", "damage_type": "aggravated", "per_turn": per_turn,
+            "text": f"Sunlight burns you: {per_turn} Aggravated damage each turn ({exposure} sun)."}
 
 
-def can_pass_as_mortal(character):
-    """Check if Thin-Blood can pass as mortal.
-
-    Thin-Bloods can sometimes pass as human (Blush of Life easier).
-
-    Args:
-        character: The character object
+def expose_to_sunlight(character, turns=1, exposure="direct"):
+    """
+    Apply sunlight damage for `turns` turns through combat_utils.apply_damage.
 
     Returns:
-        bool: True if can pass as mortal
+        dict: {"effect": daylight_effect(...), "results": [apply_damage results],
+               "torpor": bool, "impaired": bool}
     """
-    if not is_thin_blood(character):
-        return False
+    from commands.v5.utils.combat_utils import apply_damage
 
-    # Automatic at low Hunger
-    if character.hunger <= 2:
-        return True
-
-    # Roll at higher Hunger
-    composure = character.get_trait("composure")
-    if random.randint(1, 10) <= composure + 3:
-        return True
-
-    return False
+    effect = daylight_effect(character, exposure)
+    results = []
+    if effect["kind"] == "burn":
+        for _ in range(turns):
+            result = apply_damage(character, effect["per_turn"], "aggravated")
+            results.append(result)
+            if result.get("torpor"):
+                break
+    elif effect["kind"] == "day_drinker":
+        target = (character.health_max + 1) // 2
+        amount = character.current_health - target
+        if amount > 0:
+            results.append(apply_damage(character, amount, "superficial", halve=False))
+    last = results[-1] if results else {}
+    return {"effect": effect, "results": results,
+            "torpor": bool(last.get("torpor")), "impaired": bool(last.get("impaired"))}
