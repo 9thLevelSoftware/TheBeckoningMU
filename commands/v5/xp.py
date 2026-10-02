@@ -21,6 +21,7 @@ from .utils.xp_utils import (
     get_xp_cost_attribute,
     get_xp_cost_skill,
     get_xp_cost_discipline,
+    unavailable_clan_message,
     get_xp_cost_humanity,
     get_xp_cost_willpower
 )
@@ -303,6 +304,11 @@ class CmdSpend(Command):
     def _spend_discipline(self, discipline_name):
         """Spend XP on discipline."""
         caller = self.caller
+
+        refusal = unavailable_clan_message(caller)
+        if refusal:
+            caller.msg(f"|r{refusal}|n")
+            return
 
         # Show cost first
         cost, new_rating, is_in_clan = get_xp_cost_discipline(caller, discipline_name)

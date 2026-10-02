@@ -203,7 +203,9 @@ def activate_discipline_power(character, discipline_name, power_name):
 
     if duration and duration != 'instant':
         # Apply generic effect
-        applied_effect = apply_effect(character, power_copy, duration)
+        # A "turn" power lasts one turn unless an effect handler says otherwise.
+        parameters = {"turns": 1} if duration == "turn" else {}
+        applied_effect = apply_effect(character, power_copy, duration, parameters)
         effect_applied = True
 
         # Apply discipline-specific effects
@@ -252,15 +254,8 @@ def check_resonance_bonus(character, discipline_name):
     """
     Check if character gets a Resonance bonus for using this discipline.
 
-    In V5, if a vampire has a matching Resonance for a discipline, they get +1 die.
-
-    Resonance mappings:
-    - Sanguine (enthusiastic): Celerity, Presence
-    - Melancholic (sad): Fortitude, Obfuscate
-    - Choleric (angry): Potence, Presence
-    - Phlegmatic (calm): Auspex, Dominate
-    - Animal: Animalism, Protean
-    - Blood Sorcery: Any intense emotion
+    In V5, matching Resonance adds a die to a discipline's pool. The
+    humour-to-discipline mapping is world.v5_data.RESONANCES (QR p.12).
 
     Args:
         character: The character object
@@ -269,23 +264,15 @@ def check_resonance_bonus(character, discipline_name):
     Returns:
         dict: {"bonus": int, "resonance": str} or None
     """
+    from world.v5_data import RESONANCES
+
     resonance = character.resonance
     current_resonance = resonance["type"] if resonance else ""
 
-    # Map disciplines to resonances that grant bonuses
-    resonance_map = {
-        "Animalism": ["animal"],
-        "Auspex": ["phlegmatic"],
-        "Blood Sorcery": ["sanguine", "melancholic", "choleric", "phlegmatic"],  # Any intense
-        "Celerity": ["sanguine"],
-        "Dominate": ["phlegmatic"],
-        "Fortitude": ["melancholic"],
-        "Obfuscate": ["melancholic"],
-        "Oblivion": [],  # No resonance bonus typically
-        "Potence": ["choleric"],
-        "Presence": ["sanguine", "choleric"],
-        "Protean": ["animal"]
-    }
+    resonance_map = {}
+    for humour, data in RESONANCES.items():
+        for discipline in data["disciplines"]:
+            resonance_map.setdefault(discipline, []).append(humour.lower())
 
     matching_resonances = resonance_map.get(discipline_name, [])
 
@@ -325,7 +312,7 @@ def format_power_display(power, level, include_level=True):
         output += f"   {SHADOW_GREY}Requires:{RESET} {power['amalgam']}\n"
 
     if power.get("duration"):
-        output += f"   {SHADOW_GREY}Duration:{RESET} {power['duration']}\n"
+        output += f"   {SHADOW_GREY}Duration:{RESET} {power.get('duration_text', power['duration'])}\n"
 
     return output
 

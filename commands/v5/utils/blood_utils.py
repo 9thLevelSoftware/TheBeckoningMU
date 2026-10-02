@@ -8,12 +8,14 @@ Hunger, feeding, Blood Surge, and resonance.
 from typing import Dict, Any, Optional
 import time
 
+from world.v5_data import BLOOD_POTENCY
+
 
 # Constants
 
 RESONANCE_DISCIPLINES = {
     'Choleric': ['Potence', 'Celerity'],
-    'Melancholic': ['Fortitude', 'Obfuscate'],
+    'Melancholy': ['Fortitude', 'Obfuscate'],
     'Phlegmatic': ['Auspex', 'Dominate'],
     'Sanguine': ['Presence', 'Blood Sorcery']
 }
@@ -176,12 +178,12 @@ def set_resonance(character, resonance_type: str, intensity: int = 1, duration: 
     """
     Set character's blood resonance from feeding.
 
-    Resonance types: Choleric, Melancholic, Phlegmatic, Sanguine
+    Resonance types: Choleric, Melancholy, Phlegmatic, Sanguine
     Intensity: 1 (Fleeting), 2 (Intense), 3 (Dyscrasia)
 
     Args:
         character: Character object
-        resonance_type: Type of resonance (Choleric, Melancholic, Phlegmatic, Sanguine)
+        resonance_type: Type of resonance (Choleric, Melancholy, Phlegmatic, Sanguine)
         intensity: Intensity level (1-3, default 1)
         duration: Duration in seconds (default 3600 = 1 hour)
 
@@ -216,7 +218,7 @@ def get_resonance_bonus(character, discipline_name: str) -> int:
 
     Resonance provides bonus dice to matching disciplines:
     - Choleric → Potence, Celerity
-    - Melancholic → Fortitude, Obfuscate
+    - Melancholy → Fortitude, Obfuscate
     - Phlegmatic → Auspex, Dominate
     - Sanguine → Presence, Blood Sorcery
 
@@ -296,7 +298,7 @@ def format_resonance_display(character) -> Optional[str]:
     # Color code by resonance type
     color_map = {
         'Choleric': '|r',    # Red
-        'Melancholic': '|c',  # Cyan
+        'Melancholy': '|c',  # Cyan
         'Phlegmatic': '|g',   # Green
         'Sanguine': '|y'      # Yellow
     }
@@ -335,16 +337,17 @@ def get_blood_potency_bonus(character) -> int:
         character: Character object
 
     Returns:
-        int: Bonus dice (equal to Blood Potency)
+        int: Bonus dice, from world.v5_data.BLOOD_POTENCY["blood_surge"]
     """
-    return get_blood_potency(character)
+    row = BLOOD_POTENCY.get(get_blood_potency(character))
+    return row["blood_surge"] if row else 0
 
 
 def activate_blood_surge(character, trait_type: str, trait_name: str) -> Dict[str, Any]:
     """
     Activate Blood Surge to boost a trait.
 
-    Blood Surge adds dice equal to Blood Potency to a specified trait
+    Blood Surge adds the Blood Potency table's surge dice to a specified trait
     for one scene (1 hour). Requires a Rouse check.
 
     Args:

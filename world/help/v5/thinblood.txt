@@ -2,73 +2,53 @@
 |W|                        THIN-BLOOD VAMPIRES                        |
 |[R+===================================================================+|n
 
-Thin-Bloods are vampires with such diluted vitae that they barely
-qualify as Kindred. Often called "Duskborn," they are outcasts in
-vampire society but possess unique abilities.
+Thin-bloods are vampires of the 14th to 16th Generation whose vitae is so
+diluted they barely count as Kindred. Often called "Duskborn," they are
+outcasts in vampire society. (V5 core p.109; V5 Quick Reference 2.0 p.2-3,
+p.5, p.11.)
 
 |WTHIN-BLOOD TRAITS:|n
 
 |yBlood Potency 0:|n
-  - Cannot create Blood Bonds or ghouls
-  - Weak vitae, often rejected by other vampires
-  - Cannot sire childer
-
-|ySunlight Tolerance:|n
-  - Takes |ybashing|n damage from sunlight (not aggravated)
-  - Can survive daylight hours, though painfully
-  - Damage: 2 bashing per turn of exposure
-
-|yBlush of Life:|n
-  - Easier to maintain mortal appearance
-  - Can sometimes pass as human at low Hunger
-  - Automatic at Hunger 1-2
+  - Generation 14th-16th, Blood Potency 0 (QR p.3, p.15)
+  - No clan, so no clan Bane or Compulsion (unless you take the Clan
+    Curse flaw)
+  - No predator type at creation (QR p.2)
 
 |yDisciplines:|n
-  - Choose ONE discipline with a Thin-Blood flaw
-  - OR learn |yThin-Blood Alchemy|n instead
-  - Cannot learn disciplines normally (no Blood Potency)
+  - No starting or in-clan disciplines (QR p.2)
+  - Learn |yThin-Blood Alchemy|n through the Thin-blood Alchemist merit
+  - The Discipline Affinity merit gives a permanent dot in one
+    discipline, never more than one
+
+|yThin-blood merits and flaws:|n (QR p.11)
+  - Take one to three thin-blood merits and the same number of
+    thin-blood flaws; they cost no points (QR p.2)
+  - Merits: Anarch Comrades, Camarilla Contact, Catenating Blood,
+    Day Drinker, Discipline Affinity, Lifelike, Thin-blood Alchemist,
+    Vampiric Resilience
+  - Flaws: Baby Teeth, Bestial Temper, Branded by the Camarilla,
+    Clan Curse, Dead Flesh, Mortal Frailty, Shunned by the Anarchs,
+    Vitae Dependency
+  - Some are exclusive: Dead Flesh rules out Lifelike, Mortal Frailty
+    rules out Vampiric Resilience, Shunned by the Anarchs rules out
+    Anarch Comrades
 
 |WTHIN-BLOOD ALCHEMY:|n
 
-Unique supernatural ability to craft alchemical formulae:
-  - Craft formulae using vampire blood + ingredients
-  - No Rouse checks (Blood Potency 0)
-  - Single-use concoctions
-  - Effects similar to discipline powers
-
-|yKnown Formulae:|n
-  - |wFar Reach|n: Telekinesis (Level 1)
-  - |wHaze|n: Cloud minds (Level 1)
-  - |wEnvelop|n: Shadow concealment (Level 1)
-  - |wCounterfeit|n: Duplicate objects (Level 2)
-  - |wDefractionate|n: Split consciousness (Level 2)
-  - Higher level formulae available with experience
+See |yhelp alchemy|n for the formulas.
 
 |WSOCIAL STANDING:|n
 
-Thin-Bloods are |rpariahs|n in vampire society:
+Thin-bloods are |rpariahs|n in vampire society:
   - Not recognized as true Kindred by most elders
-  - Often hunted or enslaved
-  - Subject to "Thin-Blood Pogroms" in some domains
-  - Must prove worth to gain any standing
-
-|WADVANTAGES:|n
-  - Can survive daylight (unique among vampires)
-  - Harder to detect as vampire
-  - Alchemy provides versatile powers
-  - Not bound by Blood Bonds
-
-|WDISADVANTAGES:|n
-  - Extremely weak vitae
-  - Social pariah status
-  - Cannot embrace, bond, or create ghouls
-  - Vulnerable to other vampires
+  - Often hunted or exploited
+  - Must prove their worth to gain any standing
 
 |[r+===================================================================+|n
 
 |yCommands:|n
   |w+alchemy|n          - View and use Thin-Blood Alchemy
-  |w+daylight|n         - Check sunlight tolerance
   |w+sheet|n            - View character (shows Thin-Blood status)
 
 |ySee also:|n help alchemy, help chargen, help clans

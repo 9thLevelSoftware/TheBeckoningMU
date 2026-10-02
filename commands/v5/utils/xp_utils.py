@@ -8,7 +8,7 @@ from collections.abc import Mapping
 
 from world.v5_data import MERITS, UnknownTrait, WrongCategory, resolve_trait
 
-from .clan_utils import get_inclan_disciplines
+from .clan_utils import get_inclan_disciplines, unavailable_clan
 
 
 def get_xp_cost_attribute(character, attribute_name):
@@ -85,6 +85,19 @@ def get_xp_cost_specialty(character, skill_name, specialty_name=None):
             return None
 
     return 3
+
+
+def unavailable_clan_message(character):
+    """A refusal message if the character's stored clan is not offered, else None.
+
+    Discipline costs depend on the clan, so they can't be priced until staff
+    move the character to an available clan.
+    """
+    clan = unavailable_clan(character)
+    if clan:
+        return (f"Your clan ({clan}) is not available in this game, so discipline costs can't be "
+                "worked out. Ask staff to update your character.")
+    return None
 
 
 def get_xp_cost_discipline(character, discipline_name):
@@ -414,6 +427,10 @@ def spend_xp_on_discipline(character, discipline_name, reason=""):
     Returns:
         tuple: (success: bool, message: str)
     """
+    refusal = unavailable_clan_message(character)
+    if refusal:
+        return (False, refusal)
+
     try:
         cost, new_rating, is_in_clan = get_xp_cost_discipline(character, discipline_name)
     except (UnknownTrait, WrongCategory) as err:

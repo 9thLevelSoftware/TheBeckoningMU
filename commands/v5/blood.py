@@ -27,7 +27,7 @@ class CmdFeed(default_cmds.MuxCommand):
     Hunger is reduced. Feeding also sets your resonance based on the
     victim's emotional state.
 
-    Valid resonances: choleric, melancholic, phlegmatic, sanguine
+    Valid resonances: choleric, melancholy, phlegmatic, sanguine
 
     Switches:
       slake - Feed until Hunger 0 (multiple rolls, risky)
@@ -53,11 +53,16 @@ class CmdFeed(default_cmds.MuxCommand):
         target = parts[0]
         resonance = parts[1] if len(parts) > 1 else None
 
-        # 3. Validate resonance type if specified
-        valid_resonances = ['choleric', 'melancholic', 'phlegmatic', 'sanguine']
-        if resonance and resonance.lower() not in valid_resonances:
-            self.caller.msg(f"|rInvalid resonance. Choose from: {', '.join(valid_resonances)}|n")
-            return
+        # 3. Validate resonance type if specified, before anything changes.
+        # The names come from world.v5_data.RESONANCES, so they can't drift.
+        from world.v5_data import RESONANCES
+
+        valid_resonances = {name.lower(): name for name in RESONANCES}
+        if resonance:
+            if resonance.lower() not in valid_resonances:
+                self.caller.msg(f"|rInvalid resonance. Choose from: {', '.join(valid_resonances)}|n")
+                return
+            resonance = valid_resonances[resonance.lower()]
 
         # 4. Check slake switch
         slake_mode = 'slake' in self.switches
@@ -91,7 +96,7 @@ class CmdFeed(default_cmds.MuxCommand):
 
             # Set resonance
             if resonance:
-                blood_utils.set_resonance(self.caller, resonance.capitalize(), intensity=1)
+                blood_utils.set_resonance(self.caller, resonance, intensity=1)
 
             # Format message
             message = f"|gFeeding successful!|n\n\n"
@@ -99,7 +104,7 @@ class CmdFeed(default_cmds.MuxCommand):
             message += f"\n\nHunger reduced by {hunger_reduction}: {hunger} → {new_hunger}"
 
             if resonance:
-                message += f"\nResonance: |y{resonance.capitalize()}|n (Fleeting)"
+                message += f"\nResonance: |y{resonance}|n (Fleeting)"
 
             # Check for Messy Critical
             if result.is_messy_critical:

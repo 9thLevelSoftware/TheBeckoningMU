@@ -494,9 +494,9 @@ class DisciplineRollerTestCase(EvenniaTest):
         self.char1.blood_potency = 2
 
         # Premonition: Auspex 2, free, "Resolve + Auspex".
-        # Corrosive Vitae: Blood Sorcery 1, Rouse, "Strength + Blood Sorcery".
+        # Extinguish Vitae: Blood Sorcery 2, 1 Rouse, "Intelligence + Blood Sorcery".
         self.char1.learn_power("Premonition")
-        self.char1.learn_power("Corrosive Vitae")
+        self.char1.learn_power("Extinguish Vitae")
 
     def test_parse_dice_pool(self):
         """Test parsing 'Strength + Brawl' into ['Strength', 'Brawl']."""
@@ -580,7 +580,7 @@ class DisciplineRollerTestCase(EvenniaTest):
 
             result = roll_discipline_power(
                 self.char1,
-                "Corrosive Vitae",  # Has rouse cost
+                "Extinguish Vitae",  # Has rouse cost
                 difficulty=2,
                 with_rouse=True
             )
@@ -606,7 +606,7 @@ class DisciplineRollerTestCase(EvenniaTest):
         self.assertEqual(len(powers), 2)
         power_names = [p['name'] for p in powers]
         self.assertIn("Premonition", power_names)
-        self.assertIn("Corrosive Vitae", power_names)
+        self.assertIn("Extinguish Vitae", power_names)
 
         # Filter by discipline
         auspex_powers = get_character_discipline_powers(self.char1, "Auspex")
@@ -765,12 +765,9 @@ class RouseCheckerTestCase(EvenniaTest):
                 )
 
     def test_blood_potency_reroll_levels(self):
-        """BP levels where the code already matches the V5 table."""
         self.assert_reroll_levels([0, 1, 2, 3, 4, 6, 8, 10])
 
-    # F-022 (BP table), fixed in PR 5: can_reroll_rouse groups BP 3-5, 6-7
-    # and 8-9, so BP 5, 7 and 9 re-roll one power level too few.
-    @unittest.expectedFailure
+    # F-022: can_reroll_rouse used to group BP 3-5, 6-7 and 8-9.
     def test_blood_potency_reroll_levels_odd_bp(self):
         self.assert_reroll_levels([5, 7, 9])
 

@@ -212,10 +212,10 @@ class CmdRollPower(default_cmds.MuxCommand):
       power/norouse <power name> [vs <difficulty>]
 
     Examples:
-      power Corrosive Vitae           # Auto-calculate pool, perform Rouse
-      power Corrosive Vitae vs 3      # vs difficulty 3
+      power Scry the Soul             # Auto-calculate pool, perform Rouse
+      power Scry the Soul vs 3        # vs difficulty 3
       power/willpower Awe             # With Willpower reroll option
-      power/norouse Heightened Senses # Skip Rouse check (free powers)
+      power/norouse Dread Gaze        # Skip Rouse check (testing)
 
     Switches:
       willpower - Offer Willpower reroll on failure (costs 1 Willpower)

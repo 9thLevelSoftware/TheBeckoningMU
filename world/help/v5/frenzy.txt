@@ -6,40 +6,37 @@ Frenzy is when the Beast takes control, overriding your rational mind with
 primal instinct. Vampires can enter frenzy when provoked, starving, or
 confronted with their banes (fire, sunlight, etc.).
 
-|WFRENZY TYPES:|n
+|WFRENZY TYPES:|n (V5 Quick Reference 2.0 p.4, p.13)
 
-|WHunger Frenzy|n
-  Triggered by: Blood scent, Hunger 5, failed Rouse checks, seeing mortals
-  bleed
-  Effect: Uncontrolled feeding - you attack the nearest source of blood
-  Difficulty: 2-4 (higher at Hunger 5)
+|WFury Frenzy|n - you stop at nothing to destroy the cause of the provocation
+  Friend killed 2, Lover or Touchstone hurt 3, Lover or Touchstone
+  killed 4, physical provocation or harassment 2, insulted by an
+  inferior 2, public humiliation 2
 
-|WFury Frenzy|n
-  Triggered by: Provocation, humiliation, physical attacks, insults
-  Effect: Violent rage - you attack the source of your anger
-  Difficulty: 3+ (Brujah have +2 difficulty due to clan bane)
+|WHunger Frenzy|n - you seek fresh human blood from the closest source
+  Sight of an open wound or overpowering smell of blood at Hunger 4+ 2,
+  taste of blood at Hunger 4+ 3, failing a Rouse check at Hunger 5 4
 
-|WTerror Frenzy (Rötschreck)|n
-  Triggered by: Fire, sunlight, True Faith
-  Effect: Blind panic - you flee in terror
-  Difficulty: 3-5 depending on the threat
+|WTerror Frenzy (Rotschreck)|n - you flee the danger, heedless of anything
+  in your way
+  Bonfire 2, being burned 2, inside a burning building 3, obscured
+  sunlight (through a window) 3, fully exposed to direct sunlight 4
 
-|WRESTISTING FRENZY:|n
+The number after each provocation is the Difficulty of the frenzy test.
 
-To resist frenzy, you roll |WWillpower + Composure|n vs a Difficulty set by
-the trigger. This roll includes |WHunger dice|n like any other roll.
+|WRESISTING FRENZY:|n
 
-Formula: |WWillpower + Composure|n vs Difficulty
+Roll |WWillpower + Humanity / 3|n (current Willpower plus a third of your
+Humanity, rounded down) against the provocation's Difficulty. If you fail,
+the Storyteller takes control of you until the frenzy ends. You can spend
+Willpower to regain control from a frenzy.
 
-The Difficulty is based on:
-• Base difficulty of the trigger type (2-5)
-• +1 per 2 points of Hunger (Hunger 4-5 makes frenzy more likely)
-• +2 for Brujah resisting fury frenzy (clan bane)
-• ST may adjust based on circumstances
+Clan banes can change the roll: a |yBrujah|n subtracts Bane Severity dice
+from rolls to resist fury frenzy (see help clans).
 
-|yExample:|n A Brujah with Willpower 5, Composure 3, and Hunger 4 is
-insulted (fury frenzy). Base difficulty is 3, +2 for Brujah bane, +2 for
-Hunger 4 = Difficulty 7. They roll 8 dice (5+3) with 4 Hunger dice.
+|yExample:|n A vampire with 5 Willpower and Humanity 7 is publicly
+humiliated (fury, Difficulty 2). They roll 5 + 2 = 7 dice and need two
+successes.
 
 |WFRENZY CONSEQUENCES:|n
 
@@ -93,33 +90,17 @@ of your actions.
   Example: |W+frenzy/check hunger|n
 
 |W+frenzy/resist <difficulty>|n
-  Roll to resist frenzy (Willpower + Composure vs Difficulty)
+  Roll to resist frenzy against a Difficulty
   Example: |W+frenzy/resist 4|n
 
-|WCLAN BANES & FRENZY:|n
+|WCLAN BANES & FRENZY:|n (V5 core clan chapter; see help clans)
 
 |WBrujah|n - Violent Temper
-  +2 difficulty to resist fury frenzy
+  Subtract Bane Severity dice from rolls to resist fury frenzy
 
-|WGangrel|n - Feral Impulses
-  Gain animal features when frenzying (cosmetic but noticeable)
-
-|WMalkavian|n - Fractured Perspective
-  May frenzy from triggers others find innocuous (ST discretion)
-
-|WNosferatu|n - Repulsive
-  Social provocations may trigger fury frenzy more easily
-
-|WToreador|n - Aesthetic Fixation
-  May enter trance-like state when confronted with beauty (similar to
-  frenzy)
-
-|WTremere|n - Deficient Blood
-  Blood Bonds form more quickly, may affect frenzy triggers
-
-|WVentrue|n - Refined Palate
-  No direct frenzy impact, but feeding restrictions may increase hunger
-  frenzy risk
+|WGangrel|n - Bestial Features
+  In frenzy, gain animal features equal to Bane Severity, each -1 to an
+  Attribute, lasting one more night (only one if you ride the wave)
 
 |WRELATED TOPICS:|n
 

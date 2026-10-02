@@ -148,6 +148,10 @@ def validate_v5_chargen_pools(json_data, clan=None):
             f"(plus predator bonus if applicable). Currently {discipline_total} total"
         )
 
+    # Only the clans in world.v5_data.CLANS are offered (core book only).
+    if clan and clan not in SPLATS:
+        errors.append(f"Clan '{clan}' is not available")
+
     # In-clan discipline check (skip for Caitiff and Thin-Blood)
     if (discipline_total == expected_total and clan
             and clan not in ('Caitiff', 'Thin-Blood') and isinstance(disciplines, dict)):

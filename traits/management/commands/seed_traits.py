@@ -8,6 +8,12 @@ Populates the database with:
 - All V5 disciplines (12 total)
 - All discipline powers, backgrounds, merits and flaws (from world/v5_data.py)
 
+Re-running it on a seeded database brings the rows up to date with
+world/v5_data.py: existing rows are updated in place, and rows that are no
+longer in v5_data (renamed or removed powers, non-core disciplines) are
+deleted if no character uses them, or marked inactive (hidden from the web
+API) if one does. --clear is not needed to apply a rules-data change.
+
 Usage:
     evennia seed_traits [--clear]
 """
@@ -27,6 +33,15 @@ from world.v5_data import (
     MERITS,
     SKILLS,
 )
+
+
+def rouse_cost_text(rouse):
+    """v5_data's Rouse-check count as the web API's cost text."""
+    if not rouse:
+        return 'Free'
+    if rouse == 1:
+        return 'One Rouse Check'
+    return f'{rouse} Rouse Checks'
 
 
 class Command(BaseCommand):
@@ -75,6 +90,11 @@ class Command(BaseCommand):
             # Create backgrounds, merits and flaws
             adv_count = self._create_advantages(categories['advantages'], categories['flaws'])
             self.stdout.write(self.style.SUCCESS(f'Created {adv_count} advantages and flaws'))
+
+            deleted, deactivated = self._prune_stale_rows()
+            self.stdout.write(self.style.SUCCESS(
+                f'Removed {deleted} rows no longer in v5_data; deactivated {deactivated} still in use'
+            ))
 
         self.stdout.write(self.style.SUCCESS('\n[SUCCESS] Trait seeding complete!'))
 
@@ -126,7 +146,7 @@ class Command(BaseCommand):
         for category_name in ['Physical', 'Social', 'Mental']:
             for attr_name in ATTRIBUTES[category_name]:
                 sort_order += 1
-                _, created = Trait.objects.get_or_create(
+                _, created = Trait.objects.update_or_create(
                     name=attr_name,
                     category=category,
                     defaults={
@@ -187,7 +207,7 @@ class Command(BaseCommand):
         for category_name in ['Physical', 'Social', 'Mental']:
             for skill_name in SKILLS[category_name]:
                 sort_order += 1
-                _, created = Trait.objects.get_or_create(
+                _, created = Trait.objects.update_or_create(
                     name=skill_name,
                     category=category,
                     defaults={
@@ -228,8 +248,9 @@ class Command(BaseCommand):
                 'has_specialties': False,
                 'is_instanced': False,
                 'splat_restriction': splat_restriction,
+                'is_active': True,
             }
-            _, created = Trait.objects.get_or_create(
+            _, created = Trait.objects.update_or_create(
                 name=disc_name,
                 category=category,
                 defaults=defaults
@@ -252,9 +273,13 @@ class Command(BaseCommand):
             defaults = {
                 'level': power['level'],
                 'description': power.get('description') or '',
-                'cost': 'One Rouse Check' if power.get('rouse') else 'Free',
+                'cost': rouse_cost_text(power.get('rouse', 0)),
                 'dice_pool': power.get('dice_pool') or '',
-                'duration': power.get('duration') or '',
+                'duration': power.get('duration_text') or power.get('duration') or '',
+                'is_active': True,
+                # Cleared unless the power has an amalgam (set below).
+                'amalgam_discipline': None,
+                'amalgam_level': None,
             }
 
             # Amalgam requirement is stored in v5_data as e.g. "Obfuscate 2"
@@ -265,7 +290,7 @@ class Command(BaseCommand):
                     defaults['amalgam_discipline'] = amalgam_disc
                     defaults['amalgam_level'] = int(amalgam_level)
 
-            _, created = DisciplinePower.objects.get_or_create(
+            _, created = DisciplinePower.objects.update_or_create(
                 name=power['name'],
                 discipline=discipline,
                 defaults=defaults
@@ -281,7 +306,7 @@ class Command(BaseCommand):
         sort_order = 0
         for name, data in BACKGROUNDS.items():
             sort_order += 1
-            _, created = Trait.objects.get_or_create(
+            _, created = Trait.objects.update_or_create(
                 name=name,
                 category=advantages_category,
                 defaults={
@@ -290,13 +315,14 @@ class Command(BaseCommand):
                     'min_value': 0,
                     'max_value': 5,
                     'is_instanced': bool(data.get('instanced')),
+                    'is_active': True,
                 },
             )
             count += int(created)
         for table, category in ((MERITS, advantages_category), (FLAWS, flaws_category)):
             for name, data in table.items():
                 sort_order += 1
-                _, created = Trait.objects.get_or_create(
+                _, created = Trait.objects.update_or_create(
                     name=name,
                     category=category,
                     defaults={
@@ -304,7 +330,47 @@ class Command(BaseCommand):
                         'sort_order': sort_order,
                         'min_value': min(data['dots']),
                         'max_value': max(data['dots']),
+                        'is_active': True,
                     },
                 )
                 count += int(created)
         return count
+
+    def _prune_stale_rows(self):
+        """Delete or deactivate rows that v5_data no longer has.
+
+        A row a character still uses (CharacterTrait/CharacterPower) is only
+        marked inactive, so no character data is lost.
+        """
+        deleted = deactivated = 0
+
+        current_powers = {(p['discipline'], p['name']) for p in DISCIPLINE_POWERS.values()}
+        for power in DisciplinePower.objects.select_related('discipline'):
+            if (power.discipline.name, power.name) in current_powers:
+                continue
+            if power.character_assignments.exists():
+                if power.is_active:
+                    power.is_active = False
+                    power.save(update_fields=['is_active'])
+                    deactivated += 1
+            else:
+                power.delete()
+                deleted += 1
+
+        current_traits = {
+            'disciplines': set(DISCIPLINES),
+            'advantages': set(BACKGROUNDS) | set(MERITS),
+            'flaws': set(FLAWS),
+        }
+        for code, names in current_traits.items():
+            for trait in Trait.objects.filter(category__code=code).exclude(name__in=names):
+                if trait.character_assignments.exists() or trait.powers.filter(
+                        character_assignments__isnull=False).exists():
+                    if trait.is_active:
+                        trait.is_active = False
+                        trait.save(update_fields=['is_active'])
+                        deactivated += 1
+                else:
+                    trait.delete()
+                    deleted += 1
+        return deleted, deactivated

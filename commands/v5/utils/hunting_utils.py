@@ -27,7 +27,7 @@ RESONANCE_TYPES = {
         "prey_types": ["bar fighter", "road rager", "abusive partner", "gang member", "sports fanatic"],
         "disciplines": ["Celerity", "Potence"]
     },
-    "Melancholic": {
+    "Melancholy": {
         "emotions": ["sad", "depressed", "intellectual", "contemplative", "grieving"],
         "prey_types": ["mourner", "depressed artist", "struggling student", "lonely academic", "heartbroken lover"],
         "disciplines": ["Fortitude", "Obfuscate"]
@@ -72,15 +72,15 @@ def determine_resonance(prey_description=None, location="street"):
     """
     # Location-based resonance tendencies
     location_resonance_map = {
-        "club": {"Choleric": 30, "Sanguine": 50, "Phlegmatic": 10, "Melancholic": 10},
-        "street": {"Choleric": 40, "Sanguine": 20, "Phlegmatic": 20, "Melancholic": 20},
-        "hospital": {"Melancholic": 50, "Phlegmatic": 30, "Choleric": 10, "Sanguine": 10},
-        "residential": {"Phlegmatic": 40, "Melancholic": 30, "Sanguine": 20, "Choleric": 10},
-        "rural": {"Phlegmatic": 40, "Melancholic": 40, "Choleric": 10, "Sanguine": 10},
+        "club": {"Choleric": 30, "Sanguine": 50, "Phlegmatic": 10, "Melancholy": 10},
+        "street": {"Choleric": 40, "Sanguine": 20, "Phlegmatic": 20, "Melancholy": 20},
+        "hospital": {"Melancholy": 50, "Phlegmatic": 30, "Choleric": 10, "Sanguine": 10},
+        "residential": {"Phlegmatic": 40, "Melancholy": 30, "Sanguine": 20, "Choleric": 10},
+        "rural": {"Phlegmatic": 40, "Melancholy": 40, "Choleric": 10, "Sanguine": 10},
     }
 
     # Get weighted probabilities for this location
-    weights = location_resonance_map.get(location, {"Choleric": 25, "Melancholic": 25, "Phlegmatic": 25, "Sanguine": 25})
+    weights = location_resonance_map.get(location, {"Choleric": 25, "Melancholy": 25, "Phlegmatic": 25, "Sanguine": 25})
 
     # Choose resonance type based on weights
     res_type = random.choices(
@@ -330,7 +330,7 @@ def generate_hunting_opportunity(location="street"):
             "They're clearly spoiling for a fight",
             "They're cursing loudly at their phone"
         ],
-        "Melancholic": [
+        "Melancholy": [
             "They're crying quietly on a bench",
             "They're staring listlessly into the distance",
             "They're visiting a grave alone"
