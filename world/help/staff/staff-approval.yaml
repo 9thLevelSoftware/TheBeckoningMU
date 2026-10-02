@@ -13,8 +13,8 @@ text: |
 
   Players create characters only on the website form (|y/character-creation/|n).
   Each submission is an application, with a job in the |yApproval|n bucket
-  that follows it (|yjobs Approval|n). The job commands work in or out of
-  character, so staff without a character can use them, and an applicant
+  that follows it (|yjobs Approval|n). The job and BBS commands work in or out
+  of character, so staff without a character can use them, and an applicant
   can follow their own Approval job with |y+myjobs|n before approval.
 
   Review on the website at |y/staff/character-approval/|n (Builder and above):
