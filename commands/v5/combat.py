@@ -1,54 +1,86 @@
 """
 V5 Combat Commands
 
-Commands for combat resolution:
-- +attack: Perform attack roll
-- +damage: Apply damage to target
-- +heal: Heal damage on target
+- +attack: a contested attack roll (reports the damage; staff mark it)
+- +damage: mark damage (on someone else: staff only)
+- +heal: mend your own Superficial damage with the Blood, or (staff) heal anyone
+- +health: show a Health track
 """
 
-from evennia import Command
+from evennia import Command, default_cmds
+from evennia.utils.utils import inherits_from
+
+from dice.commands import _is_staff, forget_roll
+from world.ansi_theme import BLOOD_RED, BOX_BL, BOX_BR, BOX_H, BOX_TL, BOX_TR, BOX_V, DARK_RED, GOLD, PALE_IVORY, RESET
+
 from .utils.combat_utils import (
-    calculate_attack,
+    DAMAGE_TYPES,
+    DEFAULT_ATTACK_POOL,
+    DEFAULT_DEFENSE_POOL,
     apply_damage,
-    heal_damage,
+    calculate_attack,
     get_health_status,
-    get_combat_pool
-)
-from world.ansi_theme import (
-    BLOOD_RED, DARK_RED, PALE_IVORY, SHADOW_GREY, GOLD, RESET,
-    BOX_H, BOX_V, BOX_TL, BOX_TR, BOX_BL, BOX_BR
+    heal_damage,
+    mend_superficial,
 )
 
 
-class CmdAttack(Command):
+def _banner(title, color=PALE_IVORY):
+    return (
+        f"\n{BOX_TL}{BOX_H * 76}{BOX_TR}\n"
+        f"{BOX_V} {color}{title}{RESET}" + " " * (76 - len(title) - 1) + f"{BOX_V}\n"
+        f"{BOX_BL}{BOX_H * 76}{BOX_BR}\n\n"
+    )
+
+
+def _dice_line(roll):
+    """A defender's roll as dice and successes (it has no difficulty of its own)."""
+    line = f"[{' '.join(str(d) for d in roll.regular_dice)}]"
+    if roll.hunger_dice:
+        line += f" Hunger [{' '.join(str(d) for d in roll.hunger_dice)}]"
+    return f"{line} - {roll.total_successes} successes"
+
+
+def _find_character(caller, name):
+    """caller.search for a Character; messages the caller and returns None otherwise."""
+    target = caller.search(name)
+    if not target:
+        return None
+    if not inherits_from(target, "typeclasses.characters.Character"):
+        caller.msg(f"{BLOOD_RED}Error:{RESET} {target.key} has no Health track.")
+        return None
+    return target
+
+
+class CmdAttack(default_cmds.MuxCommand):
     """
-    Perform an attack roll against a target.
+    Make a contested attack roll against a target.
 
     Usage:
-        +attack <target>=<dice pool description>
         +attack <target>
+        +attack <target>=<attack pool>
+        +attack <target>=<attack pool>/<weapon damage>
+        +attack <target>=<attack pool>/<weapon damage> vs <defense pool>
 
-    Rolls an attack using the specified dice pool against the target's defense.
-    On success, displays the margin of success for damage calculation.
+    Attacks are contested (V5 core p.123-126). You roll your attack pool
+    (default Strength + Brawl) and the target rolls their defense pool
+    (default Dexterity + Athletics, plus an active Celerity bonus). You hit
+    if you get at least as many successes as the target (a tie goes to the
+    attacker). The damage is your margin (your successes minus theirs) plus
+    the weapon's damage (and an active Potence bonus).
 
-    The dice pool description should be in the format "Attribute + Skill",
-    for example: "Strength + Brawl" or "Dexterity + Firearms"
+    Each side rolls its own Hunger dice (mortals and ghouls roll none) and
+    loses 2 dice while its Health track is full (Impaired). The pool shown
+    is the pool rolled.
 
-    If no dice pool is specified, defaults to "Strength + Brawl".
+    The attack only reports the damage: the Storyteller marks it with
+    +damage. A vampire halves mundane Superficial damage (rounding up) when
+    it is marked.
 
     Examples:
-        +attack Bob=Strength + Brawl
-        +attack Alice=Dexterity + Firearms
-        +attack Charlie=Strength + Melee
         +attack Bob
-
-    The system will:
-    1. Calculate your total dice pool from specified traits
-    2. Roll against target's Defense (Dexterity + Athletics + Celerity)
-    3. Display success/failure and margin
-    4. Apply discipline bonuses (Potence, Celerity)
-    5. Factor in impairment penalties if injured
+        +attack Bob=Dexterity + Firearms/2
+        +attack Bob=Strength + Melee/2 vs Strength + Melee
     """
 
     key = "+attack"
@@ -57,118 +89,97 @@ class CmdAttack(Command):
     help_category = "V5 - Combat"
 
     def func(self):
-        """Execute the command."""
         caller = self.caller
-
-        # Check for character validity
-        if not hasattr(caller.db, 'pools'):
-            caller.msg(f"{BLOOD_RED}Error:{RESET} You must have a character sheet to attack.")
+        if not inherits_from(caller, "typeclasses.characters.Character"):
+            caller.msg(f"{BLOOD_RED}Error:{RESET} You must be in character to attack.")
+            return
+        if not self.lhs:
+            caller.msg(f"{BLOOD_RED}Usage:{RESET} +attack <target>[=<attack pool>[/<weapon damage>][ vs <defense pool>]]")
             return
 
-        # Parse arguments
-        if not self.args:
-            caller.msg(f"{BLOOD_RED}Usage:{RESET} +attack <target>=<dice pool>")
-            caller.msg(f"Example: +attack Bob=Strength + Brawl")
-            return
+        attack_desc, weapon, defense_desc = DEFAULT_ATTACK_POOL, 0, DEFAULT_DEFENSE_POOL
+        spec = (self.rhs or "").strip()
+        if spec:
+            if " vs " in spec.lower():
+                index = spec.lower().index(" vs ")
+                spec, defense_desc = spec[:index].strip(), spec[index + 4:].strip()
+            if "/" in spec:
+                spec, weapon_str = (part.strip() for part in spec.split("/", 1))
+                try:
+                    weapon = int(weapon_str)
+                except ValueError:
+                    caller.msg(f"{BLOOD_RED}Error:{RESET} Weapon damage must be a number.")
+                    return
+                if not 0 <= weapon <= 10:
+                    caller.msg(f"{BLOOD_RED}Error:{RESET} Weapon damage must be between 0 and 10.")
+                    return
+            attack_desc = spec or DEFAULT_ATTACK_POOL
 
-        # Split target and pool description
-        if "=" in self.args:
-            target_name, pool_desc = [x.strip() for x in self.args.split("=", 1)]
-        else:
-            target_name = self.args.strip()
-            pool_desc = "Strength + Brawl"  # Default attack pool
-
-        # Find target
-        target = caller.search(target_name)
+        target = _find_character(caller, self.lhs.strip())
         if not target:
             return
-
-        # Verify target has health
-        if not hasattr(target.db, 'pools'):
-            caller.msg(f"{BLOOD_RED}Error:{RESET} {target.name} cannot be attacked.")
+        if target == caller:
+            caller.msg(f"{BLOOD_RED}Error:{RESET} You can't attack yourself.")
             return
-
-        # Get attack pool with impairment
-        pool_info = get_combat_pool(caller, pool_desc, include_impairment=True)
-
-        if pool_info["pool"] == 0:
-            caller.msg(f"{BLOOD_RED}Error:{RESET} {pool_info['breakdown']}")
-            return
-
-        # Calculate attack
-        from dice.commands import forget_roll
 
         forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
-        result = calculate_attack(caller, target, pool_desc)
+        result = calculate_attack(caller, target, attack_desc, weapon, defense_desc)
+        if result.get("error"):
+            caller.msg(f"{BLOOD_RED}Error:{RESET} {result['error']}")
+            return
 
-        # Build output
-        output = f"\n{BOX_TL}{BOX_H * 76}{BOX_TR}\n"
-        output += f"{BOX_V} {BLOOD_RED}ATTACK ROLL{RESET}"
-        output += " " * (76 - len("ATTACK ROLL") - 3) + f"{BOX_V}\n"
-        output += f"{BOX_BL}{BOX_H * 76}{BOX_BR}\n\n"
-
-        output += f"{GOLD}Attacker:{RESET} {caller.name}\n"
-        output += f"{GOLD}Target:{RESET} {target.name}\n"
-        output += f"{GOLD}Attack Pool:{RESET} {pool_info['breakdown']}\n"
-        output += f"{GOLD}Defense:{RESET} {result['defense']}\n\n"
-
-        # Show dice result details
-        dice_result = result['result']
-        output += f"{GOLD}Roll:{RESET} {dice_result}\n\n"
-
-        # Show result message
-        output += result['message'] + "\n"
-
-        if result['success']:
-            output += f"\n{GOLD}Damage:{RESET} Base weapon damage + {result['margin']} (margin)"
-            if result.get('potence_bonus', 0) > 0:
-                output += f" + {result['potence_bonus']} (Potence)"
-
-            output += f"\n\n{SHADOW_GREY}Use +damage {target.name}=<amount>/<type> to apply damage.{RESET}"
-
+        output = _banner("ATTACK ROLL", BLOOD_RED)
+        output += f"{GOLD}Attacker:{RESET} {caller.name} - {attack_desc}: {result['attack']['breakdown']}\n"
+        output += f"{GOLD}Defender:{RESET} {target.name} - {defense_desc}: {result['defense']['breakdown']}\n\n"
+        output += f"{GOLD}Your roll:{RESET} {result['result'].format_result(show_details=True)}\n"
+        output += f"{GOLD}Their roll:{RESET} {_dice_line(result['defense_result'])}\n\n"
+        output += result["message"] + "\n"
+        if result["success"]:
+            output += f"\nThe Storyteller marks it: +damage {target.name}={result['damage']}/<superficial|aggravated>\n"
         output += f"\n{BOX_H * 78}\n"
-
-        # Send to attacker and target
         caller.msg(output)
 
-        # Notify target
-        target_msg = f"\n{BLOOD_RED}{caller.name} attacks you!{RESET}\n"
-        target_msg += f"Their attack roll: {dice_result.total_successes} successes vs your defense of {result['defense']}\n"
-        if result['success']:
-            target_msg += f"{DARK_RED}The attack succeeds!{RESET} Margin: {result['margin']}\n"
+        target_msg = f"\n{BLOOD_RED}{caller.name} attacks you!{RESET} ({attack_desc} vs your {defense_desc})\n"
+        target_msg += (
+            f"Their successes: {result['result'].total_successes}; yours: "
+            f"{result['defense_result'].total_successes}.\n"
+        )
+        if result["success"]:
+            target_msg += f"{DARK_RED}The attack hits for {result['damage']} damage (before any halving).{RESET}\n"
         else:
-            target_msg += f"{PALE_IVORY}You successfully defend!{RESET}\n"
+            target_msg += f"{PALE_IVORY}You avoid the attack.{RESET}\n"
         target.msg(target_msg)
+        if caller.location:
+            outcome = "hits" if result["success"] else "misses"
+            caller.location.msg_contents(
+                f"|c{caller.name}|n attacks |c{target.name}|n and {outcome}.", exclude=[caller, target]
+            )
 
 
-class CmdDamage(Command):
+class CmdDamage(default_cmds.MuxCommand):
     """
-    Apply damage to a target.
+    Mark damage on a Health track.
 
     Usage:
-        +damage <target>=<amount>/<type>
-        +damage <target>=<amount>
+        +damage <amount>[/<type>]               (yourself)
+        +damage <target>=<amount>[/<type>]      (staff only, unless the target is you)
+        +damage/unhalved <target>=<amount>      (staff: Superficial damage that isn't halved)
 
-    Applies damage to the target. Damage types:
-    - superficial: Normal damage, heals quickly (default)
-    - aggravated: Serious damage, hard to heal
-    - lethal: Lethal damage (becomes superficial for vampires)
+    Types: superficial (default) or aggravated.
 
-    If no type is specified, defaults to superficial damage.
+    A vampire halves mundane Superficial damage, rounding up, before it is
+    marked (mortals, ghouls and thin-bloods without Vampiric Resilience
+    don't). When the track is full, each further Superficial point turns a
+    Superficial box into Aggravated. A full track is Impaired (-2 dice to
+    Physical tests); a vampire whose track is full of Aggravated damage
+    falls into torpor.
+
+    Only staff can damage another character.
 
     Examples:
-        +damage Bob=3/superficial
-        +damage Alice=2/aggravated
-        +damage Charlie=5/lethal
+        +damage 2
         +damage Bob=3
-
-    Effects:
-    - Superficial damage fills from left
-    - Aggravated damage fills from right
-    - When superficial fills all boxes, it converts to aggravated
-    - Fortitude can reduce incoming damage
-    - At half health, -2 dice penalty (impaired)
-    - At zero health, torpor (for vampires) or death
+        +damage Bob=2/aggravated
     """
 
     key = "+damage"
@@ -177,189 +188,148 @@ class CmdDamage(Command):
     help_category = "V5 - Combat"
 
     def func(self):
-        """Execute the command."""
         caller = self.caller
-
-        # Parse arguments
-        if not self.args or "=" not in self.args:
-            caller.msg(f"{BLOOD_RED}Usage:{RESET} +damage <target>=<amount>/<type>")
-            caller.msg(f"Example: +damage Bob=3/superficial")
-            caller.msg(f"Types: superficial (default), aggravated, lethal")
+        if not self.args:
+            caller.msg(f"{BLOOD_RED}Usage:{RESET} +damage [<target>=]<amount>[/superficial|aggravated]")
             return
 
-        # Split target and damage info
-        target_name, damage_info = [x.strip() for x in self.args.split("=", 1)]
-
-        # Find target
-        target = caller.search(target_name)
-        if not target:
-            return
-
-        # Verify target has health
-        if not hasattr(target.db, 'pools'):
-            caller.msg(f"{BLOOD_RED}Error:{RESET} {target.name} cannot take damage.")
-            return
-
-        # Parse damage amount and type
-        if "/" in damage_info:
-            amount_str, damage_type = [x.strip() for x in damage_info.split("/", 1)]
+        if self.rhs is not None:
+            target = _find_character(caller, self.lhs.strip())
+            if not target:
+                return
+            damage_info = self.rhs.strip()
         else:
-            amount_str = damage_info.strip()
-            damage_type = "superficial"
+            target, damage_info = caller, self.args.strip()
 
-        # Validate damage amount
-        try:
-            damage_amount = int(amount_str)
-        except ValueError:
-            caller.msg(f"{BLOOD_RED}Error:{RESET} Invalid damage amount '{amount_str}'.")
+        if target != caller and not _is_staff(caller):
+            caller.msg(f"{BLOOD_RED}Only staff can damage another character.{RESET}")
+            return
+        if "unhalved" in self.switches and not _is_staff(caller):
+            caller.msg(f"{BLOOD_RED}Only staff can mark unhalved damage.{RESET}")
+            return
+        if not inherits_from(target, "typeclasses.characters.Character"):
+            caller.msg(f"{BLOOD_RED}Error:{RESET} You must be in character.")
             return
 
-        if damage_amount <= 0:
+        amount_str, _, damage_type = damage_info.partition("/")
+        damage_type = (damage_type.strip() or "superficial").lower()
+        try:
+            amount = int(amount_str.strip())
+        except ValueError:
+            caller.msg(f"{BLOOD_RED}Error:{RESET} Invalid damage amount '{amount_str.strip()}'.")
+            return
+        if amount <= 0:
             caller.msg(f"{BLOOD_RED}Error:{RESET} Damage amount must be positive.")
             return
-
-        # Validate damage type
-        valid_types = ["superficial", "aggravated", "lethal"]
-        if damage_type.lower() not in valid_types:
-            caller.msg(f"{BLOOD_RED}Error:{RESET} Invalid damage type '{damage_type}'.")
-            caller.msg(f"Valid types: {', '.join(valid_types)}")
+        if damage_type not in DAMAGE_TYPES:
+            caller.msg(f"{BLOOD_RED}Error:{RESET} Damage type must be {' or '.join(DAMAGE_TYPES)}.")
             return
 
-        # Apply damage
-        result = apply_damage(target, damage_amount, damage_type.lower())
-
-        if not result['success']:
+        result = apply_damage(target, amount, damage_type, halve="unhalved" not in self.switches)
+        if not result["success"]:
             caller.msg(f"{BLOOD_RED}Error:{RESET} {result['message']}")
             return
 
-        # Build output
-        output = f"\n{BOX_TL}{BOX_H * 76}{BOX_TR}\n"
-        output += f"{BOX_V} {DARK_RED}DAMAGE APPLIED{RESET}"
-        output += " " * (76 - len("DAMAGE APPLIED") - 3) + f"{BOX_V}\n"
-        output += f"{BOX_BL}{BOX_H * 76}{BOX_BR}\n\n"
-
-        output += f"{GOLD}Target:{RESET} {target.name}\n"
-        output += result['message'] + "\n\n"
+        output = _banner("DAMAGE", DARK_RED)
+        output += result["message"] + "\n\n"
         output += f"{GOLD}Health:{RESET} {result['health_status']}\n"
         output += f"\n{BOX_H * 78}\n"
-
-        # Send to both parties
         caller.msg(output)
         if target != caller:
             target.msg(output)
 
 
-class CmdHeal(Command):
+class CmdHeal(default_cmds.MuxCommand):
     """
-    Heal damage on a target.
+    Mend your Superficial damage with the Blood, or (staff) heal a character.
 
     Usage:
-        +heal <target>=<amount>/<type>
-        +heal <target>=<amount>
-        +heal self=<amount>/<type>
+        +heal                                (mend: one Rouse check)
+        +heal <target>=<amount>[/<type>]     (staff only)
 
-    Heals damage on the target. Damage types:
-    - superficial: Normal damage (default)
-    - aggravated: Aggravated damage
+    Mending (QR p.13): once per turn a vampire may Rouse the Blood to mend
+    Superficial damage, as much as their Blood Potency allows (BP 0-1: 1,
+    BP 2-3: 2, BP 4-7: 3, BP 8-9: 4, BP 10: 5). A failed Rouse check raises
+    your Hunger; at Hunger 5 you can't Rouse, so you can't mend.
 
-    If no type is specified, defaults to superficial damage.
-
-    For vampires, healing superficial damage through Blood Surge uses
-    the mend damage mechanics (requires Rouse check, amount based on
-    Blood Potency).
+    Aggravated damage mends at nightfall with three Rouse checks per point,
+    and Willpower recovers at the start of a session; ask the Storyteller.
+    Only staff can heal another character or heal without a Rouse check.
 
     Examples:
-        +heal self=2/superficial
+        +heal
+        +heal Bob=2
         +heal Bob=1/aggravated
-        +heal Alice=3
-
-    Note: This command is primarily for Storytellers to manage health,
-    or for characters using healing powers. Vampires should use blood
-    surge mechanics for natural healing.
-
-    Permissions: Generally requires ST permission except for self-healing
-    with appropriate powers or between combat scenes.
     """
 
     key = "+heal"
-    aliases = ["heal"]
+    aliases = ["heal", "+mend", "mend"]
     locks = "cmd:all()"
     help_category = "V5 - Combat"
 
     def func(self):
-        """Execute the command."""
         caller = self.caller
-
-        # Parse arguments
-        if not self.args or "=" not in self.args:
-            caller.msg(f"{BLOOD_RED}Usage:{RESET} +heal <target>=<amount>/<type>")
-            caller.msg(f"Example: +heal self=2/superficial")
-            caller.msg(f"Types: superficial (default), aggravated")
+        if not inherits_from(caller, "typeclasses.characters.Character") and self.rhs is None:
+            caller.msg(f"{BLOOD_RED}Error:{RESET} You must be in character to mend.")
             return
 
-        # Split target and heal info
-        target_name, heal_info = [x.strip() for x in self.args.split("=", 1)]
-
-        # Find target (handle "self")
-        if target_name.lower() == "self" or target_name.lower() == "me":
-            target = caller
-        else:
-            target = caller.search(target_name)
-            if not target:
+        if self.rhs is None:
+            if self.args.strip().lower() not in ("", "self", "me"):
+                caller.msg(f"{BLOOD_RED}Usage:{RESET} +heal  (mend your own Superficial damage)")
                 return
-
-        # Verify target has health
-        if not hasattr(target.db, 'pools'):
-            caller.msg(f"{BLOOD_RED}Error:{RESET} {target.name} cannot be healed.")
+            self._mend()
             return
 
-        # Parse heal amount and type
-        if "/" in heal_info:
-            amount_str, damage_type = [x.strip() for x in heal_info.split("/", 1)]
-        else:
-            amount_str = heal_info.strip()
-            damage_type = "superficial"
+        if not _is_staff(caller):
+            caller.msg(
+                f"{BLOOD_RED}Only staff can heal a character directly.{RESET} Use +heal to mend your own "
+                "Superficial damage with a Rouse check."
+            )
+            return
 
-        # Validate heal amount
+        name = self.lhs.strip()
+        target = caller if name.lower() in ("self", "me") else _find_character(caller, name)
+        if not target:
+            return
+
+        amount_str, _, damage_type = self.rhs.strip().partition("/")
+        damage_type = (damage_type.strip() or "superficial").lower()
         try:
-            heal_amount = int(amount_str)
+            amount = int(amount_str.strip())
         except ValueError:
-            caller.msg(f"{BLOOD_RED}Error:{RESET} Invalid heal amount '{amount_str}'.")
+            caller.msg(f"{BLOOD_RED}Error:{RESET} Invalid heal amount '{amount_str.strip()}'.")
             return
-
-        if heal_amount <= 0:
+        if amount <= 0:
             caller.msg(f"{BLOOD_RED}Error:{RESET} Heal amount must be positive.")
             return
-
-        # Validate damage type
-        valid_types = ["superficial", "aggravated"]
-        if damage_type.lower() not in valid_types:
-            caller.msg(f"{BLOOD_RED}Error:{RESET} Invalid damage type '{damage_type}'.")
-            caller.msg(f"Valid types: {', '.join(valid_types)}")
+        if damage_type not in DAMAGE_TYPES:
+            caller.msg(f"{BLOOD_RED}Error:{RESET} Damage type must be {' or '.join(DAMAGE_TYPES)}.")
             return
 
-        # Apply healing
-        result = heal_damage(target, heal_amount, damage_type.lower())
-
-        if not result['success']:
+        result = heal_damage(target, amount, damage_type)
+        if not result["success"]:
             caller.msg(f"{BLOOD_RED}Error:{RESET} {result['message']}")
             return
-
-        # Build output
-        output = f"\n{BOX_TL}{BOX_H * 76}{BOX_TR}\n"
-        output += f"{BOX_V} {PALE_IVORY}HEALING APPLIED{RESET}"
-        output += " " * (76 - len("HEALING APPLIED") - 3) + f"{BOX_V}\n"
-        output += f"{BOX_BL}{BOX_H * 76}{BOX_BR}\n\n"
-
-        output += f"{GOLD}Target:{RESET} {target.name}\n"
-        output += result['message'] + "\n\n"
+        output = _banner("HEALING")
+        output += result["message"] + "\n\n"
         output += f"{GOLD}Health:{RESET} {result['health_status']}\n"
         output += f"\n{BOX_H * 78}\n"
-
-        # Send to both parties
         caller.msg(output)
         if target != caller:
             target.msg(output)
+
+    def _mend(self):
+        from dice.rouse_checker import format_rouse_lines
+
+        caller = self.caller
+        result = mend_superficial(caller)
+        lines = [_banner("MENDING").rstrip("\n")]
+        if result["rouse_result"] is not None and not result["rouse_result"].refused:
+            lines.extend(format_rouse_lines(result["rouse_result"]))
+        color = GOLD if result["success"] else BLOOD_RED
+        lines.append(f"{color}{result['message']}{RESET}")
+        lines.append(f"{GOLD}Health:{RESET} {get_health_status(caller)}")
+        caller.msg("\n".join(lines))
 
 
 class CmdHealth(Command):
