@@ -28,22 +28,25 @@ gets it through the Thin-blood Alchemist merit. (V5 core p.282-288.)
 
 |WIN THE GAME:|n
 
-The |y+alchemy|n commands use a simplified crafting roll (Intelligence +
-Thin-Blood Alchemy) rather than the book's distillation methods.
+|y+spend formula <name>|n
+  Learn a formula (formula level x 3 XP; needs Thin-Blood Alchemy at its level)
 
 |y+alchemy|n
-  View all known formulae
+  Your known formulas and distilled doses
 
-|y+alchemy/craft <formula name>|n
-  Craft an alchemical formula
-  Example: |y+alchemy/craft far reach|n
+|y+alchemy/distill <formula>[=<method>] [vs <difficulty>]|n
+  Distil a dose: 1 Rouse check, and a roll of the method pool with your
+  Hunger dice (athanor: Stamina, calcinatio: Manipulation, fixatio:
+  Intelligence, each + Thin-Blood Alchemy). The difficulty is 3 unless
+  the Storyteller sets another. A success gives one dose.
+  Example: |y+alchemy/distill far reach=fixatio|n
 
-|y+alchemy/use <formula name>|n
-  Activate a crafted formula
-  Example: |y+alchemy/use far reach|n
+|y+alchemy/use <formula>|n
+  Use a dose: pay the formula's Rouse cost and roll its pool, if it has one.
 
-|y+alchemy/ingredients|n
-  View your ingredient inventory
+At Hunger 5 you can't Rouse, so you can't distil or use a formula that
+needs a Rouse check. Staff can grant the Thin-blood Alchemist merit's
+formula without XP.
 
 |[r+===================================================================+|n
 

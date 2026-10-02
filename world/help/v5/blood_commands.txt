@@ -7,27 +7,18 @@ Blood Surge, and Hunger tracking.
 
 |WFEEDING:|n
 
-|yfeed <target> [<resonance>]|n
-  Feed on a mortal to reduce Hunger.
+Players feed with |y+hunt <hunting ground>|n, or ask for a staff-run hunt
+scene with |y+hunt/staffed <ground>|n (see help hunt).
 
-|yfeed/slake <target>|n
-  Feed until Hunger reaches 0 (dangerous, multiple rolls).
+|yfeed <character>=<source>[/<resonance>[/<intensity>]]|n   (staff only)
+  Record a feeding from a staff-run scene. Sources (QR p.12): small
+  animals, animal, large animal, bag, sip, drink, harmful <1-4>, kill.
+  Only a kill takes Hunger to 0; Blood Potency feeding penalties apply.
 
 |yExamples:|n
-  feed mortal                    # Hunt a generic mortal
-  feed mortal choleric           # Hunt for choleric resonance
-  feed/slake victim              # Drain completely (risky)
-
-|yResonances:|n
-  - |ycholeric|n - Anger, passion, aggression
-  - |ymelancholy|n - Sadness, introspection, artists
-  - |yphlegmatic|n - Calm, apathy, laziness
-  - |ysanguine|n - Joy, pleasure, desire
-
-Feeding requires a roll based on your Predator Type. On success:
-  - Hunger is reduced (1-3 based on margin of success)
-  - Your resonance is set to the victim's emotional state
-  - |[RMessy Criticals|n may draw attention or leave evidence
+  feed Bob=drink/choleric
+  feed Bob=harmful 3/sanguine/2
+  feed Bob=kill
 
 |WBLOOD SURGE:|n
 

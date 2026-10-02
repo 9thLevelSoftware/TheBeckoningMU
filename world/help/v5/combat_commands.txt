@@ -2,124 +2,33 @@
 |W|                     COMBAT COMMANDS                              |
 |[R+===================================================================+|n
 
-Commands for V5 combat resolution including attacks, damage, and healing.
+|y+attack <target>[=<attack pool>[/<weapon damage>][ vs <defense pool>]]|n
+  A contested attack. You roll your attack pool (default Strength + Brawl)
+  and the target rolls their defense pool (default Dexterity + Athletics).
+  You hit with at least as many successes as the target; the damage is the
+  margin plus the weapon damage. An Impaired attacker or defender loses 2
+  dice, and the pool shown is the pool rolled. The attack only reports
+  the damage: the Storyteller marks it with +damage.
 
-|WATTACKING:|n
+  +attack Bob
+  +attack Bob=Dexterity + Firearms/2
+  +attack Bob=Strength + Melee/2 vs Strength + Melee
 
-|y+attack <target>=<dice pool description>|n
-|y+attack <target>|n
-  Perform an attack roll against a target.
+|y+damage <amount>[/<type>]|n                (yourself)
+|y+damage <target>=<amount>[/<type>]|n       (staff only for someone else)
+|y+damage/unhalved <target>=<amount>|n       (staff: Superficial not halved)
+  Types: superficial (default) or aggravated. A vampire halves mundane
+  Superficial damage, rounding up. Reports Impairment (a full track) and
+  torpor (a track full of Aggravated damage).
 
-|yExamples:|n
-  +attack Bob=Strength + Brawl       # Unarmed attack
-  +attack Alice=Dexterity + Firearms # Ranged attack
-  +attack Charlie=Strength + Melee   # Melee weapon attack
-  +attack Bob                        # Defaults to Strength + Brawl
+|y+heal|n
+  Mend your own Superficial damage: one Rouse check heals your Blood
+  Potency's mend amount. Refused at Hunger 5.
 
-|yThe system will:|n
-  1. Calculate your total dice pool from specified traits
-  2. Roll against target's Defense (Dex + Athletics + Celerity)
-  3. Display success/failure and margin
-  4. Apply discipline bonuses (Potence, Celerity)
-  5. Factor in impairment penalties if injured
+|y+heal <target>=<amount>[/<type>]|n         (staff only)
+  Heal a character directly, with no Rouse check.
 
-|WAPPLYING DAMAGE:|n
+|y+health [<target>]|n
+  Show a Health track: O healthy, / Superficial, X Aggravated.
 
-|y+damage <target>=<amount>/<type>|n
-|y+damage <target>=<amount>|n
-  Apply damage to a target.
-
-|yDamage Types:|n
-  - |wsuperficial|n - Normal damage, heals quickly (default)
-  - |raggravated|n - Serious damage, hard to heal
-  - |ylethal|n - Lethal damage (becomes superficial for vampires)
-
-|yExamples:|n
-  +damage Bob=3/superficial
-  +damage Alice=2/aggravated
-  +damage Charlie=5/lethal
-  +damage Bob=3                     # Defaults to superficial
-
-|yDamage Effects:|n
-  - Superficial damage fills from left on health track
-  - Aggravated damage fills from right
-  - When superficial fills all boxes, converts to aggravated
-  - Fortitude can reduce incoming damage
-  - At half health: |y-2 dice penalty|n (impaired)
-  - At zero health: torpor (vampires) or death (mortals)
-
-|WHEALING:|n
-
-|y+heal <target>=<amount>/<type>|n
-|y+heal self=<amount>/<type>|n
-  Heal damage on a target.
-
-|yExamples:|n
-  +heal self=2/superficial
-  +heal Bob=1/aggravated
-  +heal Alice=3                     # Defaults to superficial
-
-|yHealing Types:|n
-  - |wsuperficial|n - Normal damage (default)
-  - |raggravated|n - Aggravated damage
-
-|yVampire Healing:|n
-For vampires, healing superficial damage through Blood Surge
-uses the mend damage mechanics (requires Rouse check, amount
-based on Blood Potency).
-
-|yNote:|n This command is primarily for Storytellers to manage
-health, or for characters using healing powers. Vampires should
-use blood surge mechanics for natural healing.
-
-|WHEALTH STATUS:|n
-
-|y+health|n
-|y+health <target>|n
-  Display current health status.
-
-|yExamples:|n
-  +health
-  +health Bob
-
-|yHealth Display Legend:|n
-  |wO|n = Healthy box
-  |r/|n = Superficial damage
-  |RX|n = Aggravated damage
-
-|yShows:|n
-  - Health track with damage markers
-  - Maximum and current health
-  - Superficial and aggravated damage counts
-  - Impairment status if injured
-
-|WCOMBAT FLOW:|n
-
-1. |WInitiate:|n Describe your action, then roll attack
-2. |WDefense:|n System calculates target's defense automatically
-3. |WMargin:|n Success margin determines base damage bonus
-4. |WDamage:|n Apply damage using +damage command
-5. |WConsequences:|n Check impairment, torpor, etc.
-
-|yExample Combat Exchange:|n
-  > +attack Bob=Dexterity + Melee
-  [System shows roll result, margin of 3]
-  > +damage Bob=5/superficial
-  (Base weapon 2 + margin 3 = 5 superficial)
-
-|WCOMBAT MODIFIERS:|n
-
-|yAutomatic Bonuses:|n
-  - Potence adds damage dice
-  - Celerity adds defense dice
-  - Fortitude can reduce damage
-
-|yPenalties:|n
-  - Impairment (half health): -2 dice to all pools
-  - Hunger 5: All dice become Hunger dice
-
-|WRELATED TOPICS:|n
-
-|ySee also:|n help combat, help roll, help disciplines, help health
-
-|[r+===================================================================+|n
+|ySee also:|n help combat, help +stain, help mend
