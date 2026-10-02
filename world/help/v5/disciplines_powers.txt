@@ -27,13 +27,17 @@ Shows all powers for a specific discipline you know.
 ```
 Shows detailed information about a specific discipline power.
 
-### Activate a Power
+### Use a Power
 ```
+power <power name> [vs <difficulty>]
+power <power name> = <target>
 +power <discipline>/<power name>
-+activate animalism/bond famulus
-+use dominate/compel
 ```
-Activates a discipline power. If the power requires a Rouse check, it will be performed automatically.
+Uses a discipline power you know: it rolls the power's pool (if it has
+one) with your Hunger, then makes its Rouse checks, and the Hunger they
+cost is added afterwards. At Hunger 5 a power that needs a Rouse check is
+refused. A contested power rolls against the named target's resistance.
+See `help power` for the details.
 
 ## The Core Disciplines
 

@@ -2,117 +2,58 @@
 |W|                      HUMANITY SYSTEM                              |
 |[R+===================================================================+|n
 
-Humanity represents your connection to mortal life and your resistance to
-the Beast. It's measured on a scale of 0-10, with vampires typically
-starting at Humanity 7.
+Humanity (0-10) is your connection to mortal life and your hold on the
+Beast. New characters start at Humanity 7 (QR p.2; Ancillae at 6).
 
-|WHUMANITY SCALE (0-10):|n
+|WSTAINS|n (QR p.3)
 
-|WHumanity 10|n - |WSaint|n
-  - Truly exceptional moral compass
-  - Can have up to 5 Touchstones
-  - Very rare among vampires
+You gain Stains when you break the Chronicle Tenets or your own
+Convictions; the Storyteller says how many. Stains fill the unmarked boxes
+of your Humanity tracker (10 minus your Humanity). If a Stain would
+overfill the tracker, it isn't marked: you take one |wAggravated Willpower
+damage|n instead, for each Stain that doesn't fit.
 
-|WHumanity 7-9|n - |wHuman|n
-  - Strong connection to mortal values
-  - 3-4 Touchstones available
-  - Most newly Embraced vampires
+  Example: Humanity 8 leaves 2 boxes. With 2 Stains already marked, one
+  more Stain becomes 1 Aggravated Willpower damage.
 
-|WHumanity 4-6|n - |yJaded|n
-  - Moral flexibility, some detachment
-  - 2-3 Touchstones available
-  - Many established vampires
+A messy critical doesn't add a Stain by itself.
 
-|WHumanity 1-3|n - |[RMonstrous|n
-  - Barely clinging to humanity
-  - 0-1 Touchstones available
-  - The Beast is very close
+While Stains fill the tracker (Degeneration) you are Impaired: -2 dice to
+all tests until your Remorse test (QR p.3).
 
-|WHumanity 0|n - |[RWassail|n
-  - Total loss of humanity
-  - The Beast has won
-  - Character becomes an NPC
+|WREMORSE|n (QR p.3)
 
-|WSTAINS:|n
+At the end of each session, if you have Stains, make a Remorse test with
+|w+remorse|n:
+  1. Roll one die for each unmarked Humanity box: 10 - Humanity - Stains,
+     with a minimum of one die. Remorse uses no Hunger dice.
+  2. Any success: you keep your Humanity.
+  3. No successes: you lose 1 Humanity.
+  Either way, all your Stains are cleared.
 
-Stains represent moral transgressions that weigh on your conscience. You
-gain Stains when you:
+  Example: Humanity 7 with 2 Stains rolls 10 - 7 - 2 = 1 die.
 
-• Violate |WChronicle Tenets|n (1-3 Stains depending on severity)
-• Violate your personal |WConvictions|n (1-2 Stains)
-• Suffer a |WMessy Critical|n during feeding or violence (1 Stain)
-• Harm or lose a |WTouchstone|n (1-3 Stains)
+Humanity rises only at the Storyteller's discretion (core p.241); it can't
+be bought with XP.
 
-When you accumulate Stains, you must eventually perform a |W+remorse|n roll.
+|WCONVICTIONS AND TOUCHSTONES|n (core p.172-173)
 
-|WREMORSE ROLLS:|n
+Convictions are your personal moral code. You take one to three at
+creation; breaking one costs Stains. Each Conviction has a Touchstone: a
+mortal (or something mortal) that anchors it. Harm to a Touchstone can
+cost Stains, at the Storyteller's discretion.
 
-At the end of a game session (or when directed by an ST), you roll for
-Remorse to see if you can cope with your actions:
+|WCOMMANDS|n
 
-1. Roll a dice pool equal to your current |WHumanity|n rating
-2. If you get |Wmore successes than your current Stains|n, you keep your
-   Humanity and clear all Stains
-3. If you get |Wequal or fewer successes|n, you |Wlose 1 Humanity|n and
-   clear all Stains
+|w+humanity|n                                 Humanity, Stains, Convictions, Touchstones
+|w+humanity/conviction <text>|n               add a Conviction (up to 3)
+|w+humanity/conviction/remove <number>|n      remove a Conviction
+|w+humanity/touchstone <name>=<description>[/<conviction #>]|n
+                                            add a Touchstone for a Conviction (default 1)
+|w+humanity/touchstone/remove <number>|n      remove a Touchstone
+|w+stain [<count>]|n                          mark Stains on yourself
+|w+stain <character>=<count>|n                (staff) mark Stains on someone else
+|w+remorse|n                                  make your Remorse test (once per 24 hours)
+|w+remorse <character>|n                      (staff) run a character's Remorse test
 
-|yExample:|n You have Humanity 6 and 4 Stains. You roll 6 dice and get 5
-successes. Since 5 > 4, you maintain Humanity and clear all Stains.
-
-|WCONVICTIONS:|n
-
-Convictions are your personal moral code - beliefs that define who you are.
-You can have up to |W3 Convictions|n.
-
-Examples:
-• "Never harm children"
-• "Protect the innocent"
-• "Always repay my debts"
-• "Never betray my word"
-
-When you violate a Conviction, you gain |W1-2 Stains|n depending on severity.
-
-Commands:
-  |W+humanity/conviction <text>|n - Add a new Conviction
-  |W+humanity/conviction/remove <number>|n - Remove a Conviction
-
-|WTOUCHSTONES:|n
-
-Touchstones are mortals who anchor your Humanity - people who remind you
-what it means to be human. You can have a maximum of |WHumanity ÷ 2|n
-Touchstones (rounded down).
-
-Examples:
-• Your mortal sister who doesn't know you're a vampire
-• A priest who gives you spiritual guidance
-• A former lover you still watch over
-
-If a Touchstone dies or discovers your nature, you may lose them and must
-roll to avoid Humanity loss (or gain Stains at ST discretion).
-
-Commands:
-  |W+humanity/touchstone <name>=<description>|n - Add a Touchstone
-  |W+humanity/touchstone/remove <number>|n - Remove a Touchstone
-
-|WCOMMANDS:|n
-
-|W+humanity|n
-  View your Humanity rating, Stains, Convictions, and Touchstones
-
-|W+humanity/conviction <text>|n
-  Add a new Conviction (max 3)
-
-|W+humanity/touchstone <name>=<description>|n
-  Add a new Touchstone (max = Humanity ÷ 2)
-
-|W+stain [<count>]|n
-  Add Stains to yourself (typically used by ST or after Messy Criticals)
-
-|W+remorse|n
-  Perform a Remorse roll to resist Humanity loss
-
-|WRELATED TOPICS:|n
-
-See also: |W+help frenzy|n, |W+help hunger|n, |W+help disciplines|n
-
-|[R+===================================================================+|n
+|ySee also:|n help frenzy, help hunger

@@ -4,7 +4,8 @@ Humanity System Utility Functions for V5
 Handles Stains, Remorse rolls, Humanity tracking, Convictions, and Touchstones.
 """
 
-from world.v5_dice import roll_pool
+from dice.dice_roller import MAX_POOL, roll_v5_pool
+from world.v5_data import BLOOD_POTENCY, FRENZY_PROVOCATIONS
 
 
 def get_humanity(character):
@@ -48,9 +49,18 @@ def get_stains(character):
     return character.stains
 
 
+def stain_room(character):
+    """Unmarked Humanity boxes that can still take a Stain: 10 - Humanity - Stains."""
+    return max(0, 10 - character.humanity - character.stains)
+
+
 def add_stain(character, count=1):
     """
-    Add Stains to character.
+    Add Stains to a character (QR p.3).
+
+    Stains fill the Humanity tracker's unmarked boxes (10 - Humanity). A Stain
+    that would overfill them is not stored; instead the character takes one
+    Aggravated Willpower damage for each such Stain.
 
     Args:
         character: Character object
@@ -59,30 +69,39 @@ def add_stain(character, count=1):
     Returns:
         dict: {
             'stains': new stain count,
+            'added': Stains actually marked,
+            'overflow': Stains that became Aggravated Willpower damage,
             'message': narrative message
         }
     """
-    character.stains = character.stains + count
+    room = stain_room(character)
+    marked = min(count, room)
+    overflow = count - marked
+    character.stains = character.stains + marked
+    if overflow:
+        willpower = character.damage["willpower"]
+        character.set_damage("willpower", aggravated=willpower["aggravated"] + overflow)
     new_stains = character.stains
 
     stain_word = "Stain" if count == 1 else "Stains"
-
-    if new_stains >= 10:
-        message = (
-            f"You gain {count} {stain_word}, bringing your total to {new_stains}. "
-            f"Your conscience is heavily burdened. You MUST perform a Remorse roll soon."
+    message = f"You gain {count} {stain_word}, bringing your total to {new_stains}."
+    if overflow:
+        message += (
+            f" Your Humanity tracker is full: {overflow} Stain{'s' if overflow != 1 else ''} "
+            f"become{'s' if overflow == 1 else ''} Aggravated Willpower damage."
         )
-    elif new_stains >= 5:
-        message = (
-            f"You gain {count} {stain_word}, bringing your total to {new_stains}. "
-            f"The weight of your transgressions grows heavy."
+    if new_stains:
+        message += " Make a Remorse test at the end of the session (+remorse)."
+    if character.degenerating:
+        message += (
+            " Your Humanity tracker is full: you are Impaired (Degeneration), -2 dice to all tests "
+            "until your Remorse test."
         )
-    else:
-        message = f"You gain {count} {stain_word}, bringing your total to {new_stains}."
 
     return {
         'stains': new_stains,
-        'added': count,
+        'added': marked,
+        'overflow': overflow,
         'message': message
     }
 
@@ -102,23 +121,25 @@ def clear_stains(character):
     return old_stains
 
 
+def remorse_pool(character):
+    """Remorse dice: the unmarked Humanity boxes, 10 - Humanity - Stains, minimum 1 (QR p.3)."""
+    return max(1, 10 - character.humanity - character.stains)
+
+
 def remorse_roll(character):
     """
-    Perform Remorse roll (Humanity vs Stains).
+    Make the end-of-session Remorse test (QR p.3; core p.239).
 
-    Mechanics:
-    - Roll pool = current Humanity rating
-    - Must get successes > current Stains to avoid Humanity loss
-    - On failure: Lose 1 Humanity, clear all Stains
-    - On success: Keep Humanity, clear all Stains
-
-    Args:
-        character: Character object
+    Roll one die per unmarked Humanity box (10 - Humanity - Stains, minimum
+    1). Any success keeps Humanity; a failure loses 1 Humanity. Either way
+    all Stains are cleared. Remorse is a Humanity test, so it uses no Hunger
+    dice (and no Blood Surge).
 
     Returns:
         dict: {
             'success': bool,
-            'roll_result': DiceResult object,
+            'roll_result': RollResult or None (no Stains),
+            'pool': int,
             'humanity_lost': bool,
             'old_humanity': int,
             'new_humanity': int,
@@ -133,6 +154,7 @@ def remorse_roll(character):
         return {
             'success': True,
             'roll_result': None,
+            'pool': 0,
             'humanity_lost': False,
             'old_humanity': humanity,
             'new_humanity': humanity,
@@ -140,48 +162,33 @@ def remorse_roll(character):
             'message': "You have no Stains to roll Remorse for."
         }
 
-    # Roll Humanity pool (no Hunger dice for Remorse rolls)
-    result = roll_pool(humanity, difficulty=0, hunger=0)
-
-    # Success if you get more successes than Stains
-    success = result.successes > stains
-
-    # Clear stains regardless of outcome
+    pool = remorse_pool(character)
+    result = roll_v5_pool(pool, 0, 1)
     stains_cleared = clear_stains(character)
+    dice_word = 'die' if pool == 1 else 'dice'
 
-    if success:
+    if result.is_success:
+        new_humanity = humanity
         message = (
-            f"You roll {humanity} dice for Remorse and get {result.successes} successes. "
-            f"This exceeds your {stains} Stains. You maintain your Humanity at {humanity}. "
-            f"All Stains are cleared."
+            f"You roll {pool} {dice_word} for Remorse and get {result.total_successes} successes. "
+            f"You keep your Humanity at {humanity}. All Stains are cleared."
         )
-        return {
-            'success': True,
-            'roll_result': result,
-            'humanity_lost': False,
-            'old_humanity': humanity,
-            'new_humanity': humanity,
-            'stains_cleared': stains_cleared,
-            'message': message
-        }
     else:
-        # Lose 1 Humanity
         new_humanity = set_humanity(character, humanity - 1)
         message = (
-            f"You roll {humanity} dice for Remorse and get {result.successes} successes. "
-            f"This does not exceed your {stains} Stains. You lose 1 Humanity "
-            f"(from {humanity} to {new_humanity}). All Stains are cleared. "
-            f"The Beast draws closer."
+            f"You roll {pool} {dice_word} for Remorse and get no successes. "
+            f"You lose 1 Humanity (from {humanity} to {new_humanity}). All Stains are cleared."
         )
-        return {
-            'success': False,
-            'roll_result': result,
-            'humanity_lost': True,
-            'old_humanity': humanity,
-            'new_humanity': new_humanity,
-            'stains_cleared': stains_cleared,
-            'message': message
-        }
+    return {
+        'success': result.is_success,
+        'roll_result': result,
+        'pool': pool,
+        'humanity_lost': not result.is_success,
+        'old_humanity': humanity,
+        'new_humanity': new_humanity,
+        'stains_cleared': stains_cleared,
+        'message': message
+    }
 
 
 def lose_humanity(character, amount=1):
@@ -325,9 +332,10 @@ def remove_conviction(character, index):
 
 def add_touchstone(character, name, description, conviction_index=0):
     """
-    Add a Touchstone (mortal who anchors Humanity), through Character.add_touchstone.
+    Add a Touchstone (a mortal who anchors Humanity), through Character.add_touchstone.
 
-    Max touchstones = current Humanity // 2
+    The book ties each Touchstone to a Conviction (core p.172-173; one to
+    three of each at creation); it sets no cap based on Humanity.
 
     Args:
         character: Character object
@@ -342,20 +350,6 @@ def add_touchstone(character, name, description, conviction_index=0):
             'message': result message
         }
     """
-    humanity = character.humanity
-    max_touchstones = humanity // 2
-
-    if len(character.touchstones) >= max_touchstones:
-        return {
-            'success': False,
-            'touchstones': character.touchstones,
-            'message': (
-                f"You can only have {max_touchstones} Touchstones "
-                f"(Humanity {humanity} ÷ 2 = {max_touchstones}). "
-                f"Remove one first or increase your Humanity."
-            )
-        }
-
     try:
         character.add_touchstone(name, description, conviction_index)
     except ValueError as err:
@@ -411,8 +405,7 @@ def get_humanity_status(character):
             'humanity': int,
             'stains': int,
             'convictions': list,
-            'touchstones': list,
-            'max_touchstones': int
+            'touchstones': list
         }
     """
     humanity = get_humanity(character)
@@ -422,128 +415,124 @@ def get_humanity_status(character):
         'stains': character.stains,
         'convictions': character.convictions,
         'touchstones': character.touchstones,
-        'max_touchstones': humanity // 2
     }
 
 
-def check_frenzy_risk(character, trigger_type):
+def frenzy_provocations(frenzy_type):
+    """The book's provocations and difficulties for a frenzy type (QR p.13).
+
+    Returns the world.v5_data.FRENZY_PROVOCATIONS entry ({"goal",
+    "provocations": {text: difficulty}}), or None for an unknown type.
     """
-    Check if character is at risk of frenzy.
+    return FRENZY_PROVOCATIONS.get(str(frenzy_type or "").strip().lower())
 
-    Trigger types: 'hunger', 'fury', 'terror'
 
-    Args:
-        character: Character object
-        trigger_type (str): Type of frenzy trigger
+def frenzy_bane_penalty(character, frenzy_type):
+    """Dice a clan bane takes off a frenzy test, and why ((0, None) if none).
 
-    Returns:
-        dict: {
-            'at_risk': bool,
-            'difficulty': int,
-            'trigger_type': str,
-            'message': narrative message
-        }
+    Brujah (Violent Temper, v5_data.CLANS): subtract Bane Severity dice
+    (BLOOD_POTENCY[bp]["bane_severity"]) from rolls to resist fury frenzy.
     """
-    from .blood_utils import get_hunger
-    from .clan_utils import get_clan
-
-    hunger = get_hunger(character)
-    humanity = get_humanity(character)
-    clan = get_clan(character)
-
-    # Base difficulty by trigger type
-    if trigger_type == 'hunger':
-        # Hunger frenzy triggered by seeing blood, Hunger 5, etc.
-        base_diff = 2
-        if hunger == 5:
-            base_diff = 4  # Much harder to resist at Hunger 5
-        message = "The scent of blood triggers your predatory instincts."
-    elif trigger_type == 'fury':
-        # Fury frenzy from provocation, humiliation
-        base_diff = 3
-        message = "Rage builds within you, threatening to consume your reason."
-    elif trigger_type == 'terror':
-        # Terror frenzy from fire, sunlight, True Faith
-        base_diff = 3
-        message = "Primal fear grips your undead heart."
-    else:
-        base_diff = 2
-        message = f"You feel the Beast stirring ({trigger_type})."
-
-    # Apply clan bane modifiers
-    clan_modifier = 0
-    if clan == "Brujah" and trigger_type == 'fury':
-        clan_modifier = 2
-        message += " |r(Brujah Bane: +2 difficulty to resist fury)|n"
-
-    # Hunger increases difficulty
-    hunger_modifier = hunger // 2
-    difficulty = base_diff + hunger_modifier + clan_modifier
-
-    return {
-        'at_risk': True,
-        'difficulty': difficulty,
-        'trigger_type': trigger_type,
-        'base_difficulty': base_diff,
-        'hunger_modifier': hunger_modifier,
-        'clan_modifier': clan_modifier,
-        'message': message
-    }
+    if frenzy_type == "fury" and character.clan == "Brujah":
+        severity = BLOOD_POTENCY.get(character.blood_potency, {}).get("bane_severity", 0)
+        if severity:
+            return severity, f"Brujah bane, Violent Temper: -{severity} dice"
+    return 0, None
 
 
-def resist_frenzy(character, difficulty):
-    """
-    Attempt to resist frenzy (Willpower + Composure vs Difficulty).
-
-    Args:
-        character: Character object
-        difficulty (int): Difficulty of resistance roll
-
-    Returns:
-        dict: {
-            'success': bool,
-            'roll_result': DiceResult object,
-            'message': narrative message
-        }
-    """
-    from .blood_utils import get_hunger
-
-    # Get Willpower and Composure from the character
+def frenzy_pool(character, frenzy_type=None):
+    """The frenzy test pool (QR p.4): current Willpower + Humanity / 3 (rounded
+    down), less any clan bane dice, minimum 1. Returns (pool, breakdown text)."""
     willpower = character.current_willpower
-    composure = character.get_trait("composure")
+    third = character.humanity // 3
+    penalty, bane_text = frenzy_bane_penalty(character, frenzy_type)
+    breakdown = f"Willpower {willpower} + Humanity/3 {third}"
+    if bane_text:
+        breakdown += f" ({bane_text})"
+    return max(1, willpower + third - penalty), breakdown
 
-    pool = willpower + composure
-    hunger = get_hunger(character)
 
-    # Roll pool with Hunger dice
-    result = roll_pool(pool, difficulty=difficulty, hunger=hunger)
+def resist_frenzy(character, difficulty, frenzy_type=None):
+    """
+    Test to resist frenzy (QR p.4): current Willpower + Humanity / 3 against
+    the provocation's difficulty (QR p.13; v5_data.FRENZY_PROVOCATIONS).
 
-    if result.is_success():
-        message = (
-            f"You roll {pool} dice (Willpower {willpower} + Composure {composure}) "
-            f"with {hunger} Hunger dice and get {result.successes} successes "
-            f"against difficulty {difficulty}. You resist the frenzy!"
-        )
-        if result.is_messy:
-            message += " However, the struggle was messy - you may have revealed your nature."
+    A frenzy test is a Willpower test, so it rolls no Hunger dice and takes
+    no Blood Surge. `frenzy_type` ("fury", "hunger", "terror") applies clan
+    banes such as the Brujah's.
 
-        return {
-            'success': True,
-            'roll_result': result,
-            'message': message
-        }
+    Returns:
+        dict: {'success': bool, 'roll_result': RollResult, 'pool': int,
+               'breakdown': str, 'difficulty': int, 'frenzy_type': str|None,
+               'message': str}
+    """
+    pool, breakdown = frenzy_pool(character, frenzy_type)
+    result = roll_v5_pool(min(MAX_POOL, pool), 0, difficulty)
+    kind = f"{frenzy_type} " if frenzy_type else ""
+    rolled = (
+        f"You roll {pool} dice ({breakdown}) and get {result.total_successes} successes "
+        f"against Difficulty {difficulty}."
+    )
+    if result.is_success:
+        message = f"{rolled} You resist the {kind}frenzy."
     else:
         message = (
-            f"You roll {pool} dice (Willpower {willpower} + Composure {composure}) "
-            f"with {hunger} Hunger dice and get {result.successes} successes "
-            f"against difficulty {difficulty}. You FAIL to resist! "
-            f"The Beast takes over..."
+            f"{rolled} You fail: the Beast takes over ({kind}frenzy). The Storyteller runs your "
+            "frenzy; you may spend Willpower to regain control."
         )
-        if result.is_bestial:
-            message += " A Bestial Failure - your frenzy is particularly savage!"
+    return {
+        'success': result.is_success,
+        'roll_result': result,
+        'pool': pool,
+        'breakdown': breakdown,
+        'difficulty': difficulty,
+        'frenzy_type': frenzy_type,
+        'message': message,
+    }
 
-        return {
-            'success': False,
-            'roll_result': result,
-            'message': message
-        }
+
+def pending_frenzy_test(character):
+    """The hunger frenzy test(s) the character owes, or None.
+
+    Recorded by dice.rouse_checker.flag_hunger_frenzy when a Rouse would
+    take Hunger past 5: {"type", "difficulty", "reason", "time", "count"}.
+    """
+    pending = character.db.pending_frenzy_test
+    if not pending:
+        return None
+    return dict(pending)
+
+
+def roll_pending_frenzy_tests(character):
+    """Roll the owed hunger frenzy test(s) now and clear the record.
+
+    One test per Rouse failure past Hunger 5, each at the recorded
+    difficulty (4). Once a test fails the vampire is already in frenzy, so
+    the remaining tests are not rolled. Returns a list of resist_frenzy
+    results ([] if nothing was owed).
+    """
+    pending = pending_frenzy_test(character)
+    if character.attributes.has("pending_frenzy_test"):
+        character.attributes.remove("pending_frenzy_test")
+    if not pending:
+        return []
+    results = []
+    for _ in range(max(1, int(pending.get("count") or 1))):
+        result = resist_frenzy(character, pending.get("difficulty", 4), pending.get("type", "hunger"))
+        results.append(result)
+        if not result["success"]:
+            break
+    return results
+
+
+def format_frenzy_tests(results, reason=None):
+    """Display lines for rolled hunger frenzy tests."""
+    if not results:
+        return []
+    why = f" ({reason})" if reason else ""
+    lines = [f"|r|hHunger frenzy test{why}: your Hunger can't rise past 5.|n"]
+    for number, result in enumerate(results, 1):
+        label = f"Test {number}: " if len(results) > 1 else ""
+        lines.append(f"{label}{result['roll_result'].format_result(show_details=True)}")
+        lines.append(result["message"])
+    return lines

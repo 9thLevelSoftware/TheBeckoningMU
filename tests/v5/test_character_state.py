@@ -196,17 +196,14 @@ class SheetAndHungerAgreementTests(EvenniaCommandTest):
         self.assertEqual(sheet_value(sheet, "Brawl"), 3)
 
     def test_rouse_feed_and_sheet_agree_on_hunger(self):
-        # A five-die feeding pool (Strength + Brawl), so Hunger 3 fits in it.
-        self.char.set_trait("Strength", 3)
-        self.char.set_trait("Brawl", 2)
         self.char.hunger = 2
         with patch(RANDINT, return_value=3):  # failed Rouse
             self.call(CmdRouse(), "")
         self.assertEqual(self.char.hunger, 3)
         self.assertEqual(sheet_value(self.sheet(), "Hunger"), 3)
 
-        with patch(RANDINT, return_value=8):  # successful feeding roll
-            self.call(CmdFeed(), "mortal")
+        # char1 is staff: feed records a feeding from a scene (a drink slakes 2)
+        self.call(CmdFeed(), "Char=drink")
         hunger_after_feed = self.char.hunger
         self.assertLess(hunger_after_feed, 3)
         self.assertEqual(blood_utils.get_hunger_level(self.char), hunger_after_feed)

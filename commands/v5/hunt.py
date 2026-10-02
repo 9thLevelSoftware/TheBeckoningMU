@@ -1,49 +1,75 @@
 """
 V5 Hunting Commands
 
-Commands for hunting and feeding mechanics with staff-run hunt scenes.
++hunt rolls the predator type's hunting pool on a hunting ground (QR p.12)
+and feeds on a win; +hunt/staffed asks staff for a hunt scene, which they
+finish with `feed`. These are the only ways to feed: `feed` itself is a
+staff command.
 """
 
-from evennia import Command
-from evennia import default_cmds
-from .utils.hunting_utils import (
-    hunt_prey,
-    get_predator_hunting_bonus,
-    generate_hunting_opportunity,
-    HUNTING_DIFFICULTIES
-)
-from .utils.blood_utils import get_hunger
+from evennia import Command, default_cmds
+
 from world.ansi_theme import (
-    BLOOD_RED, DARK_RED, PALE_IVORY, SHADOW_GREY,
-    GOLD, RESET, BOX_H, BOX_V, BOX_TL, BOX_TR, BOX_BL, BOX_BR
+    BLOOD_RED,
+    BOX_BL,
+    BOX_BR,
+    BOX_H,
+    BOX_TL,
+    BOX_TR,
+    BOX_V,
+    DARK_RED,
+    GOLD,
+    PALE_IVORY,
+    RESET,
+    SHADOW_GREY,
 )
+from world.v5_data import HUNTING_GROUNDS, PREDATOR_TYPES
+
+from .utils.hunting_utils import find_ground, hunt, hunting_pool
+
+GROUND_LIST = ", ".join(f"{key} ({data['difficulty']})" for key, data in HUNTING_GROUNDS.items())
+
+
+def _banner(title):
+    return [
+        f"\n{DARK_RED}{BOX_TL}{BOX_H * 76}{BOX_TR}{RESET}",
+        f"{BOX_V} {PALE_IVORY}{title}{RESET}{' ' * (75 - len(title))}{BOX_V}",
+        f"{DARK_RED}{BOX_BL}{BOX_H * 76}{BOX_BR}{RESET}",
+    ]
 
 
 class CmdHunt(default_cmds.MuxCommand):
     """
-    Hunt for prey to feed upon.
+    Hunt for a vessel and feed.
 
     Usage:
-        +hunt [<location>]
-        +hunt/quick [<location>]
-        +hunt/staffed [<location>]
+        +hunt <hunting ground>
+        +hunt <hunting ground>=alt          (your predator type's alternative pool)
+        +hunt/staffed <hunting ground>
+        +hunt/reset <character>             (staff: allow another hunt now)
 
-    Locations:
-        club       - Nightclubs, bars, scenes (Difficulty 3)
-        street     - Streets, alleys (Difficulty 4)
-        residential - Residential areas (Difficulty 5)
-        hospital   - Hospitals, medical facilities (Difficulty 6)
-        secured    - Gated communities (Difficulty 7)
-        rural      - Rural/wilderness areas (Difficulty 4)
+    Hunting grounds and their difficulty (QR p.12):
+        slum      2  slums, Skid Row, housing projects
+        bohemian  3  bohemian, gentrifying or blighted neighborhoods
+        downtown  4  working-class neighborhoods, downtown, tourist areas
+        suburbs   5  industrial districts, parkland, suburban sprawl
+        wealthy   6  wealthy neighborhoods
 
-    Switches:
-        /quick - Quick automated hunt (single roll)
-        /staffed - Request staff-run hunt scene (creates a Job)
+    You roll your predator type's hunting pool (see +huntinfo) against the
+    ground's difficulty, with your Hunger dice. On a win you feed: a human
+    vessel gives the most you can drink without harming them, which slakes
+    2 Hunger (a Farmer feeds on an animal, a Bagger on a blood bag). Your
+    Blood Potency may slake less, and without killing you can't go below
+    Hunger 1 (2 or 3 at high Blood Potency). The vessel's resonance is set
+    on your blood.
 
-    Examples:
-        +hunt club
-        +hunt/quick street
-        +hunt/staffed residential
+    You can hunt once every 24 hours, whether or not you find a vessel, and
+    not at all once your Hunger is as low as feeding without a kill can take
+    it. Staff-run scenes (+hunt/staffed) are the way to feed more. Your
+    resonance changes only when the hunt slakes Hunger.
+
+    Blood Leeches and characters without a predator type have no hunting
+    roll: use +hunt/staffed, which asks staff for a hunt scene.
     """
 
     key = "+hunt"
@@ -52,194 +78,120 @@ class CmdHunt(default_cmds.MuxCommand):
     help_category = "V5"
 
     def func(self):
-        """Execute hunt command."""
         caller = self.caller
-
-        # Check if character has vampire data
-        if not hasattr(caller.db, 'vampire') or not caller.db.vampire:
-            caller.msg("|rYou are not a vampire!|n")
+        if "reset" in self.switches:
+            self._reset()
+            return
+        if not caller.attributes.has("vampire") or not caller.is_kindred:
+            caller.msg("|rOnly vampires hunt.|n")
             return
 
-        # Parse location
-        location = self.args.strip().lower() if self.args else "street"
-        if location not in HUNTING_DIFFICULTIES:
-            valid_locations = ", ".join(HUNTING_DIFFICULTIES.keys())
-            caller.msg(f"|rInvalid location. Valid locations: {valid_locations}|n")
+        alternative = (self.rhs or "").strip().lower() in ("alt", "alternative")
+        if self.rhs and not alternative:
+            caller.msg("Usage: +hunt <hunting ground>[=alt]")
+            return
+        ground = find_ground(self.lhs) if (self.lhs or "").strip() else None
+        if ground is None:
+            caller.msg(f"Usage: +hunt <hunting ground>. Grounds (difficulty): {GROUND_LIST}")
             return
 
-        # Check Hunger level (no need to hunt if not hungry)
-        hunger = get_hunger(caller)
-        if hunger == 0:
-            caller.msg("|gYou are fully sated. You do not need to hunt right now.|n")
-            return
-
-        # Get Predator Type bonuses
-        predator_info = get_predator_hunting_bonus(caller)
-
-        # Check if using /staffed switch for staff-run hunt scene
         if "staffed" in self.switches:
-            self._create_hunt_job(location, predator_info, hunger)
+            self._create_hunt_job(ground)
             return
 
-        # Quick hunt (default)
-        self._quick_hunt(location, predator_info)
+        if caller.hunger == 0:
+            caller.msg("|gYou are sated. You don't need to hunt.|n")
+            return
 
-    def _quick_hunt(self, location, predator_info):
-        """Quick automated hunting (single roll)."""
-        caller = self.caller
+        from dice.commands import forget_roll
 
-        # Determine skill to use (based on Predator Type or default to Streetwise)
-        vamp = caller.db.vampire if hasattr(caller.db, 'vampire') else {}
-        predator_type = vamp.get('predator_type', None)
+        forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
+        result = hunt(caller, ground, alternative=alternative)
+        if result["refused"]:
+            caller.msg(f"|y{result['refused']}|n")
+            return
 
-        # Map predator types to skills
-        predator_skills = {
-            "Alleycat": "stealth",
-            "Sandman": "stealth",
-            "Scene Queen": "streetwise",
-            "Siren": "persuasion",
-            "Consensualist": "persuasion",
-            "Bagger": "streetwise",
-            "Farmer": "animal_ken"
-        }
-
-        skill_name = predator_skills.get(predator_type, "streetwise")
-
-        # Perform hunt
-        result = hunt_prey(
-            caller,
-            location=location,
-            skill_name=skill_name,
-            predator_type_bonus=predator_info.get("bonus_dice", 0),
-            kill=False  # Default: don't kill
+        output = _banner("SUCCESSFUL HUNT" if result["success"] else "HUNT FAILED")
+        output.append(
+            f"{GOLD}Hunting roll:{RESET} {result['pool_text']} ({result['breakdown']}) vs Difficulty "
+            f"{result['difficulty']} ({ground})"
         )
+        output.append(result["roll"].format_result(show_details=True))
+        output.append("")
+        output.append(result["message"])
+        if result["resonance"]:
+            output.append(f"Resonance: |y{result['resonance']['type']}|n ({result['resonance']['intensity_name']})")
+        if result["complication"]:
+            output.append(f"|rComplication:|n {result['complication']['desc']} (the Storyteller decides what follows)")
+        caller.msg("\n".join(output))
 
-        # Display results
-        self._display_hunt_result(result, location)
+    def _reset(self):
+        from dice.commands import _is_staff
 
-    def _create_hunt_job(self, location, predator_info, hunger):
+        caller = self.caller
+        if not _is_staff(caller):
+            caller.msg("|rOnly staff can reset a hunt.|n")
+            return
+        target = caller.search(self.args.strip()) if self.args.strip() else None
+        if not target:
+            caller.msg("Usage: +hunt/reset <character>")
+            return
+        target.last_hunt = None
+        caller.msg(f"{target.key} may hunt again.")
+
+    def _create_hunt_job(self, ground):
         """Create a Job for staff to run a hunt scene."""
         caller = self.caller
-
-        # Import Jobs system
         try:
-            from jobs.models import Job, Bucket
+            from jobs.models import Bucket, Job
         except ImportError:
             caller.msg("|rJobs system not available. Please contact staff.|n")
             return
 
-        # Get vampire data for job context
-        vamp = caller.db.vampire if hasattr(caller.db, 'vampire') else {}
-        predator_type = vamp.get('predator_type', 'Unknown')
-
-        # Get or create Hunt Scenes bucket
+        pool_text, refusal = hunting_pool(caller)
+        data = HUNTING_GROUNDS[ground]
         try:
-            hunt_bucket, created = Bucket.objects.get_or_create(
+            hunt_bucket, _created = Bucket.objects.get_or_create(
                 name="Hunt Scenes",
-                defaults={
-                    'description': 'Staff-run hunting scenes for players',
-                    'created_by': caller.account
-                }
+                defaults={'description': 'Staff-run hunting scenes for players', 'created_by': caller.account},
             )
-
-            # Build job description with hunt context
-            description = f"""Hunt Scene Request from {caller.name}
-
-**Location:** {location.title()} (Difficulty {HUNTING_DIFFICULTIES[location]})
-**Current Hunger:** {hunger}/5
-**Predator Type:** {predator_type}
-**Hunting Bonus:** +{predator_info.get('bonus_dice', 0)} dice
-**Preferred Locations:** {', '.join(predator_info.get('preferred_locations', ['none']))}
-
-Player has requested a staff-run hunt scene at this location. Staff should:
-1. Run an interactive hunt scene via @tel or +summon
-2. Use the hunting difficulty for this location
-3. Consider the character's Predator Type for roleplay
-4. Use 'feed' command to finalize the feeding result
-
-To view character sheet: +sheet {caller.name}"""
-
-            # Create the job
+            description = (
+                f"Hunt Scene Request from {caller.name}\n\n"
+                f"**Hunting ground:** {data['description']} (Difficulty {data['difficulty']})\n"
+                f"**Current Hunger:** {caller.hunger}/5\n"
+                f"**Predator Type:** {caller.predator_type or 'none'}\n"
+                f"**Hunting pool:** {pool_text or refusal}\n\n"
+                "Run the hunt as a scene, then record the feeding with "
+                f"'feed {caller.name}=<source>' (see 'help feed').\n\n"
+                f"To view character sheet: +sheet {caller.name}"
+            )
             job = Job.objects.create(
-                title=f"Hunt Scene: {caller.name} at {location.title()}",
+                title=f"Hunt Scene: {caller.name} ({ground})",
                 description=description,
                 creator=caller.account,
                 bucket=hunt_bucket,
-                priority='NORMAL'
+                priority='MEDIUM',
             )
-
             job.players.add(caller.account)
             job.save()
-
-            # Notify player
-            output = []
-            output.append(f"\n{DARK_RED}{BOX_TL}{BOX_H * 76}{BOX_TR}{RESET}")
-            output.append(f"{BOX_V} {BLOOD_RED}{RESET} {PALE_IVORY}HUNT SCENE REQUESTED{RESET}{' ' * 51}{BOX_V}")
-            output.append(f"{DARK_RED}{BOX_BL}{BOX_H * 76}{BOX_BR}{RESET}")
-            output.append("")
-            output.append(f"{PALE_IVORY}Your hunt request has been submitted to staff.{RESET}")
-            output.append(f"{PALE_IVORY}Job #{job.sequence_number}:{RESET} Hunt Scene at {GOLD}{location.title()}{RESET}")
-            output.append("")
-            output.append(f"{SHADOW_GREY}Staff will contact you when they're ready to run the scene.{RESET}")
-            output.append(f"{SHADOW_GREY}You can check the status with: |w+job {job.sequence_number}|x{RESET}")
-
-            caller.msg("\n".join(output))
-
-        except Exception as e:
-            caller.msg(f"|rError creating hunt scene job: {e}|n")
+        except Exception as err:
+            caller.msg(f"|rError creating hunt scene job: {err}|n")
             caller.msg("|yPlease contact staff directly for hunt scenes.|n")
+            return
 
-    def _display_hunting_scene(self, opportunity):
-        """Display the hunting opportunity scene."""
-        caller = self.caller
-
-        output = []
-        output.append(f"{DARK_RED}{BOX_TL}{BOX_H * 76}{BOX_TR}{RESET}")
-        output.append(f"{BOX_V} {BLOOD_RED}{RESET} {PALE_IVORY}HUNTING SCENE{RESET}{' ' * 60}{BOX_V}")
-        output.append(f"{BOX_V} {GOLD}Location:{RESET} {opportunity['location'].title()}{' ' * (67 - len(opportunity['location']))}{BOX_V}")
-        output.append(f"{DARK_RED}{BOX_BL}{BOX_H * 76}{BOX_BR}{RESET}")
-        output.append("")
-        output.append(f"{PALE_IVORY}You spot a potential vessel:{RESET}")
-        output.append(f"  {opportunity['prey_description']}")
-        output.append(f"  {opportunity['hook']}")
-        output.append("")
-        output.append(f"{PALE_IVORY}Resonance:{RESET} {GOLD}{opportunity['resonance']['type']}{RESET} ({opportunity['resonance']['intensity_name']})")
-        output.append(f"{PALE_IVORY}Difficulty:{RESET} {opportunity['difficulty']}")
-        output.append("")
-        output.append(f"{SHADOW_GREY}Potential Risks:{RESET}")
-        for risk in opportunity['risks']:
-            output.append(f"  {SHADOW_GREY}- {risk['desc']} ({risk['severity']}){RESET}")
-
-        caller.msg("\n".join(output))
-
-    def _display_hunt_result(self, result, location):
-        """Display hunting results."""
-        caller = self.caller
-
-        output = []
-        output.append(f"\n{DARK_RED}{BOX_TL}{BOX_H * 76}{BOX_TR}{RESET}")
-
-        if result["hunting_success"]:
-            output.append(f"{BOX_V} {BLOOD_RED}{RESET} {PALE_IVORY}SUCCESSFUL HUNT{RESET}{' ' * 58}{BOX_V}")
-        else:
-            output.append(f"{BOX_V} {SHADOW_GREY}{RESET} {PALE_IVORY}HUNT FAILED{RESET}{' ' * 62}{BOX_V}")
-
-        output.append(f"{DARK_RED}{BOX_BL}{BOX_H * 76}{BOX_BR}{RESET}")
-        output.append("")
-        output.append(result["message"])
-
+        output = _banner("HUNT SCENE REQUESTED")
+        output.append(f"{PALE_IVORY}Your hunt request has been submitted to staff.{RESET}")
+        output.append(f"{PALE_IVORY}Job #{job.sequence_number}:{RESET} Hunt Scene at {GOLD}{ground}{RESET}")
+        output.append(f"{SHADOW_GREY}Staff will contact you when they're ready to run the scene.{RESET}")
         caller.msg("\n".join(output))
 
 
 class CmdHuntingInfo(Command):
     """
-    Display information about hunting and feeding.
+    Show your hunting roll, the hunting grounds and your Hunger.
 
     Usage:
         +huntinfo
-        +huntinfo <location>
-
-    Shows hunting difficulties, your Predator Type bonuses, and current Hunger.
     """
 
     key = "+huntinfo"
@@ -248,43 +200,27 @@ class CmdHuntingInfo(Command):
     help_category = "V5"
 
     def func(self):
-        """Execute huntinfo command."""
         caller = self.caller
-
-        # Check if character has vampire data
-        if not hasattr(caller.db, 'vampire') or not caller.db.vampire:
+        if not caller.attributes.has("vampire"):
             caller.msg("|rYou are not a vampire!|n")
             return
 
-        output = []
-        output.append(f"\n{DARK_RED}{BOX_TL}{BOX_H * 76}{BOX_TR}{RESET}")
-        output.append(f"{BOX_V} {BLOOD_RED}{RESET} {PALE_IVORY}HUNTING INFORMATION{RESET}{' ' * 54}{BOX_V}")
-        output.append(f"{DARK_RED}{BOX_BL}{BOX_H * 76}{BOX_BR}{RESET}")
-
-        # Current Hunger
-        hunger = get_hunger(caller)
+        output = _banner("HUNTING INFORMATION")
+        hunger = caller.hunger
         output.append(f"\n{PALE_IVORY}Current Hunger:{RESET} {BLOOD_RED}{'●' * hunger}{SHADOW_GREY}{'○' * (5 - hunger)}{RESET} ({hunger}/5)")
 
-        # Predator Type Info
-        vamp = caller.db.vampire if hasattr(caller.db, 'vampire') else {}
-        predator_type = vamp.get('predator_type', 'Unknown')
-        predator_info = get_predator_hunting_bonus(caller)
+        predator = caller.predator_type
+        pool_text, refusal = hunting_pool(caller)
+        output.append(f"\n{PALE_IVORY}Predator Type:{RESET} {GOLD}{predator or 'none'}{RESET}")
+        if predator:
+            output.append(f"  {PREDATOR_TYPES[predator]['description']}")
+        output.append(f"{PALE_IVORY}Hunting roll:{RESET} {pool_text or refusal}")
+        alt_pool, _ = hunting_pool(caller, alternative=True)
+        if alt_pool:
+            output.append(f"{PALE_IVORY}Alternative roll:{RESET} {alt_pool} (+hunt <ground>=alt)")
 
-        output.append(f"\n{PALE_IVORY}Predator Type:{RESET} {GOLD}{predator_type}{RESET}")
-        output.append(f"{PALE_IVORY}Hunting Bonus:{RESET} +{predator_info.get('bonus_dice', 0)} dice")
-        output.append(f"{PALE_IVORY}Preferred Locations:{RESET} {', '.join(predator_info.get('preferred_locations', ['none']))}")
-
-        if predator_info.get('special_ability'):
-            output.append(f"{PALE_IVORY}Special:{RESET} {predator_info['special_ability']}")
-
-        # Hunting Difficulties
-        output.append(f"\n{PALE_IVORY}Hunting Difficulties by Location:{RESET}")
-        for location, diff in sorted(HUNTING_DIFFICULTIES.items()):
-            if location != "default":
-                output.append(f"  {GOLD}{location.title():<15}{RESET} Difficulty {diff}")
-
-        output.append(f"\n{SHADOW_GREY}Use |w+hunt <location>|x to hunt for prey.{RESET}")
-
+        output.append(f"\n{PALE_IVORY}Hunting grounds (QR p.12):{RESET}")
+        for key, data in HUNTING_GROUNDS.items():
+            output.append(f"  {GOLD}{key:<10}{RESET} Difficulty {data['difficulty']}  {SHADOW_GREY}{data['description']}{RESET}")
+        output.append(f"\n{SHADOW_GREY}Use |w+hunt <ground>|x to hunt.{RESET}")
         caller.msg("\n".join(output))
-
-

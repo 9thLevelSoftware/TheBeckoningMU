@@ -21,23 +21,28 @@ Commands for viewing and activating your vampire discipline powers.
 
 |WACTIVATING POWERS:|n
 
+|ypower <power name> [vs <difficulty>]|n
+|ypower <power name> = <target>|n
 |y+power <discipline>/<power name>|n
-|y+activate <discipline>/<power name>|n
-|y+use <discipline>/<power name>|n
-  Activate a discipline power.
+  Use a discipline power you know (+activate and +use also work).
 
 |yExamples:|n
+  power Scry the Soul vs 2
+  power Awe = Bob
   +power animalism/bond famulus
-  +power celerity/cat's grace
-  +activate dominate/compel
-  +use presence/awe
 
-Activating a power will:
-  1. Verify you have the required discipline level
-  2. Perform a |WRouse check|n if required
-  3. Apply any resonance bonuses
-  4. Show the dice pool for contested powers
-  5. Apply effects (viewable with +effects)
+Using a power will:
+  1. Check you know it and have the discipline (and any amalgam) level
+  2. Refuse it at Hunger 5 if it needs a |WRouse check|n
+  3. Roll its pool, if it has one, with your current Hunger, adding the
+     Blood Potency bonus and a die from a matching Intense or Acute
+     resonance (and a readied Blood Surge); a named target rolls its
+     resistance pool, and a tie goes to you
+  4. Roll its |WRouse checks|n (0-3) with it, adding the Hunger they
+     cost after the roll
+  5. Apply effects if it succeeds (viewable with +effects)
+
+See |yhelp dice_commands|n for details.
 
 |WPOWER INFORMATION:|n
 
@@ -85,8 +90,10 @@ Effects may last for:
 
 |WHUNGER RESTRICTIONS:|n
 
-At |[RHunger 5|n, you cannot activate most discipline powers.
-Feed before attempting to use your vampiric abilities.
+At |[RHunger 5|n, you cannot use a power that needs a Rouse check.
+Feed first. Below Hunger 5 you can start any power; if its failed
+checks would take Hunger past 5, Hunger stops at 5 and you must test
+for hunger frenzy (Difficulty 4).
 
 |WRELATED TOPICS:|n
 

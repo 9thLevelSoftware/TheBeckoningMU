@@ -1,399 +1,340 @@
 """
-Combat utilities for V5 combat system.
+Combat utilities for the V5 combat system.
 
-This module provides functions for:
-- Attack resolution
-- Damage application and healing
-- Health tracking and visualization
-- Defense calculation with discipline bonuses
-- Impairment penalties
+- Attacks are contested (core p.123-126): the attacker's pool against the
+  defender's pool. The attacker needs at least as many successes as the
+  defender (a tie goes to the acting character, as for contested powers);
+  the damage is the margin plus the weapon's damage.
+- Vampires halve mundane Superficial damage, rounding up, before it is
+  marked (QR p.3; core p.126). Mortals, ghouls and thin-bloods without
+  Vampiric Resilience don't.
+- A track is Impaired when it is full (QR p.3: Health -2 to Physical tests,
+  Willpower -2 to Mental and Social tests). A vampire whose Health track
+  is full of Aggravated damage falls into torpor.
+
+Only vampires roll Hunger dice (Character.dice_hunger).
 """
 
-from world.v5_dice import roll_pool, DiceResult
+from dice.dice_roller import MAX_DIFFICULTY, MAX_POOL, roll_v5_pool
+from world.ansi_theme import BLOOD_RED, DARK_RED, GOLD, PALE_IVORY, RESET, SHADOW_GREY
+from world.v5_data import UnknownTrait
+
 from .discipline_effects import get_active_effects
-from .trait_utils import get_trait_value
-from world.ansi_theme import BLOOD_RED, DARK_RED, RESET, GOLD, PALE_IVORY, SHADOW_GREY
+
+DAMAGE_TYPES = ("superficial", "aggravated")
+DEFAULT_ATTACK_POOL = "Strength + Brawl"
+DEFAULT_DEFENSE_POOL = "Dexterity + Athletics"
+IMPAIRMENT_PENALTY = -2
 
 
-def calculate_attack(attacker, defender, attack_pool_desc):
-    """
-    Calculate attack roll against defender's defense.
-
-    Args:
-        attacker: The attacking character
-        defender: The defending character
-        attack_pool_desc: String describing the attack pool (e.g., "Strength + Brawl")
-
-    Returns:
-        dict with keys:
-            - success: bool
-            - result: DiceResult object
-            - defense: int
-            - margin: int (successes - defense)
-            - message: str
-    """
-    # Parse attack pool description
-    pool_parts = [p.strip() for p in attack_pool_desc.split('+')]
-
-    # Calculate total dice pool
-    total_pool = 0
-    for part in pool_parts:
-        trait_value = get_trait_value(attacker, part)
-        if trait_value is None:
-            return {
-                "success": False,
-                "result": None,
-                "defense": 0,
-                "margin": 0,
-                "message": f"Invalid trait: {part}"
-            }
-        total_pool += trait_value
-
-    # Get attacker's hunger
-    hunger = attacker.hunger
-
-    # Calculate defender's defense
-    defense = calculate_defense(defender)
-
-    # Check for Potence damage bonus (from active effects)
-    potence_bonus = 0
-    attacker_effects = get_active_effects(attacker)
-    for effect in attacker_effects:
-        if effect.get("discipline") == "Potence" and "damage_bonus" in effect:
-            potence_bonus = effect.get("damage_bonus", 0)
-            break
-
-    # Roll the attack
-    result = roll_pool(pool=total_pool, hunger=hunger, difficulty=defense)
-
-    # Calculate margin of success
-    margin = max(0, result.successes - defense)
-
-    # Build response message
-    if result.successes >= defense:
-        message = f"{BLOOD_RED}Attack succeeds!{RESET} {result.successes} successes vs {defense} defense.\n"
-        message += f"Margin of success: {GOLD}{margin}{RESET}"
-        if potence_bonus > 0:
-            message += f"\n{DARK_RED}Potence active:{RESET} +{potence_bonus} damage bonus"
-        success = True
-    else:
-        message = f"{SHADOW_GREY}Attack fails.{RESET} {result.successes} successes vs {defense} defense."
-        success = False
-
-    return {
-        "success": success,
-        "result": result,
-        "defense": defense,
-        "margin": margin,
-        "potence_bonus": potence_bonus,
-        "message": message
-    }
-
-
-def apply_damage(character, damage_amount, damage_type="superficial"):
-    """
-    Apply damage to a character.
-
-    Args:
-        character: The character receiving damage
-        damage_amount: Amount of damage to apply
-        damage_type: "superficial", "aggravated", or "lethal"
-
-    Returns:
-        dict with keys:
-            - success: bool
-            - message: str
-            - health_status: str
-    """
-    if damage_amount <= 0:
-        return {
-            "success": False,
-            "message": "Damage amount must be positive.",
-            "health_status": ""
-        }
-
-    # Check for Fortitude damage reduction
-    fortitude_soak = 0
-    effects = get_active_effects(character)
-    for effect in effects:
-        if effect.get("discipline") == "Fortitude" and "damage_reduction" in effect:
-            fortitude_soak = effect.get("damage_reduction", 0)
-            break
-
-    # Apply Fortitude soak
-    actual_damage = max(0, damage_amount - fortitude_soak)
-
-    if actual_damage == 0:
-        message = f"{GOLD}Fortitude{RESET} soaks all damage!"
-        return {
-            "success": True,
-            "message": message,
-            "health_status": get_health_status(character)
-        }
-
-    # Get current damage values
-    max_health = character.health_max
-    marks = character.damage["health"]
-    superficial = marks["superficial"]
-    aggravated = marks["aggravated"]
-
-    # Apply damage based on type
-    if damage_type == "aggravated":
-        new_aggravated = min(max_health, aggravated + actual_damage)
-        character.set_damage("health", aggravated=new_aggravated)
-        damage_word = f"{BLOOD_RED}Aggravated{RESET}"
-    elif damage_type in ["superficial", "lethal"]:
-        # Lethal damage becomes superficial for vampires
-        new_superficial = superficial + actual_damage
-
-        # Check for overflow - superficial converts to aggravated when full
-        total_damage = new_superficial + aggravated
-        if total_damage > max_health:
-            overflow = total_damage - max_health
-            new_aggravated = min(max_health, aggravated + overflow)
-            new_superficial = max_health - new_aggravated
-            character.set_damage("health", superficial=new_superficial, aggravated=new_aggravated)
-            damage_word = f"{DARK_RED}Superficial{RESET} (overflow to {BLOOD_RED}Aggravated{RESET})"
-        else:
-            character.set_damage("health", superficial=new_superficial)
-            damage_word = f"{DARK_RED}Superficial{RESET}"
-    else:
-        return {
-            "success": False,
-            "message": f"Invalid damage type: {damage_type}",
-            "health_status": ""
-        }
-
-    # Build message
-    message = f"You take {GOLD}{actual_damage}{RESET} {damage_word} damage."
-    if fortitude_soak > 0:
-        message += f" ({GOLD}Fortitude{RESET} soaked {fortitude_soak})"
-
-    # Check for death/torpor
-    if character.current_health == 0:
-        if aggravated >= max_health:
-            message += f"\n{BLOOD_RED}You have been destroyed!{RESET}"
-        else:
-            message += f"\n{DARK_RED}You fall into Torpor!{RESET}"
-
-    return {
-        "success": True,
-        "message": message,
-        "health_status": get_health_status(character)
-    }
-
-
-def heal_damage(character, heal_amount, damage_type="superficial"):
-    """
-    Heal damage on a character.
-
-    Args:
-        character: The character to heal
-        heal_amount: Amount of damage to heal
-        damage_type: "superficial" or "aggravated"
-
-    Returns:
-        dict with keys:
-            - success: bool
-            - message: str
-            - health_status: str
-    """
-    if heal_amount <= 0:
-        return {
-            "success": False,
-            "message": "Heal amount must be positive.",
-            "health_status": ""
-        }
-
-    marks = character.damage["health"]
-
-    if damage_type == "superficial":
-        current_superficial = marks["superficial"]
-        if current_superficial == 0:
-            return {
-                "success": False,
-                "message": "No superficial damage to heal.",
-                "health_status": get_health_status(character)
-            }
-
-        healed = min(heal_amount, current_superficial)
-        character.set_damage("health", superficial=current_superficial - healed)
-        damage_word = f"{DARK_RED}Superficial{RESET}"
-
-    elif damage_type == "aggravated":
-        current_aggravated = marks["aggravated"]
-        if current_aggravated == 0:
-            return {
-                "success": False,
-                "message": "No aggravated damage to heal.",
-                "health_status": get_health_status(character)
-            }
-
-        healed = min(heal_amount, current_aggravated)
-        character.set_damage("health", aggravated=current_aggravated - healed)
-        damage_word = f"{BLOOD_RED}Aggravated{RESET}"
-    else:
-        return {
-            "success": False,
-            "message": f"Invalid damage type: {damage_type}",
-            "health_status": ""
-        }
-
-    message = f"You heal {GOLD}{healed}{RESET} {damage_word} damage."
-
-    return {
-        "success": True,
-        "message": message,
-        "health_status": get_health_status(character)
-    }
-
-
-def get_health_status(character):
-    """
-    Get a visual representation of character's health.
-
-    Returns a formatted string showing health boxes:
-    - X = Aggravated damage
-    - / = Superficial damage
-    - O = Healthy
-
-    Args:
-        character: The character to check
-
-    Returns:
-        str: Formatted health display
-    """
-    max_health = character.health_max
-    superficial = character.damage["health"]["superficial"]
-    aggravated = character.damage["health"]["aggravated"]
-
-    # Build health boxes visualization
-    # Aggravated fills from right, superficial from left
-    boxes = []
-
-    # Fill aggravated from right
-    agg_boxes = min(aggravated, max_health)
-    # Fill superficial from left
-    sup_boxes = min(superficial, max_health - agg_boxes)
-    # Remaining are healthy
-    healthy_boxes = max_health - agg_boxes - sup_boxes
-
-    # Build the display
-    for i in range(healthy_boxes):
-        boxes.append(f"{PALE_IVORY}O{RESET}")
-    for i in range(sup_boxes):
-        boxes.append(f"{DARK_RED}/{RESET}")
-    for i in range(agg_boxes):
-        boxes.append(f"{BLOOD_RED}X{RESET}")
-
-    health_display = f"[{' '.join(boxes)}]"
-
-    # Add impairment warning
-    impairment = get_impairment_penalty(character)
-    if impairment < 0:
-        health_display += f" {SHADOW_GREY}(Impaired: {impairment} dice){RESET}"
-
-    return health_display
-
-
-def calculate_defense(character):
-    """
-    Calculate a character's defense value.
-
-    Defense = Dexterity + Athletics + Celerity bonus (if active)
-
-    Args:
-        character: The character to calculate defense for
-
-    Returns:
-        int: Defense value
-    """
-    # Base defense: Dexterity + Athletics
-    dexterity = get_trait_value(character, "Dexterity") or 0
-    athletics = get_trait_value(character, "Athletics") or 0
-
-    defense = dexterity + athletics
-
-    # Check for Celerity defense bonus
-    celerity_bonus = 0
-    effects = get_active_effects(character)
-    for effect in effects:
-        if effect.get("discipline") == "Celerity" and "defense_bonus" in effect:
-            celerity_bonus = effect.get("defense_bonus", 0)
-            break
-
-    return defense + celerity_bonus
-
-
-def get_impairment_penalty(character):
-    """
-    Calculate impairment penalty from injuries.
-
-    When at or below half health, characters suffer -2 dice penalty.
-
-    Args:
-        character: The character to check
-
-    Returns:
-        int: Penalty to dice pools (0 or -2)
-    """
-    max_health = character.health_max
-    current_health = character.current_health
-
-    # Impaired at half health or less
-    if current_health <= max_health / 2:
-        return -2
-
+def _effect_bonus(character, discipline, key):
+    """The first active effect bonus of ``key`` from ``discipline`` (0 if none)."""
+    for effect in get_active_effects(character):
+        if effect.get("discipline") == discipline and key in effect:
+            return effect.get(key, 0)
     return 0
 
 
 def get_combat_pool(character, pool_desc, include_impairment=True):
     """
-    Calculate a dice pool for combat, including impairment.
-
-    Args:
-        character: The character
-        pool_desc: Description like "Strength + Brawl"
-        include_impairment: Whether to apply impairment penalty
+    A combat dice pool from "Attribute + Skill", less impairment (a full
+    Health track for this Physical test, and Degeneration; QR p.3).
 
     Returns:
-        dict with keys:
-            - pool: int (final dice pool)
-            - base_pool: int (before impairment)
-            - impairment: int (penalty applied)
-            - breakdown: str (explanation)
+        dict: {"pool": int, "base_pool": int, "impairment": int,
+               "breakdown": str, "error": str or None}
     """
-    # Parse pool description
-    pool_parts = [p.strip() for p in pool_desc.split('+')]
-
     base_pool = 0
     breakdown_parts = []
-
-    for part in pool_parts:
-        value = get_trait_value(character, part)
-        if value is None:
-            return {
-                "pool": 0,
-                "base_pool": 0,
-                "impairment": 0,
-                "breakdown": f"Invalid trait: {part}"
-            }
+    for part in (p.strip() for p in pool_desc.split('+')):
+        try:
+            value = character.get_trait(part)
+        except UnknownTrait:
+            return {"pool": 0, "base_pool": 0, "impairment": 0, "breakdown": "",
+                    "error": f"Unknown trait: {part or pool_desc}"}
         base_pool += value
         breakdown_parts.append(f"{part} {value}")
 
-    # Apply impairment if requested
-    impairment = get_impairment_penalty(character) if include_impairment else 0
-    final_pool = max(0, base_pool + impairment)  # impairment is negative
+    impairment = character.dice_penalty(physical=True) if include_impairment else 0
+    final_pool = max(1, min(MAX_POOL, base_pool + impairment))
 
-    # Build breakdown
-    breakdown = " + ".join(breakdown_parts)
-    breakdown += f" = {base_pool}"
+    breakdown = " + ".join(breakdown_parts) + f" = {base_pool}"
     if impairment < 0:
-        breakdown += f" {impairment} (impaired) = {final_pool}"
+        breakdown += f", {impairment} (impaired)"
+    if final_pool != base_pool + impairment:
+        breakdown += f" -> {final_pool}"
+    return {"pool": final_pool, "base_pool": base_pool, "impairment": impairment,
+            "breakdown": breakdown, "error": None}
+
+
+# The defender's standard defenses (core p.123-126): dodge with Dexterity +
+# Athletics against anything; against a close-combat attack, also fight back
+# with Brawl or Melee. The defender rolls the best of them.
+DODGE_POOL = "Dexterity + Athletics"
+CLOSE_DEFENSE_POOLS = (
+    "Strength + Brawl", "Dexterity + Brawl", "Strength + Melee", "Dexterity + Melee",
+)
+RANGED_SKILLS = ("firearms",)
+
+
+def check_attack_pool(pool_desc):
+    """Return an error unless the pool is one Attribute plus one Skill (each once)."""
+    from world.v5_data import resolve_trait
+
+    kinds = []
+    for part in (p.strip() for p in pool_desc.split("+")):
+        try:
+            kinds.append(resolve_trait(part).category)
+        except UnknownTrait:
+            return f"Unknown trait: {part or pool_desc}"
+    if sorted(kinds) != ["attributes", "skills"]:
+        return "An attack pool is one Attribute plus one Skill, e.g. Strength + Brawl."
+    return None
+
+
+def best_defense_pool(defender, attack_pool_desc):
+    """The defender's best standard defense pool against this attack.
+
+    Dexterity + Athletics (a dodge) against everything; against a close
+    combat attack (not Firearms) also Strength/Dexterity + Brawl/Melee. The
+    highest pool wins; a tie keeps the dodge.
+    """
+    skills = [p.strip().lower() for p in attack_pool_desc.split("+")]
+    candidates = [DODGE_POOL]
+    if not any(skill in RANGED_SKILLS for skill in skills):
+        candidates += list(CLOSE_DEFENSE_POOLS)
+    return max(candidates, key=lambda desc: get_combat_pool(defender, desc)["base_pool"])
+
+
+def calculate_attack(attacker, defender, attack_pool_desc=DEFAULT_ATTACK_POOL, weapon=0,
+                     defense_pool_desc=None):
+    """
+    Resolve a contested attack (core p.123-126).
+
+    The attacker rolls ``attack_pool_desc`` and the defender rolls
+    ``defense_pool_desc`` (default: their best standard defense,
+    best_defense_pool), plus an active Celerity defense bonus, each less
+    impairment and each with their own Hunger dice. The attack hits when the
+    attacker's successes are at least the defender's (and at least 1); a
+    tie hits too (owner decision). Damage = margin (at least 1 on a hit;
+    the Basic Rules give a tie 1 point) + weapon damage (+ an active Potence
+    bonus).
+
+    Returns:
+        dict: {"success", "attack", "defense" (pool dicts), "result",
+               "defense_result" (RollResult), "margin", "weapon",
+               "potence_bonus", "damage", "message", "error"}
+    """
+    if not defense_pool_desc:
+        defense_pool_desc = best_defense_pool(defender, attack_pool_desc)
+    attack = get_combat_pool(attacker, attack_pool_desc)
+    defense = get_combat_pool(defender, defense_pool_desc)
+    for pool in (attack, defense):
+        if pool["error"]:
+            return {"success": False, "error": pool["error"], "message": pool["error"]}
+
+    celerity = _effect_bonus(defender, "Celerity", "defense_bonus")
+    if celerity:
+        defense["pool"] = min(MAX_POOL, defense["pool"] + celerity)
+        defense["breakdown"] += f", +{celerity} (Celerity)"
+
+    defense_result = roll_v5_pool(defense["pool"], defender.dice_hunger, 0)
+    difficulty = min(MAX_DIFFICULTY, max(1, defense_result.total_successes))
+    result = roll_v5_pool(attack["pool"], attacker.dice_hunger, difficulty)
+
+    potence_bonus = _effect_bonus(attacker, "Potence", "damage_bonus")
+    success = result.is_success
+    margin = max(1, result.total_successes - defense_result.total_successes) if success else 0
+    damage = margin + weapon + potence_bonus if success else 0
+
+    if success:
+        message = (
+            f"{BLOOD_RED}The attack hits!{RESET} {result.total_successes} successes vs "
+            f"{defense_result.total_successes}. Margin {GOLD}{margin}{RESET}"
+        )
+        if weapon:
+            message += f" + weapon {weapon}"
+        if potence_bonus:
+            message += f" + Potence {potence_bonus}"
+        message += f" = {GOLD}{damage}{RESET} damage."
+    else:
+        message = (
+            f"{SHADOW_GREY}The attack misses.{RESET} {result.total_successes} successes vs "
+            f"{defense_result.total_successes}."
+        )
 
     return {
-        "pool": final_pool,
-        "base_pool": base_pool,
-        "impairment": impairment,
-        "breakdown": breakdown
+        "success": success,
+        "error": None,
+        "attack": attack,
+        "defense": defense,
+        "defense_pool": defense_pool_desc,
+        "result": result,
+        "defense_result": defense_result,
+        "margin": margin,
+        "weapon": weapon,
+        "potence_bonus": potence_bonus,
+        "damage": damage,
+        "message": message,
     }
+
+
+def apply_damage(character, damage_amount, damage_type="superficial", halve=True):
+    """
+    Mark damage on a character's Health track.
+
+    Superficial damage is halved, rounding up, for a character who halves
+    it (Character.halves_superficial) unless ``halve`` is False (a source
+    the Storyteller rules isn't mundane). When the track is full, each
+    further Superficial point turns a Superficial box into Aggravated. A
+    vampire whose track is full of Aggravated damage falls into torpor.
+
+    Returns:
+        dict: {"success", "message", "health_status", "marked",
+               "impaired", "torpor"}
+    """
+    if damage_amount <= 0:
+        return {"success": False, "message": "Damage amount must be positive.", "health_status": ""}
+    if damage_type not in DAMAGE_TYPES:
+        return {"success": False, "message": f"Invalid damage type: {damage_type}", "health_status": ""}
+
+    # Fortitude's damage reduction applies to Superficial damage only.
+    soak = _effect_bonus(character, "Fortitude", "damage_reduction") if damage_type == "superficial" else 0
+    amount = max(0, damage_amount - soak)
+    halved = False
+    if damage_type == "superficial" and halve and character.halves_superficial:
+        amount = (amount + 1) // 2
+        halved = True
+
+    if amount == 0:
+        return {"success": True, "message": f"{GOLD}Fortitude{RESET} soaks all the damage.",
+                "health_status": get_health_status(character), "marked": 0, "impaired": False, "torpor": False}
+
+    maximum = character.health_max
+    marks = character.damage["health"]
+    superficial, aggravated = marks["superficial"], marks["aggravated"]
+    if damage_type == "aggravated":
+        aggravated = min(maximum, aggravated + amount)
+        superficial = min(superficial, maximum - aggravated)
+        word = f"{BLOOD_RED}Aggravated{RESET}"
+    else:
+        superficial += amount
+        overflow = max(0, superficial + aggravated - maximum)
+        aggravated = min(maximum, aggravated + overflow)
+        superficial = maximum - aggravated if overflow else superficial
+        word = f"{DARK_RED}Superficial{RESET}"
+        if overflow:
+            word += f" ({overflow} upgraded to {BLOOD_RED}Aggravated{RESET}: the track is full)"
+    character.set_damage("health", superficial=superficial, aggravated=aggravated)
+
+    message = f"{character.key} takes {GOLD}{amount}{RESET} {word} damage."
+    notes = []
+    if halved:
+        notes.append(f"halved from {max(0, damage_amount - soak)}")
+    if soak:
+        notes.append(f"Fortitude soaked {soak}")
+    if notes:
+        message += f" ({'; '.join(notes)})"
+
+    after = character.damage["health"]
+    torpor = after["aggravated"] >= maximum
+    impaired = is_impaired(character)
+    if torpor:
+        if character.is_kindred:
+            message += f"\n{BLOOD_RED}The Health track is full of Aggravated damage: {character.key} falls into torpor.{RESET}"
+        else:
+            message += f"\n{BLOOD_RED}The Health track is full of Aggravated damage: {character.key} is dying.{RESET}"
+    elif impaired:
+        message += f"\n{DARK_RED}The Health track is full: {character.key} is Impaired (-2 to Physical tests).{RESET}"
+
+    return {"success": True, "message": message, "health_status": get_health_status(character),
+            "marked": amount, "impaired": impaired, "torpor": torpor}
+
+
+def heal_damage(character, heal_amount, damage_type="superficial"):
+    """
+    Remove damage from a character's Health track (no cost; staff use, and
+    the mending helper below once its Rouse is paid).
+
+    Returns:
+        dict: {"success", "message", "health_status", "healed"}
+    """
+    if heal_amount <= 0:
+        return {"success": False, "message": "Heal amount must be positive.", "health_status": ""}
+    if damage_type not in DAMAGE_TYPES:
+        return {"success": False, "message": f"Invalid damage type: {damage_type}", "health_status": ""}
+
+    current = character.damage["health"][damage_type]
+    if current == 0:
+        return {"success": False, "message": f"No {damage_type} damage to heal.",
+                "health_status": get_health_status(character), "healed": 0}
+    healed = min(heal_amount, current)
+    character.set_damage("health", **{damage_type: current - healed})
+    color = DARK_RED if damage_type == "superficial" else BLOOD_RED
+    return {"success": True, "message": f"{character.key} heals {GOLD}{healed}{RESET} {color}{damage_type.title()}{RESET} damage.",
+            "health_status": get_health_status(character), "healed": healed}
+
+
+def mend_superficial(character):
+    """
+    Mend Superficial damage by Rousing the Blood (QR p.13; core p.218).
+
+    One Rouse check heals the Blood Potency table's mend_amount of
+    Superficial damage. At Hunger 5 the Rouse is refused and nothing is
+    healed. Vampires only; a thin-blood with Mortal Frailty can't mend.
+
+    Returns:
+        dict: {"success", "message", "rouse_result" (or None), "healed"}
+    """
+    from dice.rouse_checker import HUNGER_5_REFUSAL, perform_rouse_check
+    from world.v5_data import BLOOD_POTENCY
+
+    if not character.is_kindred:
+        return {"success": False, "message": "Only vampires mend damage with the Blood.", "rouse_result": None,
+                "healed": 0}
+    if "Mortal Frailty" in character.advantages["flaws"]:
+        return {"success": False, "message": "Mortal Frailty: you can't Rouse the Blood to mend.",
+                "rouse_result": None, "healed": 0}
+    if character.damage["health"]["superficial"] == 0:
+        return {"success": False, "message": "You have no Superficial damage to mend.", "rouse_result": None,
+                "healed": 0}
+
+    rouse = perform_rouse_check(character, reason="Mending")
+    if rouse.refused:
+        return {"success": False, "message": HUNGER_5_REFUSAL, "rouse_result": rouse, "healed": 0}
+
+    amount = BLOOD_POTENCY.get(character.blood_potency, {}).get("mend_amount", 1)
+    healed = heal_damage(character, amount, "superficial").get("healed", 0)
+    return {"success": True, "message": f"You mend {healed} Superficial damage.", "rouse_result": rouse,
+            "healed": healed}
+
+
+def is_impaired(character, track="health"):
+    """True when the track is fully marked (QR p.3)."""
+    maximum = character.health_max if track == "health" else character.willpower_max
+    marks = character.damage[track]
+    return marks["superficial"] + marks["aggravated"] >= maximum
+
+
+def get_impairment_penalty(character):
+    """Health impairment: -2 dice to Physical tests while the Health track is full (QR p.3), else 0."""
+    return IMPAIRMENT_PENALTY if is_impaired(character, "health") else 0
+
+
+def get_health_status(character):
+    """
+    The Health track: O healthy, / Superficial, X Aggravated, with Impaired or torpor noted.
+    """
+    maximum = character.health_max
+    marks = character.damage["health"]
+    aggravated = min(marks["aggravated"], maximum)
+    superficial = min(marks["superficial"], maximum - aggravated)
+    healthy = maximum - aggravated - superficial
+
+    boxes = [f"{PALE_IVORY}O{RESET}"] * healthy + [f"{DARK_RED}/{RESET}"] * superficial + [f"{BLOOD_RED}X{RESET}"] * aggravated
+    display = f"[{' '.join(boxes)}]"
+    if aggravated >= maximum:
+        display += f" {BLOOD_RED}(torpor){RESET}" if character.is_kindred else f" {BLOOD_RED}(dying){RESET}"
+    elif healthy == 0:
+        display += f" {SHADOW_GREY}(Impaired: {IMPAIRMENT_PENALTY} dice to Physical tests){RESET}"
+    return display

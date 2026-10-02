@@ -11,14 +11,12 @@ tagged with their finding id, or are left to the PR that rebuilds them.
 """
 
 import time
-import unittest
 from unittest.mock import patch
 
 from evennia.utils.test_resources import EvenniaCommandTest
 
 from commands.v5.blood import CmdBloodSurge, CmdFeed, CmdHunger
 from commands.v5.utils import blood_utils
-from dice import dice_roller
 
 RANDINT = "dice.dice_roller.randint"
 
@@ -40,46 +38,57 @@ class BloodCommandTestBase(EvenniaCommandTest):
 
 
 class CmdFeedTestCase(BloodCommandTestBase):
-    """Tests for the feed command."""
+    """`feed` records a feeding from a staff-run scene (QR p.12 sources).
+
+    char1 is staff (Developer); char2 is the fed player character.
+    """
+
+    def feed(self, args):
+        return self.call(CmdFeed(), args, caller=self.char1)
 
     def test_feed_no_arguments(self):
-        self.call(CmdFeed(), "", "Usage: feed")
+        self.call(CmdFeed(), "", "Usage: feed", caller=self.char1)
+
+    def test_feed_is_staff_only(self):
+        """F-085/A-032: the command is locked to Builders."""
+        self.assertEqual(CmdFeed.locks, "cmd:perm(Builder)")
 
     def test_feed_invalid_resonance(self):
-        output = self.call(CmdFeed(), "mortal invalid_resonance")
+        output = self.feed("Char2=drink/invalid_resonance")
         self.assertIn("Invalid resonance", output)
 
-    def test_feed_requires_character(self):
-        self.call(CmdFeed(), "mortal", "You must be in character", caller=self.account)
+    def test_feed_drink_slakes_two(self):
+        self.char2.hunger = 4
+        self.feed("Char2=drink")
+        self.assertEqual(self.char2.hunger, 2)
 
-    def test_feed_rolls_with_character_hunger(self):
-        """The feeding roll uses the character's Hunger as its Hunger dice (QR p.4).
+    def test_feed_without_a_kill_stops_at_hunger_1(self):
+        """A-012 / QR p.12: only draining and killing a human reaches Hunger 0."""
+        self.char2.hunger = 2
+        self.feed("Char2=harmful 4")
+        self.assertEqual(self.char2.hunger, 1)
+        self.feed("Char2=kill")
+        self.assertEqual(self.char2.hunger, 0)
 
-        The pool and difficulty are not pinned: the book takes the pool from
-        the predator type and the difficulty from the hunting ground (QR p.12),
-        and PR 6 rebuilds both.
-        """
-        self.char.hunger = 4
-        with (
-            patch("dice.dice_roller.roll_v5_pool", wraps=dice_roller.roll_v5_pool) as roll,
-            patch(RANDINT, return_value=7),
-        ):
-            self.call(CmdFeed(), "mortal")
-        roll.assert_called_once()
-        self.assertEqual(roll.call_args.args[1], 4)
+    def test_high_blood_potency_slakes_less_and_needs_a_kill_below_2(self):
+        """BP 5: 1 less Hunger per human; must kill to go below 2."""
+        self.char2.blood_potency = 5
+        self.char2.hunger = 5
+        self.feed("Char2=drink")
+        self.assertEqual(self.char2.hunger, 4)
+        self.feed("Char2=harmful 4")
+        self.assertEqual(self.char2.hunger, 2)
 
-    def test_feed_success_reduces_hunger(self):
-        self.char.hunger = 4
-        with fixed_dice(7, 7, 7, 7, 7):
-            output = self.call(CmdFeed(), "mortal")
-        self.assertIn("Feeding successful", output)
-        self.assertLess(blood_utils.get_hunger_level(self.char), 4)
+    def test_animal_blood_slakes_nothing_above_bp_2(self):
+        self.char2.blood_potency = 3
+        self.char2.hunger = 3
+        self.feed("Char2=large animal")
+        self.assertEqual(self.char2.hunger, 3)
 
     def test_feed_sets_resonance(self):
-        self.char.hunger = 3
-        with fixed_dice(7, 7, 7, 7, 7):
-            output = self.call(CmdFeed(), "mortal choleric")
-        resonance = blood_utils.get_resonance(self.char)
+        self.char2.hunger = 3
+        output = self.feed("Char2=drink/choleric")
+        resonance = blood_utils.get_resonance(self.char2)
         self.assertEqual(resonance["type"], "Choleric")
         self.assertEqual(resonance["intensity"], 1)
         self.assertIn("Choleric", output)
@@ -87,43 +96,30 @@ class CmdFeedTestCase(BloodCommandTestBase):
 
     def test_feed_melancholy_sets_the_book_name(self):
         """'melancholy' (QR p.12) is accepted and stored as "Melancholy"."""
-        self.char.hunger = 3
-        with fixed_dice(7, 7, 7, 7, 7):
-            output = self.call(CmdFeed(), "mortal melancholy")
-        self.assertEqual(blood_utils.get_resonance(self.char)["type"], "Melancholy")
-        self.assertIn("Melancholy", output)
+        self.char2.hunger = 3
+        output = self.feed("Char2=sip/melancholy/2")
+        self.assertEqual(blood_utils.get_resonance(self.char2)["type"], "Melancholy")
+        self.assertIn("Intense", output)
 
     def test_feed_rejects_unknown_resonance_before_feeding(self):
         """An invalid resonance is refused before Hunger changes."""
-        self.char.hunger = 3
-        with fixed_dice(7, 7, 7, 7, 7):
-            output = self.call(CmdFeed(), "mortal melancholic")
+        self.char2.hunger = 3
+        output = self.feed("Char2=drink/melancholic")
         self.assertIn("Invalid resonance", output)
-        self.assertEqual(blood_utils.get_hunger_level(self.char), 3)
-        self.assertIsNone(blood_utils.get_resonance(self.char))
+        self.assertEqual(self.char2.hunger, 3)
+        self.assertIsNone(blood_utils.get_resonance(self.char2))
 
-    def test_feed_failure_keeps_hunger(self):
-        self.char.hunger = 3
-        with fixed_dice(2, 2, 2, 2, 2):
-            output = self.call(CmdFeed(), "mortal")
-        self.assertIn("Feeding failed", output)
-        self.assertEqual(blood_utils.get_hunger_level(self.char), 3)
 
-    def test_feed_bestial_failure_keeps_hunger(self):
-        """A failed feeding roll with a Hunger 1 is a bestial failure."""
-        self.char.hunger = 3
-        # Two regular dice, then three Hunger dice; one Hunger die shows 1.
-        with fixed_dice(2, 3, 1, 2, 4):
-            output = self.call(CmdFeed(), "mortal")
-        self.assertIn("Bestial Failure", output)
-        self.assertEqual(blood_utils.get_hunger_level(self.char), 3)
+class FeedLockTestCase(EvenniaCommandTest):
+    """A player typing `feed` gets no match: the command isn't available to them."""
 
-    def test_feed_success_is_announced_to_the_room(self):
-        self.char.hunger = 3
-        with patch.object(self.char2, "msg") as char2_msg, fixed_dice(7, 7, 7, 7, 7):
-            self.call(CmdFeed(), "mortal")
-        sent = " ".join(str(call) for call in char2_msg.call_args_list)
-        self.assertIn("feeds", sent)
+    def test_player_feed_is_not_available(self):
+        self.char2.hunger = 4
+        with patch.object(self.char2, "msg") as msg:
+            self.char2.execute_cmd("feed Char2=kill")
+        sent = " ".join(str(call) for call in msg.call_args_list)
+        self.assertIn("not available", sent)
+        self.assertEqual(self.char2.hunger, 4)
 
 
 class CmdBloodSurgeTestCase(BloodCommandTestBase):
@@ -135,16 +131,20 @@ class CmdBloodSurgeTestCase(BloodCommandTestBase):
     def test_bloodsurge_requires_character(self):
         self.call(CmdBloodSurge(), "strength", "You must be in character", caller=self.account)
 
-    # F-017, fixed in PR 5: activate_blood_surge calls
-    # roll_rouse_check(character, reason=...), which takes no arguments, so
-    # every bloodsurge raises TypeError.
-    @unittest.expectedFailure
+    # F-017: bloodsurge makes one Rouse check, with the roll it surges. The
+    # Hunger it costs is added after that roll (core pp.211-212).
     def test_bloodsurge_costs_a_rouse_check(self):
-        """A failed Rouse (die 1-5) raises Hunger by 1 and the surge activates."""
+        """A failed surge Rouse raises Hunger by 1 after the surged roll."""
+        from dice.commands import CmdRoll
+
         self.char.hunger = 2
-        with patch(RANDINT, return_value=3):
-            output = self.call(CmdBloodSurge(), "strength")
+        output = self.call(CmdBloodSurge(), "strength")
         self.assertIn("Blood Surge activated", output)
+        self.assertEqual(blood_utils.get_hunger_level(self.char), 2)
+
+        with patch(RANDINT, return_value=3):
+            self.call(CmdRoll(), "3")
+        self.assertEqual(len(self.char.ndb.last_roll["result"].hunger_dice), 2)
         self.assertEqual(blood_utils.get_hunger_level(self.char), 3)
 
 
@@ -192,7 +192,7 @@ class CmdHungerTestCase(BloodCommandTestBase):
         self.assertNotIn("Resonance:", output)
 
     def test_hunger_with_blood_surge_display(self):
-        self.char.ndb.blood_surge = {
+        self.char.db.blood_surge = {
             "trait": "Strength",
             "bonus": 3,
             "expires": time.time() + 1800,
@@ -203,11 +203,11 @@ class CmdHungerTestCase(BloodCommandTestBase):
         self.assertIn("minutes remaining", output)
 
     def test_hunger_without_blood_surge(self):
-        self.char.ndb.blood_surge = None
+        blood_utils.deactivate_blood_surge(self.char)
         self.assertNotIn("Blood Surge Active", self.hunger_output(2))
 
     def test_hunger_expired_surge_not_shown(self):
-        self.char.ndb.blood_surge = {
+        self.char.db.blood_surge = {
             "trait": "Strength",
             "bonus": 3,
             "expires": time.time() - 1,

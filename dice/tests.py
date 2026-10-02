@@ -8,7 +8,6 @@ Test coverage for:
 - RouseCheckerTestCase: Rouse checks and Hunger management (rouse_checker.py)
 """
 
-import unittest
 from unittest.mock import patch
 
 from evennia.utils.test_resources import EvenniaCommandTest, EvenniaTest
@@ -17,9 +16,7 @@ from dice import dice_roller
 from dice.dice_roller import (
     apply_willpower_reroll,
     get_success_threshold,
-    roll_chance_die,
     roll_contested,
-    roll_rouse_check,
     roll_v5_pool,
     validate_pool_params,
 )
@@ -120,18 +117,6 @@ class DiceRollerTestCase(EvenniaTest):
         self.assertTrue(result.is_bestial_failure)
         self.assertEqual(result.result_type, 'bestial_failure')
 
-    def test_chance_die(self):
-        """Test that pool 0 or negative becomes 1 die."""
-        result = roll_chance_die()
-
-        self.assertIsNotNone(result)
-        self.assertEqual(len(result.regular_dice), 1)
-        self.assertEqual(len(result.hunger_dice), 0)
-
-        # Verify die is in valid range
-        self.assertGreaterEqual(result.regular_dice[0], 1)
-        self.assertLessEqual(result.regular_dice[0], 10)
-
     def test_pool_validation(self):
         """Test that invalid parameters raise ValueError."""
         # Pool size < 1
@@ -150,43 +135,36 @@ class DiceRollerTestCase(EvenniaTest):
         with self.assertRaises(ValueError):
             roll_v5_pool(pool_size=5, hunger=0, difficulty=-1)
 
-    # F-016 family (Hunger dice), fixed in PR 5: roll_v5_pool raises when
-    # Hunger exceeds the pool. QR p.4: Hunger dice replace regular dice
-    # "without exceeding the total dice pool", so pool 3 at Hunger 5 rolls
-    # three Hunger dice.
-    @unittest.expectedFailure
+    # QR p.4: Hunger dice replace regular dice "without exceeding the total
+    # dice pool", so pool 3 at Hunger 5 rolls three Hunger dice.
     def test_hunger_above_pool_rolls_all_hunger_dice(self):
         result = roll_v5_pool(pool_size=3, hunger=5)
         self.assertEqual(len(result.regular_dice), 0)
         self.assertEqual(len(result.hunger_dice), 3)
 
     def test_willpower_reroll(self):
-        """Re-roll up to 3 regular dice; Hunger dice are never re-rolled (QR p.3)."""
-        # Create result with known failed dice
-        original = RollResult(
-            regular_dice=[1, 2, 3, 4, 5],  # 5 failed dice
-            hunger_dice=[6],
-            difficulty=0
-        )
+        """The chosen regular dice are re-rolled; Hunger dice never are (QR p.3)."""
+        original = RollResult(regular_dice=[1, 2, 10, 4, 5], hunger_dice=[6], difficulty=0)
 
-        # Reroll 3 failed dice
-        new_result, rerolled_indices = apply_willpower_reroll(original, num_rerolls=3)
+        with patch('dice.dice_roller.randint', side_effect=[9, 8]):
+            new_result, rerolled_indices = apply_willpower_reroll(original, [10, 4])
 
-        self.assertEqual(len(rerolled_indices), 3)  # Should reroll 3 dice
-        self.assertEqual(len(new_result.regular_dice), 5)  # Same number of regular dice
-        self.assertEqual(new_result.hunger_dice, original.hunger_dice)  # Hunger dice unchanged
+        self.assertEqual(rerolled_indices, [2, 3])
+        self.assertEqual(new_result.regular_dice, [1, 2, 9, 8, 5])
+        self.assertEqual(new_result.hunger_dice, [6])
 
     def test_willpower_reroll_validation(self):
-        """Test that invalid reroll counts raise ValueError."""
-        original = RollResult(regular_dice=[1, 2, 3], hunger_dice=[], difficulty=0)
+        """1-3 dice, each showing on a regular die that is still available."""
+        original = RollResult(regular_dice=[1, 2, 3, 3], hunger_dice=[1], difficulty=0)
 
-        # Too few rerolls
         with self.assertRaises(ValueError):
-            apply_willpower_reroll(original, num_rerolls=0)
-
-        # Too many rerolls
+            apply_willpower_reroll(original, [])
         with self.assertRaises(ValueError):
-            apply_willpower_reroll(original, num_rerolls=4)
+            apply_willpower_reroll(original, [1, 2, 3, 3])
+        with self.assertRaises(ValueError):
+            apply_willpower_reroll(original, [7])  # no regular die shows 7
+        with self.assertRaises(ValueError):
+            apply_willpower_reroll(original, [1, 1])  # only one regular 1; the Hunger 1 can't be chosen
 
     def test_contested_roll(self):
         """The side with more successes wins by the difference."""
@@ -200,26 +178,6 @@ class DiceRollerTestCase(EvenniaTest):
         self.assertEqual(result['winner'], 1)
         self.assertEqual(result['margin'], 2)
         self.assertFalse(result['is_tie'])
-
-    def test_rouse_check(self):
-        """Test Rouse check returns proper structure."""
-        result = roll_rouse_check()
-
-        self.assertIn('roll', result)
-        self.assertIn('success', result)
-        self.assertIn('hunger_change', result)
-
-        # Roll should be 1-10
-        self.assertGreaterEqual(result['roll'], 1)
-        self.assertLessEqual(result['roll'], 10)
-
-        # Success should be True if 6+, False otherwise
-        if result['roll'] >= 6:
-            self.assertTrue(result['success'])
-            self.assertEqual(result['hunger_change'], 0)
-        else:
-            self.assertFalse(result['success'])
-            self.assertEqual(result['hunger_change'], 1)
 
     def test_validate_pool_params(self):
         """Test pool parameter validation and normalization."""
@@ -359,13 +317,19 @@ class RollResultTestCase(EvenniaTest):
         )
         self.assertEqual(result.result_type, 'success')
 
-        # Failure
+        # Total failure: no successes at all
         result = RollResult(
             regular_dice=[1, 2, 3],
             hunger_dice=[],
             difficulty=2
         )
+        self.assertEqual(result.result_type, 'total_failure')
+        self.assertIn("Total failure", result.format_result())
+
+        # Failure with a success: a near miss, open to a win at a cost (core p.121)
+        result = RollResult(regular_dice=[7, 2, 3], hunger_dice=[], difficulty=2)
         self.assertEqual(result.result_type, 'failure')
+        self.assertIn("win at a cost", result.format_result())
 
         # Critical success
         result = RollResult(
@@ -447,22 +411,15 @@ class V5CountingRulesTestCase(EvenniaTest):
     dice show.
     """
 
-    # F-016, fixed in PR 5: RollResult counts every 10 as 2 successes.
-    @unittest.expectedFailure
     def test_lone_ten_is_one_success(self):
         result = RollResult(regular_dice=[10], hunger_dice=[], difficulty=0)
         self.assertEqual(result.total_successes, 1)
         self.assertFalse(result.is_critical)
 
-    # F-016, fixed in PR 5: RollResult counts every 10 as 2 successes.
-    @unittest.expectedFailure
     def test_three_tens_are_five_successes(self):
         result = RollResult(regular_dice=[10, 10, 10], hunger_dice=[], difficulty=0)
         self.assertEqual(result.total_successes, 5)
 
-    # F-016, fixed in PR 5: RollResult suppresses the bestial failure when a
-    # regular die also shows a 1.
-    @unittest.expectedFailure
     def test_bestial_failure_with_regular_one(self):
         result = RollResult(regular_dice=[1, 3, 5], hunger_dice=[1, 2], difficulty=5)
         self.assertFalse(result.is_success)
@@ -510,13 +467,16 @@ class DisciplineRollerTestCase(EvenniaTest):
         traits = parse_dice_pool("  Strength  +  Brawl  ")
         self.assertEqual(traits, ['Strength', 'Brawl'])
 
-    # F-095, fixed in PR 5: parse_dice_pool drops everything after the first
-    # '/', so an alternative-attribute pool loses its skill.
-    @unittest.expectedFailure
     def test_parse_dice_pool_alternative(self):
         """'A / B + C' takes the first option of the '/' group plus C."""
         traits = parse_dice_pool("Charisma / Manipulation + Intimidation")
         self.assertEqual(traits, ['Charisma', 'Intimidation'])
+        # The alternative can be in any part.
+        self.assertEqual(parse_dice_pool("Stamina + Occult / Fortitude"), ['Stamina', 'Occult'])
+
+    def test_parse_dice_pool_drops_notes(self):
+        """A parenthetical note in a pool is not a trait."""
+        self.assertEqual(parse_dice_pool("Wits + Obfuscate (hidden vampires)"), ['Wits', 'Obfuscate'])
 
     def test_calculate_pool_from_traits(self):
         """Test summing character trait values."""
@@ -571,23 +531,31 @@ class DisciplineRollerTestCase(EvenniaTest):
         self.assertIn("don't know", reason.lower())
 
     def test_rouse_check_integration(self):
-        """Test discipline roll includes Rouse check."""
-        initial_hunger = self.char1.hunger
+        """The power rolls with the pre-Rouse Hunger, then its Rouse check raises Hunger."""
+        # Extinguish Vitae: Intelligence 1 + Blood Sorcery 2 + BP 2 bonus 1 = 4 dice,
+        # 1 Rouse. Every die shows 3: the roll fails and so does the Rouse (BP 2
+        # re-rolls level 1 powers only; this is level 2).
+        with patch('dice.dice_roller.randint', return_value=3):
+            result = roll_discipline_power(self.char1, "Extinguish Vitae", difficulty=2)
 
-        # Mock rouse check to always fail
-        with patch('dice.rouse_checker.base_rouse_check') as mock_rouse:
-            mock_rouse.return_value = {'roll': 3, 'success': False, 'hunger_change': 1}
+        self.assertEqual(len(result['roll_result'].hunger_dice), 1)
+        self.assertEqual(len(result['rouse_result'].checks), 1)
+        self.assertFalse(result['rouse_result'].success)
+        self.assertFalse(result['rouse_result'].reroll_used)
+        self.assertEqual(result['hunger_before'], 1)
+        self.assertEqual(result['hunger_after'], 2)
+        self.assertEqual(self.char1.hunger, 2)
 
-            result = roll_discipline_power(
-                self.char1,
-                "Extinguish Vitae",  # Has rouse cost
-                difficulty=2,
-                with_rouse=True
-            )
-
-            self.assertIsNotNone(result['rouse_result'])
-            self.assertFalse(result['rouse_result']['success'])
-            self.assertEqual(result['hunger_after'], initial_hunger + 1)
+    def test_rouse_reroll_uses_the_power_level(self):
+        """BP 3 re-rolls level 1-2 powers: Extinguish Vitae's failed Rouse is re-rolled."""
+        self.char1.blood_potency = 3
+        # 4 pool dice (Intelligence 1 + Blood Sorcery 2 + BP 3 bonus 1), then the
+        # Rouse die (3) and its re-roll (7).
+        with patch('dice.dice_roller.randint', side_effect=[3, 3, 3, 3, 3, 7]):
+            result = roll_discipline_power(self.char1, "Extinguish Vitae", difficulty=2)
+        self.assertTrue(result['rouse_result'].reroll_used)
+        self.assertTrue(result['rouse_result'].success)
+        self.assertEqual(self.char1.hunger, 1)
 
     def test_can_use_power(self):
         """Test checking if character can use a power."""
@@ -626,43 +594,44 @@ class RouseCheckerTestCase(EvenniaTest):
 
     def test_rouse_check_success(self):
         """Test roll 6+ = no Hunger gain."""
-        with patch('dice.rouse_checker.base_rouse_check') as mock_rouse:
-            mock_rouse.return_value = {'roll': 8, 'success': True, 'hunger_change': 0}
-
+        with patch('dice.dice_roller.randint', return_value=8):
             result = perform_rouse_check(self.char1, "Test", power_level=1)
 
-            self.assertTrue(result['success'])
-            self.assertEqual(result['hunger_change'], 0)
-            self.assertEqual(result['hunger_after'], 2)  # No change
-            self.assertEqual(self.char1.hunger, 2)
+        self.assertTrue(result.success)
+        self.assertEqual(result.hunger_change, 0)
+        self.assertEqual(result.hunger_after, 2)
+        self.assertEqual(self.char1.hunger, 2)
 
     def test_rouse_check_failure(self):
         """Test roll 1-5 = +1 Hunger."""
-        with patch('dice.rouse_checker.base_rouse_check') as mock_rouse:
-            mock_rouse.return_value = {'roll': 3, 'success': False, 'hunger_change': 1}
-
+        self.char1.blood_potency = 0  # no re-roll
+        with patch('dice.dice_roller.randint', return_value=3):
             result = perform_rouse_check(self.char1, "Test", power_level=1)
 
-            self.assertFalse(result['success'])
-            self.assertEqual(result['hunger_change'], 1)
-            self.assertEqual(result['hunger_after'], 3)  # 2 + 1
-            self.assertEqual(self.char1.hunger, 3)
+        self.assertFalse(result.success)
+        self.assertEqual(result.hunger_change, 1)
+        self.assertEqual(result.hunger_after, 3)
+        self.assertEqual(self.char1.hunger, 3)
 
-    def test_hunger_at_max(self):
-        """Stored Hunger never exceeds 5.
-
-        This checks the storage bound only. It is not the rule for a Rouse at
-        Hunger 5: QR p.4 forbids Rousing at Hunger 5 unless forced, and a
-        failed forced Rouse provokes frenzy (p.13). PR 5 adds that refusal.
-        """
+    def test_rouse_refused_at_hunger_5(self):
+        """A character can't Rouse the Blood at Hunger 5 (QR p.4): nothing is rolled."""
         self.char1.hunger = 5
 
-        result = perform_rouse_check(self.char1, "Test", power_level=1)
+        with patch('dice.dice_roller.randint', side_effect=AssertionError("no die should be rolled")):
+            result = perform_rouse_check(self.char1, "Test", power_level=1)
 
-        self.assertEqual(result['hunger_before'], 5)
-        self.assertEqual(result['hunger_after'], 5)
-        self.assertEqual(result['hunger_change'], 0)
+        self.assertTrue(result.refused)
+        self.assertFalse(result.success)
+        self.assertEqual(result.hunger_change, 0)
         self.assertEqual(self.char1.hunger, 5)
+
+    def test_no_reroll_without_a_power_level(self):
+        """A Rouse that isn't for a Discipline power gets no Blood Potency re-roll."""
+        self.char1.blood_potency = 10
+        with patch('dice.dice_roller.randint', side_effect=[3, 9]):
+            result = perform_rouse_check(self.char1, "Blush of Life")
+        self.assertFalse(result.reroll_used)
+        self.assertEqual(self.char1.hunger, 3)
 
     def test_blood_potency_reroll_eligibility(self):
         """Test BP allows reroll for low-level powers."""
@@ -682,35 +651,28 @@ class RouseCheckerTestCase(EvenniaTest):
         self.assertFalse(can_reroll_rouse(self.char1, power_level=4))
 
     def test_blood_potency_reroll_occurs(self):
-        """Test failed roll gets rerolled automatically."""
+        """A failed check for a low-level power is re-rolled automatically."""
         self.char1.blood_potency = 2  # Can reroll Level 1
 
-        with patch('dice.rouse_checker.base_rouse_check') as mock_rouse:
-            # First call fails, second succeeds
-            mock_rouse.side_effect = [
-                {'roll': 3, 'success': False, 'hunger_change': 1},  # Initial fail
-                {'roll': 7, 'success': True, 'hunger_change': 0}    # Reroll success
-            ]
-
+        with patch('dice.dice_roller.randint', side_effect=[3, 7]):
             result = perform_rouse_check(self.char1, "Test", power_level=1)
 
-            self.assertTrue(result['reroll_eligible'])
-            self.assertTrue(result['reroll_used'])
-            self.assertTrue(result['success'])  # Reroll succeeded
-            self.assertEqual(result['roll'], 7)  # Shows reroll value
-            self.assertEqual(self.char1.hunger, 2)  # No hunger gain
+        self.assertTrue(result.reroll_eligible)
+        self.assertTrue(result.reroll_used)
+        self.assertTrue(result.success)
+        self.assertEqual(result.roll, 7)
+        self.assertEqual(result.rolls, (3, 7))
+        self.assertEqual(self.char1.hunger, 2)
 
     def test_hunger_persistence(self):
         """Test Character.hunger is updated."""
         initial_hunger = self.char1.hunger
 
-        with patch('dice.rouse_checker.base_rouse_check') as mock_rouse:
-            mock_rouse.return_value = {'roll': 2, 'success': False, 'hunger_change': 1}
-
+        with patch('dice.dice_roller.randint', return_value=2):
             result = perform_rouse_check(self.char1, "Test")
 
-            self.assertEqual(self.char1.hunger, initial_hunger + 1)
-            self.assertEqual(result['hunger_after'], initial_hunger + 1)
+        self.assertEqual(self.char1.hunger, initial_hunger + 1)
+        self.assertEqual(result.hunger_after, initial_hunger + 1)
 
     def test_get_hunger_level(self):
         """Test getting character's Hunger level."""
@@ -802,7 +764,7 @@ class PoolCapTestCase(EvenniaCommandTest):
     def test_pool_cap_boundary(self):
         self._assert_roll_rejected(str(dice_roller.MAX_POOL + 1), f"cannot exceed {dice_roller.MAX_POOL}")
         _, mock_roll = self._call_roll(str(dice_roller.MAX_POOL))
-        mock_roll.assert_called_once_with(dice_roller.MAX_POOL, 0, 0)
+        mock_roll.assert_called_once_with(dice_roller.MAX_POOL, self.char1.hunger, 0)
 
         self.assertEqual(len(roll_v5_pool(dice_roller.MAX_POOL, 0).all_dice), dice_roller.MAX_POOL)
         with self.assertRaises(ValueError):
@@ -812,34 +774,10 @@ class PoolCapTestCase(EvenniaCommandTest):
         self._assert_roll_rejected(f"5 vs {dice_roller.MAX_DIFFICULTY + 1}", "Difficulty must be between")
         self._assert_roll_rejected("5 vs -1", "Difficulty must be between")
         _, mock_roll = self._call_roll(f"5 vs {dice_roller.MAX_DIFFICULTY}")
-        mock_roll.assert_called_once_with(5, 0, dice_roller.MAX_DIFFICULTY)
+        mock_roll.assert_called_once_with(5, self.char1.hunger, dice_roller.MAX_DIFFICULTY)
 
         roll_v5_pool(5, 0, dice_roller.MAX_DIFFICULTY)
         with self.assertRaises(ValueError):
             roll_v5_pool(5, 0, dice_roller.MAX_DIFFICULTY + 1)
         with self.assertRaises(ValueError):
             roll_v5_pool(5, 0, -1)
-
-    def test_v5_dice_roll_pool_cap(self):
-        from world.v5_dice import roll_pool
-
-        # Accepted at the limits.
-        def dice_count(result):
-            return len(result.normal_dice) + len(result.hunger_dice)
-
-        self.assertEqual(dice_count(roll_pool(dice_roller.MAX_POOL)), dice_roller.MAX_POOL)
-        self.assertEqual(dice_count(roll_pool(dice_roller.MAX_POOL - 3, willpower=True)), dice_roller.MAX_POOL)
-        roll_pool(5, difficulty=dice_roller.MAX_DIFFICULTY)
-        roll_pool(5, difficulty=dice_roller.MIN_DIFFICULTY)
-
-        # Rejected past them. The Willpower bonus counts toward the cap.
-        with self.assertRaises(ValueError):
-            roll_pool(1000)
-        with self.assertRaises(ValueError):
-            roll_pool(dice_roller.MAX_POOL + 1)
-        with self.assertRaises(ValueError):
-            roll_pool(dice_roller.MAX_POOL - 2, willpower=True)
-        with self.assertRaises(ValueError):
-            roll_pool(5, difficulty=dice_roller.MAX_DIFFICULTY + 1)
-        with self.assertRaises(ValueError):
-            roll_pool(5, difficulty=-1)

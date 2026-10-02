@@ -9,6 +9,7 @@ creation commands.
 """
 
 from collections.abc import Mapping
+from datetime import datetime
 
 from evennia.objects.objects import DefaultCharacter
 from evennia.utils.dbserialize import deserialize
@@ -18,6 +19,7 @@ from world.v5_data import (
     CLANS,
     DISCIPLINES,
     FLAWS,
+    GENERATION_BLOOD_POTENCY,
     GENERATION_BY_AGE,
     MERITS,
     PREDATOR_TYPES,
@@ -27,6 +29,7 @@ from world.v5_data import (
     WrongCategory,
     find_power,
     resolve_trait,
+    xp_cost,
 )
 
 from .objects import ObjectParent
@@ -61,6 +64,24 @@ def gated_lockstring(storage):
         if part.strip() and part.split(":", 1)[0].strip() not in GATED_ACCESS_TYPES
     ]
     return ";".join(kept + [CHARACTER_LOCKS])
+
+# What a character is (Character.splat). Only vampires roll Hunger dice and
+# halve mundane Superficial damage; staff set "mortal" or "ghoul" on NPCs.
+SPLATS = ("vampire", "ghoul", "mortal")
+
+# Character.spend_xp purchase kinds, by the names +spend accepts.
+SPEND_KINDS = {
+    "attribute": "attribute", "attributes": "attribute",
+    "skill": "skill", "skills": "skill",
+    "specialty": "specialty", "specialties": "specialty",
+    "discipline": "discipline", "disciplines": "discipline",
+    "advantage": "advantage", "advantages": "advantage", "background": "advantage", "merit": "advantage",
+    "bp": "blood_potency", "blood_potency": "blood_potency", "blood potency": "blood_potency",
+    "ritual": "ritual", "rituals": "ritual",
+    "formula": "formula", "formulas": "formula",
+}
+# Learned rituals and formulas are kept on their discipline's entry.
+LEARNED_LISTS = {"ritual": ("Blood Sorcery", "rituals"), "formula": ("Thin-Blood Alchemy", "formulas")}
 
 
 def _new_stats():
@@ -151,6 +172,10 @@ def _new_advantages():
     return {"backgrounds": {}, "merits": {}, "flaws": {}, "notes": {"merits": {}, "flaws": {}}}
 
 
+def _new_experience():
+    return {"total_earned": 0, "total_spent": 0, "log": []}
+
+
 def _as_int(value, label="value"):
     """Accept only whole numbers (int, or an integral float); reject bool and None."""
     if isinstance(value, bool) or value is None:
@@ -232,7 +257,7 @@ class Character(ObjectParent, DefaultCharacter):
             "pools": _new_pools,
             "humanity_data": _new_humanity_data,
             "advantages": _new_advantages,
-            "experience": lambda: {"total_earned": 0, "total_spent": 0, "log": []},
+            "experience": _new_experience,
             "active_effects": list,
         }
         for key, factory in defaults.items():
@@ -389,6 +414,102 @@ class Character(ObjectParent, DefaultCharacter):
         self._vampire_set("predator_type", _canonical_name(value, PREDATOR_TYPES, "predator type"))
 
     @property
+    def splat(self):
+        """What the character is: "vampire" (the default), "ghoul" or "mortal".
+
+        Stored in the ``splat`` Attribute, which staff set on NPCs (e.g.
+        ``@set <npc>/splat = mortal``); anything else reads as "vampire".
+        """
+        value = self.attributes.get("splat")
+        value = str(value).strip().lower() if value else ""
+        return value if value in SPLATS else "vampire"
+
+    @splat.setter
+    def splat(self, value):
+        value = str(value or "").strip().lower()
+        if value not in SPLATS:
+            raise ValueError(f"Splat must be one of {', '.join(SPLATS)}, got {value!r}")
+        self.attributes.add("splat", value)
+
+    @property
+    def is_kindred(self):
+        """True for vampires (thin-bloods included)."""
+        return self.splat == "vampire"
+
+    @property
+    def dice_hunger(self):
+        """Hunger dice this character rolls: its Hunger if a vampire, else 0."""
+        return self.hunger if self.is_kindred else 0
+
+    @property
+    def halves_superficial(self):
+        """True if mundane Superficial damage is halved (rounded up) for this character.
+
+        Vampires do; mortals and ghouls don't, nor do thin-bloods without the
+        Vampiric Resilience merit (QR p.11).
+        """
+        if not self.is_kindred:
+            return False
+        if self.clan == "Thin-Blood":
+            return "Vampiric Resilience" in self.advantages["merits"]
+        return True
+
+    @property
+    def torpor(self):
+        """{"reason", "time"} while the vampire is in torpor (set by the game, cleared by staff), else None."""
+        value = self._vampire_get("torpor", None)
+        return dict(value) if isinstance(value, Mapping) else None
+
+    @torpor.setter
+    def torpor(self, value):
+        self._vampire_set("torpor", dict(value) if value else None)
+
+    @property
+    def last_hunt(self):
+        """Time (time.time()) of the last +hunt, or None."""
+        value = self._vampire_get("last_hunt", None)
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+    @last_hunt.setter
+    def last_hunt(self, value):
+        self._vampire_set("last_hunt", None if value is None else float(value))
+
+    @property
+    def slake_carry(self):
+        """Half a point of Hunger slaked but not yet counted (BP 2 animal/bagged blood): 0 or 0.5."""
+        value = self._vampire_get("slake_carry", 0)
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
+
+    @slake_carry.setter
+    def slake_carry(self, value):
+        self._vampire_set("slake_carry", max(0.0, min(0.5, float(value or 0))))
+
+    @property
+    def last_remorse(self):
+        """Time (time.time()) of the last player-run Remorse test, or None."""
+        value = self._humanity_data().get("last_remorse")
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+    @last_remorse.setter
+    def last_remorse(self, value):
+        self._humanity_data()["last_remorse"] = None if value is None else float(value)
+
+    @property
+    def degenerating(self):
+        """True while Stains fill the Humanity tracker (QR p.3: Impaired, -2 to all tests)."""
+        return self.stains > 0 and self.humanity + self.stains >= 10
+
+    def dice_penalty(self, physical=False):
+        """Impairment dice for a test (QR p.3): -2 while the Humanity tracker is full of
+        Stains (all tests), and -2 for a Physical test while the Health track is full."""
+        penalty = -2 if self.degenerating else 0
+        if physical:
+            marks = self.damage["health"]
+            if marks["superficial"] + marks["aggravated"] >= self.health_max:
+                penalty -= 2
+        return penalty
+
+    @property
     def resonance(self):
         """Current resonance as {"type", "intensity", "expires"}, or None."""
         kind = self._vampire_get("current_resonance", None)
@@ -473,16 +594,20 @@ class Character(ObjectParent, DefaultCharacter):
     def add_touchstone(self, name, description="", conviction_index=0):
         """Add a Touchstone ({"name", "description", "conviction_index"}).
 
-        Structural checks only (non-empty name, whole-number index). How many
-        Touchstones a character may have is a rules check for the caller.
+        Each Touchstone belongs to one of the character's Convictions (core
+        p.172-173), so ``conviction_index`` must name an existing Conviction
+        (0-based). Raises ValueError for an empty name or a bad index.
         """
         name = str(name or "").strip()
         if not name:
             raise ValueError("A Touchstone needs a name")
+        index = _as_int(conviction_index, "Conviction index")
+        if not 0 <= index < len(self._humanity_list("convictions")):
+            raise ValueError("A Touchstone must belong to one of your Convictions; add the Conviction first")
         touchstone = {
             "name": name,
             "description": str(description or ""),
-            "conviction_index": _as_int(conviction_index, "Conviction index"),
+            "conviction_index": index,
         }
         self._humanity_list("touchstones").append(touchstone)
         return dict(touchstone)
@@ -607,9 +732,7 @@ class Character(ObjectParent, DefaultCharacter):
             self._advantage_section(kind).pop(canonical, None)
             self._advantage_notes(kind).pop(canonical, None)
             return 0
-        if dots not in table[canonical]["dots"]:
-            allowed = ", ".join(str(d) for d in table[canonical]["dots"])
-            raise ValueError(f"{canonical} can be taken at {allowed} dots, not {dots}")
+        _check_advantage_dots(table, canonical, dots)
         self._advantage_section(kind)[canonical] = dots
         if note is not None:
             note = str(note).strip()
@@ -705,6 +828,42 @@ class Character(ObjectParent, DefaultCharacter):
             entry["powers"].append(power["name"])
         disciplines[ref.key] = entry
         return power
+
+    def _learned(self, kind):
+        discipline, key = LEARNED_LISTS[kind]
+        ref = resolve_trait(discipline, "disciplines")
+        stats = self.db.stats if isinstance(self.db.stats, Mapping) else {}
+        disciplines = stats.get("disciplines")
+        entry = disciplines.get(ref.key) if isinstance(disciplines, Mapping) else None
+        return list(entry.get(key, [])) if isinstance(entry, Mapping) else []
+
+    @property
+    def known_rituals(self):
+        """Names of the Blood Sorcery rituals this character has learned."""
+        return self._learned("ritual")
+
+    @property
+    def known_formulas(self):
+        """Names of the Thin-Blood Alchemy formulas this character has learned."""
+        return self._learned("formula")
+
+    def learn_ritual_or_formula(self, kind, name):
+        """Record a ritual ("ritual") or formula ("formula") as learned, without XP.
+
+        Raises UnknownTrait for a name that isn't in v5_data. No eligibility
+        check (for staff and chargen; +spend checks the discipline rating).
+        """
+        entry = find_ritual_or_formula(kind, name)
+        if entry is None:
+            raise UnknownTrait(f"Unknown {kind}: {name}")
+        discipline, key = LEARNED_LISTS[kind]
+        ref = resolve_trait(discipline, "disciplines")
+        disciplines = self._stats_section("disciplines")
+        current = _discipline_entry(disciplines.get(ref.key))
+        if entry["name"] not in current.get(key, []):
+            current.setdefault(key, []).append(entry["name"])
+        disciplines[ref.key] = current
+        return entry
 
     @property
     def advantages(self):
@@ -834,6 +993,258 @@ class Character(ObjectParent, DefaultCharacter):
     def xp_spent(self):
         return int(self._experience().get("total_spent", 0))
 
+    def xp_spend_cost(self, name, category, note=None):
+        """What +spend would cost, without spending: {"kind", "cost", "label", "new"}.
+
+        Raises UnknownTrait, WrongCategory or ValueError (the reason) like spend_xp.
+        """
+        plan = self._plan_spend(name, category, note)
+        return {key: plan[key] for key in ("kind", "cost", "label", "new")}
+
+    def spend_xp(self, name, category, note=None, reason=""):
+        """Buy one step of a trait with XP (V5 QR p.1; costs in v5_data.XP_COSTS).
+
+        ``category`` is a key of SPEND_KINDS: attribute, skill, specialty
+        (``name`` is the skill, ``note`` the specialty), discipline,
+        advantage (a background or merit; ``note`` names the instance of an
+        instanced background such as Allies), bp, ritual or formula. The
+        name resolves through TRAIT_REGISTRY or v5_data, and the purchase is
+        refused if it is unknown, of another category, past its cap or
+        unaffordable.
+
+        All checks run first. The trait, the XP total and the log entry are
+        then written together, with one assignment per root Attribute, so a
+        refusal changes nothing. Returns {"kind", "cost", "label", "new",
+        "xp"}. Raises UnknownTrait, WrongCategory or ValueError.
+        """
+        plan = self._plan_spend(name, category, note)
+        if plan["cost"] > self.xp:
+            raise ValueError(f"Insufficient XP. Need {plan['cost']}, have {self.xp}")
+
+        stores = {}
+        for root, factory in plan["roots"].items():
+            self._store(root, factory)
+            stores[root] = deserialize(self.attributes.get(root))
+        plan["apply"](stores)
+
+        experience = deserialize(self._store("experience", _new_experience))
+        experience["total_spent"] = int(experience.get("total_spent", 0)) + plan["cost"]
+        balance = int(experience.get("total_earned", 0)) - experience["total_spent"]
+        log = list(experience.get("log") or [])
+        log.append({
+            "type": "spend",
+            "amount": -plan["cost"],
+            "reason": plan["label"] + (f" - {reason}" if reason else ""),
+            "date": datetime.now().isoformat(),
+            "balance": balance,
+        })
+        experience["log"] = log
+
+        for root, value in stores.items():
+            self.attributes.add(root, value)
+        self.attributes.add("experience", experience)
+        return {"kind": plan["kind"], "cost": plan["cost"], "label": plan["label"], "new": plan["new"],
+                "xp": balance}
+
+    def _plan_spend(self, name, category, note=None):
+        """Validate a purchase and return its cost and how to apply it to copied stores."""
+        kind = SPEND_KINDS.get(str(category or "").strip().lower())
+        if kind is None:
+            raise ValueError(f"You can't spend XP on '{category}'")
+        planner = getattr(self, f"_plan_{kind}")
+        return planner(str(name or "").strip(), note)
+
+    def _plan_attribute(self, name, note):
+        return self._plan_rated(name, "attributes", "attribute")
+
+    def _plan_skill(self, name, note):
+        return self._plan_rated(name, "skills", "skill")
+
+    def _plan_rated(self, name, category, kind):
+        ref = resolve_trait(name, category)
+        new = self.get_trait(ref.key) + 1
+        if new > TRAIT_RANGES[category][1]:
+            raise ValueError(f"{ref.name} is already at its maximum")
+
+        def apply(stores):
+            section = stores["stats"].setdefault(ref.category, {})
+            section.setdefault(ref.group, {})[ref.key] = new
+
+        return {"kind": kind, "cost": xp_cost(kind, new), "label": f"Raised {ref.name} to {new}", "new": new,
+                "roots": {"stats": _new_stats}, "apply": apply}
+
+    def _plan_specialty(self, name, note):
+        ref = resolve_trait(name, "skills")
+        specialty = str(note or "").strip()
+        if not specialty:
+            raise ValueError("Name the specialty")
+        if self.get_trait(ref.key) < 1:
+            raise ValueError(f"{ref.name} needs at least one dot before it can have a specialty")
+        names = self.specialties.get(ref.key, [])
+        if specialty.lower() in (existing.lower() for existing in names):
+            raise ValueError(f"{ref.name} already has the specialty {specialty}")
+
+        def apply(stores):
+            stores["stats"].setdefault("specialties", {})[ref.key] = names + [specialty]
+
+        return {"kind": "specialty", "cost": xp_cost("specialty", 1),
+                "label": f"Added specialty: {ref.name} ({specialty})", "new": specialty,
+                "roots": {"stats": _new_stats}, "apply": apply}
+
+    def discipline_cost_kind(self, discipline):
+        """XP_COSTS kind for a dot of ``discipline`` (a DISCIPLINES name) for this character.
+
+        Caitiff pay the Caitiff rate for every discipline; a discipline of
+        the character's clan is a clan discipline; anything else is "other".
+        Thin-Blood Alchemy counts as a thin-blood's clan discipline (new
+        level x 5; owner decision, the XP chart has no thin-blood row).
+        """
+        if self.clan == "Caitiff":
+            return "caitiff_discipline"
+        clan_disciplines = CLANS.get(self.clan, {}).get("disciplines", []) if self.clan else []
+        if discipline in clan_disciplines or (self.clan == "Thin-Blood" and discipline == "Thin-Blood Alchemy"):
+            return "clan_discipline"
+        return "other_discipline"
+
+    def _plan_discipline(self, name, note):
+        ref = resolve_trait(name, "disciplines")
+        if self.clan and self.clan not in CLANS:
+            raise ValueError(f"Your clan ({self.clan}) is not available in this game, so discipline costs "
+                             "can't be worked out. Ask staff to update your character.")
+        if ref.name == "Thin-Blood Alchemy" and self.clan != "Thin-Blood":
+            raise ValueError("Only thin-bloods can learn Thin-Blood Alchemy")
+        if self.clan == "Thin-Blood" and ref.name != "Thin-Blood Alchemy":
+            raise ValueError("Thin-bloods can't buy Disciplines with XP (the Discipline Affinity merit gives "
+                             "one permanent dot); only Thin-Blood Alchemy")
+        new = self.get_trait(ref.key) + 1
+        if new > TRAIT_RANGES["disciplines"][1]:
+            raise ValueError(f"{ref.name} is already at its maximum")
+        kind = self.discipline_cost_kind(ref.name)
+
+        # Each dot of Thin-Blood Alchemy comes with one formula (core p.282).
+        formula = None
+        if ref.name == "Thin-Blood Alchemy":
+            formula = find_ritual_or_formula("formula", note) if note else None
+            if formula is None:
+                raise ValueError("Each Alchemy dot comes with a formula: +spend discipline Thin-Blood Alchemy = "
+                                 "<formula> (see help alchemy)")
+            if formula["level"] > new:
+                raise ValueError(f"{formula['name']} is a level {formula['level']} formula; your new Alchemy "
+                                 f"rating is {new}")
+            if formula["name"] in self.known_formulas:
+                raise ValueError(f"You already know {formula['name']}")
+
+        def apply(stores):
+            disciplines = stores["stats"].setdefault("disciplines", {})
+            entry = _discipline_entry(disciplines.get(ref.key))
+            entry["level"] = new
+            if formula:
+                entry.setdefault("formulas", []).append(formula["name"])
+            disciplines[ref.key] = entry
+
+        rate = {"clan_discipline": "in-clan", "caitiff_discipline": "Caitiff", "other_discipline": "out-of-clan"}
+        label = f"Raised {ref.name} to {new} ({rate[kind]})" + (f" with {formula['name']}" if formula else "")
+        return {"kind": kind, "cost": xp_cost(kind, new), "label": label,
+                "new": new, "roots": {"stats": _new_stats}, "apply": apply}
+
+    def _plan_blood_potency(self, name, note):
+        new = self.blood_potency + 1
+        limit = GENERATION_BLOOD_POTENCY.get(self.generation, {}).get("max", 0)
+        if new > limit:
+            raise ValueError(f"Blood Potency can't rise above {limit} at Generation {self.generation}")
+
+        def apply(stores):
+            stores["vampire"]["blood_potency"] = new
+
+        return {"kind": "blood_potency", "cost": xp_cost("blood_potency", new),
+                "label": f"Raised Blood Potency to {new}", "new": new,
+                "roots": {"vampire": _new_vampire}, "apply": apply}
+
+    def _plan_learned(self, name, kind):
+        entry = find_ritual_or_formula(kind, name)
+        if entry is None:
+            raise UnknownTrait(f"Unknown {kind}: {name}")
+        discipline, key = LEARNED_LISTS[kind]
+        if self.get_trait(discipline) < entry["level"]:
+            raise ValueError(f"{entry['name']} is a level {entry['level']} {kind}; it needs {discipline} "
+                             f"{entry['level']}")
+        if entry["name"] in self._learned(kind):
+            raise ValueError(f"You already know {entry['name']}")
+        ref = resolve_trait(discipline, "disciplines")
+
+        def apply(stores):
+            disciplines = stores["stats"].setdefault("disciplines", {})
+            current = _discipline_entry(disciplines.get(ref.key))
+            current.setdefault(key, []).append(entry["name"])
+            disciplines[ref.key] = current
+
+        return {"kind": kind, "cost": xp_cost(kind, entry["level"]), "label": f"Learned {entry['name']}",
+                "new": entry["name"], "roots": {"stats": _new_stats}, "apply": apply}
+
+    def _plan_ritual(self, name, note):
+        return self._plan_learned(name, "ritual")
+
+    def _plan_formula(self, name, note):
+        return self._plan_learned(name, "formula")
+
+    def _plan_advantage(self, name, note):
+        merit = next((key for key in MERITS if key.lower() == name.lower()), None)
+        if merit is None:
+            if any(key.lower() == name.lower() for key in FLAWS):
+                raise ValueError("Flaws aren't bought with XP")
+            ref = resolve_trait(name, "backgrounds")
+            return self._plan_background(ref, note)
+        data = MERITS[merit]
+        if data.get("thin_blood"):
+            raise ValueError(f"{merit} is a thin-blood advantage taken at character creation")
+        if self.clan in data.get("excluded_clans", []):
+            raise ValueError(f"{self.clan} can't take {merit}")
+        held = set(self.advantages["merits"]) | set(self.advantages["flaws"])
+        clash = [other for other in data.get("excludes", []) if other in held]
+        if clash:
+            raise ValueError(f"{merit} can't be taken with {', '.join(clash)}")
+        current = self.advantages["merits"].get(merit, 0)
+        higher = [dots for dots in data["dots"] if dots > current]
+        if not higher:
+            raise ValueError(f"{merit} is already at its maximum")
+        new = min(higher)
+        _check_advantage_dots(MERITS, merit, new)
+
+        def apply(stores):
+            stores["advantages"].setdefault("merits", {})[merit] = new
+
+        return {"kind": "advantage", "cost": xp_cost("advantage", new - current),
+                "label": f"Raised {merit} to {new}", "new": new,
+                "roots": {"advantages": _new_advantages}, "apply": apply}
+
+    def _plan_background(self, ref, note):
+        maximum = min(TRAIT_RANGES["backgrounds"][1], BACKGROUNDS[ref.name].get("max_dots", 5))
+        if _is_instanced(ref):
+            note = str(note or "").strip()
+            if not note:
+                raise ValueError(f"Say which {ref.name} you are raising: +spend advantage {ref.name} = <who>")
+            instances = self.background_instances(ref.key)
+            existing = next((item for item in instances if item.get("note", "").lower() == note.lower()), None)
+            new = (existing["dots"] if existing else 0) + 1
+            if new > maximum:
+                raise ValueError(f"{ref.name} ({note}) is already at its maximum")
+            label = f"Raised {ref.name} ({note}) to {new}"
+
+            def apply(stores):
+                kept = [item for item in instances if item.get("note", "").lower() != note.lower()]
+                stores["advantages"].setdefault("backgrounds", {})[ref.key] = kept + [{"dots": new, "note": note}]
+        else:
+            new = self.get_trait(ref.key) + 1
+            if new > maximum:
+                raise ValueError(f"{ref.name} is already at its maximum")
+            label = f"Raised {ref.name} to {new}"
+
+            def apply(stores):
+                stores["advantages"].setdefault("backgrounds", {})[ref.key] = new
+
+        return {"kind": "advantage", "cost": xp_cost("advantage", 1), "label": label, "new": new,
+                "roots": {"advantages": _new_advantages}, "apply": apply}
+
     # ------------------------------------------------------------------
     # Approval and bio (traits.CharacterBio)
     # ------------------------------------------------------------------
@@ -931,10 +1342,45 @@ def _discipline_level(entry):
 
 
 def _discipline_entry(entry):
-    """A {"level", "powers"} dict for a stored entry, keeping a bare int's level."""
+    """A {"level", "powers"} dict for a stored entry, plus "rituals" or
+    "formulas" lists when any are learned.
+
+    Keeps a bare int's level (old web shape) and the learned rituals or
+    formulas.
+    """
     if isinstance(entry, Mapping):
-        return {"level": int(entry.get("level", 0)), "powers": list(deserialize(entry.get("powers", [])))}
-    return {"level": _discipline_level(entry), "powers": []}
+        result = {"level": int(entry.get("level", 0)), "powers": list(deserialize(entry.get("powers", [])))}
+    else:
+        result = {"level": _discipline_level(entry), "powers": []}
+    for key in ("rituals", "formulas"):
+        stored = entry.get(key) if isinstance(entry, Mapping) else None
+        if stored:
+            result[key] = list(deserialize(stored))
+    return result
+
+
+def find_ritual_or_formula(kind, name):
+    """The v5_data entry (with "level") for a Blood Sorcery ritual or a
+    Thin-Blood Alchemy formula, matched case-insensitively, or None."""
+    wanted = str(name or "").strip().lower()
+    if kind == "ritual":
+        candidates = DISCIPLINES["Blood Sorcery"].get("rituals", [])
+    elif kind == "formula":
+        candidates = [
+            dict(formula, level=level)
+            for level, formulas in DISCIPLINES["Thin-Blood Alchemy"].get("formulas", {}).items()
+            for formula in formulas
+        ]
+    else:
+        raise ValueError(f"Unknown kind: {kind}")
+    return next((dict(item) for item in candidates if item["name"].lower() == wanted), None)
+
+
+def _check_advantage_dots(table, name, dots):
+    """Raise ValueError unless ``dots`` is one of the entry's allowed ratings."""
+    if dots not in table[name]["dots"]:
+        allowed = ", ".join(str(d) for d in table[name]["dots"])
+        raise ValueError(f"{name} can be taken at {allowed} dots, not {dots}")
 
 
 def _specialty_list(names):

@@ -12,145 +12,128 @@ from evennia.utils.utils import inherits_from
 
 class CmdFeed(default_cmds.MuxCommand):
     """
-    Feed on a mortal to reduce Hunger.
+    Record a feeding from a staff-run scene (staff only).
 
     Usage:
-      feed <target> [<resonance>]
-      feed/slake <target>
+      feed <character>=<source>[/<resonance>[/<intensity>]]
+
+    Sources (QR p.12; Hunger slaked):
+      small animals 1, animal 1, large animal 2, bag 1,
+      sip 1, drink 2 (most a human can give unharmed),
+      harmful <1-4> (risks the vessel's death), kill (drains a human: Hunger 0)
+
+    Resonance: choleric, melancholy, phlegmatic or sanguine, with an
+    intensity of 1 (Fleeting, the default), 2 (Intense) or 3 (Acute).
+    Animal and bagged blood carry no resonance.
+
+    The character's Blood Potency applies (animal and bagged blood slake
+    less or nothing; high Blood Potency slakes less per human), and only a
+    kill takes Hunger below 1 (2 or 3 at high Blood Potency). Killing and
+    harming vessels may cost Stains; mark those with +stain.
+
+    Players feed with +hunt, or ask for a hunt scene with +hunt/staffed.
 
     Examples:
-      feed mortal                  # Hunt generic mortal
-      feed mortal choleric         # Hunt for choleric resonance
-      feed/slake mortal            # Feed to Hunger 0 (dangerous!)
-
-    Feeding requires a roll to hunt successfully. On success, your
-    Hunger is reduced. Feeding also sets your resonance based on the
-    victim's emotional state.
-
-    Valid resonances: choleric, melancholy, phlegmatic, sanguine
-
-    Switches:
-      slake - Feed until Hunger 0 (multiple rolls, risky)
+      feed Bob=drink/choleric
+      feed Bob=harmful 3/sanguine/2
+      feed Bob=animal
+      feed Bob=kill/melancholy/3
     """
 
     key = "feed"
-    locks = "cmd:all()"
+    locks = "cmd:perm(Builder)"
     help_category = "Blood"
 
     def func(self):
-        # 1. Validate caller is a Character
-        if not inherits_from(self.caller, "typeclasses.characters.Character"):
-            self.caller.msg("|rYou must be in character to feed.|n")
+        from commands.v5.utils import hunting_utils
+        from world.v5_data import FEEDING_SOURCES, RESONANCE_INTENSITIES, RESONANCES
+
+        caller = self.caller
+        if not self.lhs or not self.rhs:
+            caller.msg("Usage: feed <character>=<source>[/<resonance>[/<intensity>]]")
+            caller.msg(f"Sources: {', '.join(FEEDING_SOURCES)}")
             return
 
-        # 2. Parse arguments
-        args = self.args.strip()
-        if not args:
-            self.caller.msg("Usage: feed <target> [<resonance>]")
+        target = caller.search(self.lhs.strip(), global_search=True)
+        if not target:
+            return
+        if not inherits_from(target, "typeclasses.characters.Character") or not target.is_kindred:
+            caller.msg(f"|r{target.key} isn't a vampire.|n")
             return
 
-        parts = args.split()
-        target = parts[0]
-        resonance = parts[1] if len(parts) > 1 else None
+        fields = [field.strip() for field in self.rhs.split("/")]
+        source_text = fields[0].lower()
+        amount = None
+        if source_text.startswith("harmful"):
+            number = source_text[len("harmful"):].strip()
+            source_text = "harmful"
+            if number:
+                if not number.isdigit() or not 1 <= int(number) <= 4:
+                    caller.msg("|rA harmful drink slakes 1 to 4 Hunger.|n")
+                    return
+                amount = int(number)
+        if source_text not in FEEDING_SOURCES:
+            caller.msg(f"|rUnknown source. Choose from: {', '.join(FEEDING_SOURCES)}|n")
+            return
 
-        # 3. Validate resonance type if specified, before anything changes.
-        # The names come from world.v5_data.RESONANCES, so they can't drift.
-        from world.v5_data import RESONANCES
-
-        valid_resonances = {name.lower(): name for name in RESONANCES}
-        if resonance:
-            if resonance.lower() not in valid_resonances:
-                self.caller.msg(f"|rInvalid resonance. Choose from: {', '.join(valid_resonances)}|n")
+        resonance = None
+        intensity = 1
+        if len(fields) > 1 and fields[1]:
+            names = {name.lower(): name for name in RESONANCES}
+            if fields[1].lower() not in names:
+                caller.msg(f"|rInvalid resonance. Choose from: {', '.join(names)}|n")
                 return
-            resonance = valid_resonances[resonance.lower()]
+            if FEEDING_SOURCES[source_text]["kind"] != "human":
+                caller.msg("|rAnimal and bagged blood carry no resonance.|n")
+                return
+            resonance = names[fields[1].lower()]
+        if len(fields) > 2 and fields[2]:
+            if fields[2] not in ("1", "2", "3"):
+                caller.msg("|rIntensity is 1 (Fleeting), 2 (Intense) or 3 (Acute).|n")
+                return
+            intensity = int(fields[2])
 
-        # 4. Check slake switch
-        slake_mode = 'slake' in self.switches
-
-        # 5. Perform feeding roll
-        # Get pool based on Predator Type
-        from dice import dice_roller
-        from commands.v5.utils.trait_utils import get_trait_value
         from commands.v5.utils import blood_utils
-        from commands.v5.utils.predator_utils import get_feeding_pool
 
-        pool_str, bonus_dice = get_feeding_pool(self.caller)
-        pool_parts = pool_str.split('+')
-        pool = 0
-        for part in pool_parts:
-            trait_value = get_trait_value(self.caller, part.capitalize())
-            pool += trait_value
-        pool += bonus_dice  # Add predator type bonus
+        result = hunting_utils.slake(target, source_text, amount)
+        if resonance:
+            blood_utils.set_resonance(target, resonance, intensity)
+        elif FEEDING_SOURCES[source_text]["kind"] != "human":
+            blood_utils.clear_resonance(target)
 
-        hunger = blood_utils.get_hunger_level(self.caller)
-
-        result = dice_roller.roll_v5_pool(pool, hunger, difficulty=2)
-
-        # 6. Resolve feeding based on result
-        if result.is_success:
-            # Success - reduce Hunger
-            hunger_reduction = 1 + (result.total_successes - 2) // 2  # 1-3 based on margin
-            hunger_reduction = min(hunger_reduction, 3)  # Cap at 3
-
-            new_hunger = blood_utils.reduce_hunger(self.caller, hunger_reduction)
-
-            # Set resonance
-            if resonance:
-                blood_utils.set_resonance(self.caller, resonance, intensity=1)
-
-            # Format message
-            message = f"|gFeeding successful!|n\n\n"
-            message += result.format_result(show_details=True)
-            message += f"\n\nHunger reduced by {hunger_reduction}: {hunger} → {new_hunger}"
-
-            if resonance:
-                message += f"\nResonance: |y{resonance}|n (Fleeting)"
-
-            # Check for Messy Critical
-            if result.is_messy_critical:
-                message += "\n\n|y|hMessy Critical!|n"
-                message += "\n|rYour feeding was successful but drew attention or left evidence...|n"
-
-            self.caller.msg(message)
-
-            # Broadcast to room
-            if self.caller.location:
-                self.caller.location.msg_contents(
-                    f"|x{self.caller.name} feeds...|n",
-                    exclude=[self.caller]
-                )
-
-        elif result.is_bestial_failure:
-            # Bestial Failure - feeding goes wrong
-            message = f"|r|hBestial Failure!|n\n\n"
-            message += result.format_result(show_details=True)
-            message += "\n\n|rYour Beast takes control during the feeding...|n"
-            message += "\n|x(This may trigger frenzy or cause a Humanity stain)|n"
-            self.caller.msg(message)
-
-        else:
-            # Regular failure
-            message = f"|rFeeding failed.|n\n\n"
-            message += result.format_result(show_details=True)
-            message += "\n\nYou were unable to successfully hunt."
-            self.caller.msg(message)
+        line = (
+            f"{target.key} feeds ({FEEDING_SOURCES[source_text]['description']}): "
+            f"Hunger {result['old_hunger']} -> {result['new_hunger']}."
+        )
+        if result["penalty_note"]:
+            line += f" Blood Potency {target.blood_potency}: {result['penalty_note']}."
+        if resonance:
+            line += f" Resonance: {resonance} ({RESONANCE_INTENSITIES[intensity]['name']})."
+        caller.msg(f"|g{line}|n")
+        if target != caller:
+            target.msg(f"|g{line}|n")
 
 
 class CmdBloodSurge(Command):
     """
-    Surge your blood to temporarily enhance a trait.
+    Surge your blood to add dice to your next roll.
 
     Usage:
       bloodsurge <attribute or physical skill>
 
     Examples:
-      bloodsurge strength         # Boost Strength by Blood Potency
-      bloodsurge brawl            # Boost Brawl by Blood Potency
+      bloodsurge strength
+      bloodsurge brawl
 
-    Blood Surge adds dice equal to your Blood Potency to the
-    specified trait for one scene (1 hour). Requires a Rouse check.
+    Your next roll whose pool includes an Attribute (a `roll`, or a `power`
+    roll) gets the Blood Surge dice from the Blood Potency table (BP 0: +1,
+    BP 1-2: +2, BP 3-4: +3, and so on), then the surge is used up. Its one
+    Rouse check is made with that roll: the roll uses the Hunger you had
+    before it, and a failed check raises Hunger by 1 afterwards (core
+    pp.211-212, p.218). One surge at a time; an unused surge lapses after an
+    hour and costs nothing.
 
-    Can only surge Attributes or Physical Skills (Athletics, Brawl, etc.).
+    At Hunger 5 you can't Rouse the Blood, so you can't surge.
     """
 
     key = "bloodsurge"
@@ -197,19 +180,25 @@ class CmdBloodSurge(Command):
             )
             return
 
-        # 4. Activate Blood Surge
+        # 4. A Rouse check is impossible at Hunger 5 (QR p.4).
         from commands.v5.utils import blood_utils
+        from dice.rouse_checker import HUNGER_5_REFUSAL, MAX_HUNGER
 
+        if self.caller.hunger >= MAX_HUNGER:
+            self.caller.msg(f"|r{HUNGER_5_REFUSAL}|n")
+            return
+
+        # 5. Activate Blood Surge
         result = blood_utils.activate_blood_surge(self.caller, trait_type, trait_name)
 
         if result['success']:
-            message = f"|yBlood Surge activated!|n\n\n"
-            message += result['rouse_result']['message']
-            message += f"\n\n|g{trait_name} boosted by +{result['bonus']} dice for one scene.|n"
-            message += f"\n|x(Blood Surge expires in 1 hour)|n"
+            message = "|yBlood Surge activated!|n\n\n"
+            message += f"|g+{result['bonus']} dice to your next roll ({trait_name}).|n"
+            message += "\nIts Rouse check is made with that roll; any Hunger it costs comes after."
+            message += "\n|x(Used up by your next roll; lapses unused after one hour.)|n"
             self.caller.msg(message)
         else:
-            self.caller.msg("|rBlood Surge activation failed.|n")
+            self.caller.msg(f"|rBlood Surge failed.|n {result['message']}")
 
 
 class CmdHunger(Command):
@@ -261,7 +250,10 @@ class CmdHunger(Command):
         elif hunger == 4:
             lines.append("|rYour Hunger is severe. The Beast stirs within.|n")
         elif hunger >= 5:
-            lines.append("|r|hYou are RAVENOUS! You cannot use most discipline powers.|n")
+            lines.append(
+                "|r|hYou are RAVENOUS!|n You can't Rouse the Blood: no powers that need a Rouse check, "
+                "no Blood Surge, no mending."
+            )
 
         lines.append("")
 
@@ -274,8 +266,18 @@ class CmdHunger(Command):
         surge = blood_utils.get_blood_surge(self.caller)
         if surge:
             import time
-            lines.append(f"|yBlood Surge Active:|n +{surge['bonus']} dice to {surge['trait']}")
+            lines.append(f"|yBlood Surge Active:|n +{surge['bonus']} dice to {surge['trait']}, on your next roll")
             remaining = int((surge['expires'] - time.time()) / 60)
             lines.append(f"|x({remaining} minutes remaining)|n")
+
+        # A hunger frenzy test still owed (a Rouse past Hunger 5)
+        from commands.v5.utils.humanity_utils import pending_frenzy_test
+
+        pending = pending_frenzy_test(self.caller)
+        if pending:
+            lines.append(
+                f"|r|hYou owe a hunger frenzy test (Difficulty {pending.get('difficulty', 4)}):|n "
+                "roll it with +frenzy/pending."
+            )
 
         self.caller.msg("\n".join(lines))
