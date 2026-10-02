@@ -1,13 +1,25 @@
 """
 Core V5 Dice Rolling Engine
 
-This module provides the fundamental dice rolling mechanics for Vampire: The Masquerade 5th Edition,
-including basic pools, Hunger dice, Rouse checks, contested rolls, and Willpower rerolls.
+The one dice engine for Vampire: The Masquerade 5th Edition: pools with
+Hunger dice, contested rolls and Willpower re-rolls. Rouse checks are in
+dice.rouse_checker; they roll their die through randint() here too.
 """
 
-from random import randint
-from typing import Tuple, Dict, Any, Optional
+import random
+from collections.abc import Iterable
+from typing import Any
+
 from .roll_result import RollResult
+
+
+def randint(low: int, high: int) -> int:
+    """The one die source for every roll in the game.
+
+    Tests patch either this function (``dice.dice_roller.randint``) or
+    ``random.randint``; both reach every die.
+    """
+    return random.randint(low, high)
 
 # Upper bound on dice in one roll. No legitimate V5 pool comes close; the cap
 # stops a typo or a malicious `roll 1000000` from tying up the server.
@@ -22,19 +34,13 @@ def roll_v5_pool(pool_size: int, hunger: int = 0, difficulty: int = 0) -> RollRe
     """
     Roll a V5 dice pool with Hunger dice.
 
-    This is the main rolling function that handles all standard V5 rolls.
-    Hunger dice replace an equal number of regular dice in the pool.
-
-    V5 Dice Rules:
-    - Each die is a d10
-    - 6-9 = 1 success, 10 = 2 successes
-    - Pair of 10s = critical (4 successes total from the pair)
-    - Hunger dice replace regular dice (not added)
-    - Zero pool = chance die (1 die, only 10 succeeds)
+    Hunger dice replace regular dice, one per point of Hunger, without
+    exceeding the pool (QR p.4): pool 3 at Hunger 5 rolls three Hunger dice.
+    Success counting is RollResult's.
 
     Args:
-        pool_size: Total number of dice to roll (minimum 1)
-        hunger: Current Hunger level (0-5), determines Hunger dice count
+        pool_size: Total number of dice to roll (1..MAX_POOL)
+        hunger: Current Hunger (0-5)
         difficulty: Number of successes needed (0 = any success wins)
 
     Returns:
@@ -42,14 +48,8 @@ def roll_v5_pool(pool_size: int, hunger: int = 0, difficulty: int = 0) -> RollRe
 
     Raises:
         ValueError: If pool_size is outside 1..MAX_POOL, hunger is outside 0-5,
-            hunger > pool_size, or difficulty is outside MIN_DIFFICULTY..MAX_DIFFICULTY
-
-    Examples:
-        >>> result = roll_v5_pool(5, hunger=2, difficulty=3)
-        >>> print(f"Successes: {result.total_successes}")
-        >>> print(f"Result: {result.result_type}")
+            or difficulty is outside MIN_DIFFICULTY..MAX_DIFFICULTY
     """
-    # Validate inputs
     if pool_size < 1:
         raise ValueError(f"Pool size must be at least 1 (got {pool_size})")
 
@@ -59,89 +59,16 @@ def roll_v5_pool(pool_size: int, hunger: int = 0, difficulty: int = 0) -> RollRe
     if hunger < 0 or hunger > 5:
         raise ValueError(f"Hunger must be between 0 and 5 (got {hunger})")
 
-    if hunger > pool_size:
-        raise ValueError(f"Hunger ({hunger}) cannot exceed pool size ({pool_size})")
-
     if not MIN_DIFFICULTY <= difficulty <= MAX_DIFFICULTY:
         raise ValueError(f"Difficulty must be between {MIN_DIFFICULTY} and {MAX_DIFFICULTY} (got {difficulty})")
 
-    # Special case: Zero pool becomes chance die
-    # (This shouldn't happen due to pool_size validation, but included for clarity)
-    if pool_size == 0:
-        pool_size = 1
-        hunger = 0  # Chance die has no Hunger
+    num_hunger = min(hunger, pool_size)
+    num_regular = pool_size - num_hunger
 
-    # Calculate dice distribution
-    num_regular = pool_size - hunger
-    num_hunger = hunger
-
-    # Roll regular dice
     regular_dice = [randint(1, 10) for _ in range(num_regular)]
-
-    # Roll hunger dice
     hunger_dice = [randint(1, 10) for _ in range(num_hunger)]
 
-    # Create and return result
     return RollResult(regular_dice, hunger_dice, difficulty)
-
-
-def roll_chance_die() -> RollResult:
-    """
-    Roll a chance die (used when pool is reduced to 0 or below).
-
-    Chance Die Rules:
-    - Roll exactly 1 die
-    - Only a 10 counts as a success (1 success, not 2)
-    - No critical possible
-    - No Hunger dice involved
-
-    Returns:
-        RollResult with single die roll
-
-    Example:
-        >>> result = roll_chance_die()
-        >>> if result.total_successes > 0:
-        >>>     print("Miraculous success!")
-    """
-    die_roll = randint(1, 10)
-
-    # For chance die, even a 10 only counts as 1 success, not 2
-    # We handle this by treating it as a regular roll with pool 1
-    return RollResult([die_roll], [], difficulty=0)
-
-
-def roll_rouse_check() -> Dict[str, Any]:
-    """
-    Roll a single d10 for a Rouse check.
-
-    Rouse Check Rules:
-    - Roll 1d10
-    - 6+ = success (no Hunger gain)
-    - 1-5 = failure (Hunger increases by 1)
-    - Used when activating disciplines, healing, etc.
-
-    Returns:
-        Dictionary containing:
-            - 'roll' (int): The die result (1-10)
-            - 'success' (bool): Whether check succeeded (6+)
-            - 'hunger_change' (int): Hunger increase (0 if success, +1 if failure)
-
-    Example:
-        >>> result = roll_rouse_check()
-        >>> if result['success']:
-        >>>     print(f"Success! Rolled {result['roll']}")
-        >>> else:
-        >>>     print(f"Failed with {result['roll']}, Hunger increases")
-    """
-    roll = randint(1, 10)
-    success = roll >= 6
-    hunger_change = 0 if success else 1
-
-    return {
-        'roll': roll,
-        'success': success,
-        'hunger_change': hunger_change
-    }
 
 
 def roll_contested(
@@ -149,7 +76,7 @@ def roll_contested(
     hunger1: int,
     pool2: int,
     hunger2: int
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Roll two dice pools against each other (contested action).
 
@@ -207,68 +134,48 @@ def roll_contested(
     }
 
 
-def apply_willpower_reroll(result: RollResult, num_rerolls: int = 3) -> Tuple[RollResult, list]:
+def apply_willpower_reroll(result: RollResult, dice_values: Iterable[int]) -> tuple[RollResult, list]:
     """
-    Reroll up to 3 failed regular dice (Willpower reroll).
+    Re-roll regular dice the player chose, for 1 Willpower (QR p.3).
 
-    Willpower Reroll Rules:
-    - Can reroll up to 3 dice that did NOT succeed (showed 1-5)
-    - Can ONLY reroll regular dice, NOT Hunger dice
-    - Each die can only be rerolled once
-    - Costs 1 Willpower point (tracked elsewhere)
-    - New dice replace old dice in the pool
+    The player picks up to three non-Hunger dice of the roll, any value
+    (a 10 included). Dice are chosen by the value they show: ``[2, 10]``
+    re-rolls one regular die showing 2 and one showing 10. Hunger dice are
+    never re-rolled. Marking the Willpower damage is the caller's job.
 
     Args:
-        result: Original RollResult to improve
-        num_rerolls: Number of failed dice to reroll (1-3, default 3)
+        result: The roll to improve
+        dice_values: Values of the regular dice to re-roll (1-3 of them)
 
     Returns:
-        Tuple of (new_result, rerolled_indices):
-            - new_result: RollResult with rerolled dice
-            - rerolled_indices: List of indices that were rerolled
+        Tuple of (new_result, rerolled_indices), the indices being positions
+        in ``result.regular_dice``.
 
     Raises:
-        ValueError: If num_rerolls < 1 or > 3
-
-    Example:
-        >>> original = roll_v5_pool(5, hunger=2)
-        >>> if original.total_successes < original.difficulty:
-        >>>     improved, rerolled = apply_willpower_reroll(original, 3)
-        >>>     print(f"Rerolled {len(rerolled)} dice")
-        >>>     print(f"New successes: {improved.total_successes}")
+        ValueError: If no dice or more than three are chosen, or a chosen
+            value isn't showing on a regular die that's still available.
     """
-    # Validate input
-    if num_rerolls < 1 or num_rerolls > 3:
-        raise ValueError(f"Can only reroll 1-3 dice (requested {num_rerolls})")
+    values = list(dice_values)
+    if not 1 <= len(values) <= MAX_WILLPOWER_REROLLS:
+        raise ValueError(f"Choose 1 to {MAX_WILLPOWER_REROLLS} regular dice to re-roll (got {len(values)})")
 
-    # Find failed regular dice (showing 1-5)
-    failed_indices = [
-        i for i, die in enumerate(result.regular_dice)
-        if die < 6
-    ]
+    available = list(enumerate(result.regular_dice))
+    reroll_indices = []
+    for value in values:
+        match = next((pos for pos, (_, die) in enumerate(available) if die == value), None)
+        if match is None:
+            raise ValueError(f"No regular die showing {value} is left to re-roll")
+        index, _ = available.pop(match)
+        reroll_indices.append(index)
 
-    # Limit to requested number of rerolls
-    num_to_reroll = min(num_rerolls, len(failed_indices))
+    new_regular_dice = list(result.regular_dice)
+    for index in reroll_indices:
+        new_regular_dice[index] = randint(1, 10)
 
-    if num_to_reroll == 0:
-        # No failed dice to reroll
-        return result, []
-
-    # Select which dice to reroll (take first N failed dice)
-    reroll_indices = failed_indices[:num_to_reroll]
-
-    # Create new regular dice list with rerolls
-    new_regular_dice = result.regular_dice.copy()
-    for idx in reroll_indices:
-        new_regular_dice[idx] = randint(1, 10)
-
-    # Create new result with same Hunger dice but new regular dice
-    new_result = RollResult(new_regular_dice, result.hunger_dice, result.difficulty)
-
-    return new_result, reroll_indices
+    return RollResult(new_regular_dice, result.hunger_dice, result.difficulty), reroll_indices
 
 
-def validate_pool_params(pool_size: int, hunger: int) -> Tuple[int, int]:
+def validate_pool_params(pool_size: int, hunger: int) -> tuple[int, int]:
     """
     Validate and normalize pool parameters.
 
@@ -307,30 +214,19 @@ def get_success_threshold(die_value: int) -> int:
 
     V5 Success Rules:
     - 1-5: 0 successes
-    - 6-9: 1 success
-    - 10: 2 successes
+    - 6-10: 1 success (a pair of 10s adds 2 more; that is RollResult's job)
 
     Args:
         die_value: Value rolled on the die (1-10)
 
     Returns:
-        Number of successes (0, 1, or 2)
-
-    Example:
-        >>> get_success_threshold(10)  # Returns 2
-        >>> get_success_threshold(7)   # Returns 1
-        >>> get_success_threshold(3)   # Returns 0
+        Number of successes (0 or 1)
     """
-    if die_value >= 10:
-        return 2
-    elif die_value >= 6:
-        return 1
-    else:
-        return 0
+    return 1 if die_value >= SUCCESS_THRESHOLD else 0
 
 
 # Module-level constants for reference
 SUCCESS_THRESHOLD = 6  # Minimum value for a success
-CRITICAL_VALUE = 10    # Value that counts as 2 successes
+CRITICAL_VALUE = 10    # A pair of these is a critical
 MAX_HUNGER = 5         # Maximum Hunger level
 MAX_WILLPOWER_REROLLS = 3  # Maximum dice that can be rerolled with Willpower

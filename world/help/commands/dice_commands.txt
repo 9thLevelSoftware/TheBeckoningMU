@@ -6,53 +6,71 @@ Commands for rolling V5 dice pools.
 
 |WBASIC ROLLING:|n
 
-|yroll <pool> [<hunger>] [vs <difficulty>]|n
-|yr <pool> [<hunger>] [vs <difficulty>]|n
-  Roll a V5 dice pool with optional Hunger dice.
+|yroll <pool> [vs <difficulty>]|n
+|yr <pool> [vs <difficulty>]|n
+  Roll a V5 dice pool. Your current Hunger sets the Hunger dice.
 
 |yExamples:|n
   roll 7                         # Roll 7 dice
-  roll 5 2 vs 3                  # 5 dice, Hunger 2, difficulty 3
-  roll 6 vs 2                    # 6 dice vs difficulty 2
+  roll 5 vs 3                    # 5 dice, 3 successes needed
+  roll/secret 6 vs 2             # Only you see the result
 
 |ySwitches:|n
-  /willpower - Offer Willpower reroll on failure
-  /secret - Only show result to you (no room broadcast)
+  /secret   - Only show the result to you (no room broadcast)
+  /willpower - Re-roll dice of your last roll (see below)
 
-|yExamples:|n
-  roll/willpower 4 3             # With Willpower option
-  roll/secret 6 vs 2             # Secret roll
+Staff only: |yroll <pool> <hunger>|n sets the Hunger dice, and
+|yroll/mortal <pool>|n rolls with none (for NPCs).
 
-|WDISCIPLINE POWER ROLLS:|n
+|WWILLPOWER RE-ROLL:|n
+
+|yroll/willpower <die> [<die> <die>]|n
+  Mark 1 Superficial Willpower damage to re-roll up to three of your
+  last roll's regular (non-Hunger) dice. Choose them by the value they
+  show; you may re-roll a 10. Once per roll; it works after |ypower|n
+  rolls too.
+
+|yExample:|n
+  roll/willpower 2 3 10          # Re-roll a 2, a 3 and a 10
+
+|WDISCIPLINE POWERS:|n
 
 |ypower <power name> [vs <difficulty>]|n
-|ydiscipline <power name> [vs <difficulty>]|n
-  Roll a discipline power automatically.
+|ypower <power name> = <target>|n
+|y+power <discipline>/<power name>|n
+  Use a discipline power you know.
 
 |yExamples:|n
-  power Scry the Soul            # Auto-calculate pool
+  power Scry the Soul            # Pool calculated from your traits
   power Scry the Soul vs 3       # vs difficulty 3
-  power/norouse Heightened Senses # Skip Rouse check
+  power Dread Gaze = Bob         # Contested: Bob rolls his resistance
 
-The system automatically:
-  - Looks up the discipline power
-  - Calculates dice pool from your traits
-  - Applies Blood Potency bonuses
-  - Performs Rouse check (unless /norouse)
-  - Rolls with your current Hunger
+The command:
+  - Refuses a power you haven't learned or lack the rating for
+  - Refuses a power that needs a Rouse check at Hunger 5
+  - Builds the pool from your traits, plus the Blood Potency power
+    bonus, a die from a matching Intense or Acute resonance and a
+    readied Blood Surge
+  - Rolls with your current Hunger; the power's Rouse checks (some
+    powers cost 2 or 3; free powers cost none) are rolled with it and
+    the Hunger they cost is added afterwards. If that would take Hunger
+    past 5, it stops at 5 and you must test for hunger frenzy
+    (Difficulty 4); the power still works
+  - Against a named target you need at least their successes (a tie
+    goes to you); without one, the Storyteller adjudicates
+  - Uses powers that have no dice roll without rolling
+  - Starts the power's tracked effect if it succeeds; a Willpower
+    re-roll that changes the result starts or ends it
+
+Staff only: |ypower/norouse|n skips the Rouse checks.
 
 |WROUSE CHECKS:|n
 
 |yrouse [<reason>]|n
-  Perform a Rouse check.
-
-|yExamples:|n
-  rouse                          # Basic Rouse check
-  rouse Blood Surge              # Rouse with reason
-
-Rouse checks are made when using vampiric powers, healing,
-or performing blood-powered actions. On failure (1-5),
-Hunger increases by 1.
+  Roll one die. On 6-10 nothing happens; on 1-5 your Hunger rises
+  by 1. At Hunger 5 you can't Rouse the Blood. Discipline powers make
+  their own Rouse checks (with the Blood Potency re-roll); a manual
+  check gets no re-roll.
 
 |WDICE MECHANICS REFERENCE:|n
 
@@ -60,49 +78,34 @@ Hunger increases by 1.
 |yshowdice hunger|n
 |yshowdice criticals|n
 |yshowdice bestial|n
-  Display V5 dice mechanics reference.
+  Display the V5 dice rules.
 
-Shows information about:
-  - Success thresholds
-  - Critical wins
-  - Hunger dice mechanics
-  - Messy Criticals
-  - Bestial Failures
-
-|WV5 DICE RULES:|n
+|WV5 DICE RULES (Quick Reference p.3-4):|n
 
 |ySuccess:|n
-  - Each die is d10 (1-10)
-  - |g6-9|n = 1 success
-  - |y10|n = 2 successes (critical)
-  - 1-5 = no success
+  - Each die is a d10
+  - |g6-10|n = 1 success; 1-5 = none
+  - Each |ypair of 10s|n = 4 successes (one 10 is 1, two are 4,
+    three are 5, four are 8)
+  - You succeed if your successes reach the difficulty (at least
+    one success at difficulty 0)
 
-|yCritical Win:|n
-  - Pair of 10s = Critical Success
-  - Each pair adds 4 total successes
+|yCritical:|n
+  - A successful roll with at least one pair of 10s
 
 |yHunger Dice:|n
-  - Replace regular dice (not added)
-  - Number equals current Hunger level
-  - |r1|n on Hunger die can cause Bestial Failure
-  - |r10|n on Hunger die can cause Messy Critical
+  - Replace regular dice, one per point of Hunger, up to the whole pool
 
 |yMessy Critical:|n
-  - Critical win with at least one Hunger 10
-  - You succeed, but the Beast influences outcome
-  - Gain a Stain on Humanity
+  - A critical where a Hunger die shows one of the 10s
+  - You succeed, but the Storyteller decides the complication
 
 |yBestial Failure:|n
-  - Failed roll with Hunger dice showing 1s
-  - The Beast seizes control
-  - Clan Compulsion may activate
-
-|yWillpower Reroll:|n
-  - Spend 1 Willpower to reroll up to 3 failed dice
-  - Cannot reroll Hunger dice
+  - A failed roll with any Hunger die showing 1
+  - You fail and act out a Compulsion
 
 |WRELATED TOPICS:|n
 
-|ySee also:|n help roll, help hunger, help disciplines, help rouse
+|ySee also:|n help roll, help hunger, help disciplines, help bloodsurge
 
 |[r+===================================================================+|n

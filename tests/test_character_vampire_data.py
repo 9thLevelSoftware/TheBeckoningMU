@@ -53,7 +53,7 @@ class VampireDataInitializationTestCase(EvenniaTest):
         """A Rouse check on a brand-new character works and raises Hunger on 1-5."""
         with patch("dice.dice_roller.randint", return_value=3):
             result = perform_rouse_check(self.char, reason="test")
-        self.assertFalse(result["success"])
+        self.assertFalse(result.success)
         self.assertEqual(self.char.hunger, 2)
 
 

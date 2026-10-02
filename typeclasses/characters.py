@@ -910,6 +910,35 @@ class Character(ObjectParent, DefaultCharacter):
         return name
 
 
+def format_idle_seconds(seconds):
+    """Colour-coded idle time for the room display ("|g0s|n" when unknown or under 0.5s).
+
+    Green under 10 minutes, bright green from 11, yellow from 15, red from 20.
+    """
+    if not seconds:
+        return "|g0s|n"
+    total = int(round(seconds))
+    minutes, secs = divmod(total, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+
+    if days:
+        return f"|x{days}d|n"
+    if hours:
+        return f"|x{hours}h|n"
+    if minutes:
+        if minutes >= 20:
+            color = "|r"
+        elif minutes >= 15:
+            color = "|y"
+        elif minutes > 10:
+            color = "|G"
+        else:
+            color = "|g"
+        return f"{color}{minutes}m|n"
+    return f"|g{secs}s|n"
+
+
 def _canonical_name(value, table, label):
     """Match `value` case-insensitively to a key of `table`; None clears."""
     if value is None or value == "":

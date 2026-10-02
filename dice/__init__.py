@@ -12,12 +12,12 @@ This package provides the core dice rolling mechanics for V5, including:
 
 from .dice_roller import (
     roll_v5_pool,
-    roll_rouse_check,
     roll_contested,
     apply_willpower_reroll
 )
 from .roll_result import RollResult
 from .rouse_checker import (
+    RouseResult,
     perform_rouse_check,
     can_reroll_rouse,
     get_hunger_level,
@@ -34,7 +34,7 @@ from .discipline_roller import (
 )
 from .commands import (
     CmdRoll,
-    CmdRollPower,
+    CmdPower,
     CmdRouse,
     CmdShowDice
 )
@@ -43,11 +43,11 @@ from .cmdset import DiceCmdSet
 __all__ = [
     # Core dice rolling
     'roll_v5_pool',
-    'roll_rouse_check',
     'roll_contested',
     'apply_willpower_reroll',
     'RollResult',
     # Rouse checks
+    'RouseResult',
     'perform_rouse_check',
     'can_reroll_rouse',
     'get_hunger_level',
@@ -62,7 +62,7 @@ __all__ = [
     'get_character_discipline_powers',
     # Commands
     'CmdRoll',
-    'CmdRollPower',
+    'CmdPower',
     'CmdRouse',
     'CmdShowDice',
     'DiceCmdSet',

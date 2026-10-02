@@ -22,10 +22,17 @@ Shows:
 |y+boon/pending|n
   View boons requiring your action.
 
+|y+boon/dispute <boon #> = <reason>|n
+  Dispute an accepted or called-in boon you owe or are owed. A disputed
+  boon still counts as owed until staff or a Harpy rules on it: upheld
+  (it stands, as before the dispute), fulfilled, or canceled. A boon can
+  be disputed only once if the dispute is rejected.
+
 |yExamples:|n
   +boon
   +boon Marcus
   +boon/pending
+  +boon/dispute 42 = I never agreed to a major boon.
 
 |WOFFERING A BOON:|n
 
@@ -77,9 +84,10 @@ Calling in a Life Boon for a trivial favor is poor form.
 |WFULFILLING A BOON:|n
 
 |y+boonfulfill <boon #> = <description>|n
-  Mark a called boon as fulfilled.
+  Confirm that a called-in boon has been repaid.
 
-Used by the debtor after completing the requested favor.
+Both the debtor and the creditor confirm. The boon is fulfilled when
+the second of them does.
 
 |yExamples:|n
   +boonfulfill 42 = Voted for Marcus as requested.
@@ -103,21 +111,31 @@ Used by the debtor after completing the requested favor.
    When the creditor needs a favor, they use |y+booncall|n.
 
 6. |yBoon Fulfilled|n
-   After completing the favor, debtor uses |y+boonfulfill|n.
+   After the favor is done, debtor and creditor each confirm it
+   with |y+boonfulfill|n.
 
 |WSTAFF/HARPY COMMANDS:|n
+
+Staff may rule on any boon. A Harpy may not fulfil, cancel or uphold
+a boon that they, or another character on their account, owe or are
+owed.
 
 |y+boonadmin/acknowledge <boon #>|n
   Officially acknowledge a boon (Harpy function).
 
 |y+boonadmin/cancel <boon #> = <reason>|n
-  Cancel a boon.
+  Cancel a boon (one way to resolve a dispute).
+
+|y+boonadmin/fulfill <boon #> = <reason>|n
+  Mark an outstanding or disputed boon fulfilled without both
+  confirmations (the other way to resolve a dispute).
+
+|y+boonadmin/uphold <boon #> = <reason>|n
+  Reject a dispute: the boon stands and returns to accepted or called
+  in. A boon whose dispute was rejected can't be disputed again.
 
 |y+boonadmin/list|n
   List all public boons.
-
-|y+boonadmin/refresh <character>|n
-  Refresh a character's boon ledger calculations.
 
 |WBOON STATUS MEANINGS:|n
 
@@ -126,7 +144,8 @@ Used by the debtor after completing the requested favor.
 |yCalled|n - Creditor has requested the favor
 |yFulfilled|n - Debt has been repaid
 |yCancelled|n - Boon was cancelled (rare)
-|yDisputed|n - Parties disagree (Harpy arbitration needed)
+|yDisputed|n - A party disputes it; still owed until staff or a Harpy
+  who is not a party upholds, fulfils or cancels it
 
 |WTIPS:|n
 

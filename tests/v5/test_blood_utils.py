@@ -6,7 +6,6 @@ and Blood Surge mechanics.
 """
 
 import time
-import unittest
 from unittest.mock import patch
 
 from evennia.utils.test_resources import EvenniaTest
@@ -277,10 +276,8 @@ class ResonanceDisplayTests(EvenniaTest):
         self.assertIn('Melancholy', display)
         self.assertIn('Intense', display)
 
-    # F-096, fixed in PR 5: intensity 3 is labelled "Dyscrasia". In V5 the
-    # third intensity is Acute; a Dyscrasia is something an Acute resonance
-    # may carry.
-    @unittest.expectedFailure
+    # F-096: in V5 the third intensity is Acute; a Dyscrasia is something an
+    # Acute resonance may carry.
     def test_format_resonance_display_acute(self):
         """Test resonance display for acute intensity."""
         blood_utils.set_resonance(self.char, 'Phlegmatic', intensity=3)
@@ -328,20 +325,32 @@ class BloodSurgeManagementTests(EvenniaTest):
         super().setUp()
         self.char = self.char1
 
-    # F-017, fixed in PR 5: activate_blood_surge calls
-    # roll_rouse_check(character, reason=...), which takes no arguments, so
-    # every Blood Surge raises TypeError.
-    @unittest.expectedFailure
-    def test_activate_blood_surge_rouses(self):
-        """Blood Surge costs a Rouse check: a die of 1-5 raises Hunger by 1."""
+    # F-017: readying a Blood Surge costs nothing yet; its Rouse check is made
+    # with the roll it surges (core pp.211-212, p.218).
+    def test_activate_blood_surge_waits_for_the_roll(self):
         self.char.hunger = 2
-        with patch('dice.dice_roller.randint', return_value=3):
-            blood_utils.activate_blood_surge(self.char, 'attribute', 'Strength')
-        self.assertEqual(self.char.hunger, 3)
+        with patch('dice.dice_roller.randint', side_effect=AssertionError("no die yet")):
+            result = blood_utils.activate_blood_surge(self.char, 'attribute', 'Strength')
+        self.assertTrue(result['success'])
+        self.assertEqual(self.char.hunger, 2)
+        self.assertEqual(blood_utils.get_blood_surge(self.char)['bonus'], 2)  # BP 1
+
+    def test_second_surge_is_refused(self):
+        blood_utils.activate_blood_surge(self.char, 'attribute', 'Strength')
+        result = blood_utils.activate_blood_surge(self.char, 'attribute', 'Dexterity')
+        self.assertFalse(result['success'])
+        self.assertEqual(blood_utils.get_blood_surge(self.char)['trait'], 'Strength')
+
+    def test_surge_survives_a_reload(self):
+        """The pending surge is a persistent Attribute, not ndb."""
+        blood_utils.activate_blood_surge(self.char, 'attribute', 'Strength')
+        self.char.ndb.blood_surge = None
+        self.char.attributes.reset_cache()
+        self.assertIsNotNone(blood_utils.get_blood_surge(self.char))
 
     def test_get_blood_surge_active(self):
         """Test getting active Blood Surge status."""
-        self.char.ndb.blood_surge = {
+        self.char.db.blood_surge = {
             'trait': 'Strength',
             'trait_type': 'attribute',
             'bonus': 2,
@@ -355,8 +364,7 @@ class BloodSurgeManagementTests(EvenniaTest):
 
     def test_get_blood_surge_not_active(self):
         """Test getting Blood Surge when not active."""
-        if hasattr(self.char.ndb, 'blood_surge'):
-            del self.char.ndb.blood_surge
+        blood_utils.deactivate_blood_surge(self.char)
 
         surge = blood_utils.get_blood_surge(self.char)
         self.assertIsNone(surge)
@@ -364,7 +372,7 @@ class BloodSurgeManagementTests(EvenniaTest):
     def test_get_blood_surge_expired(self):
         """Test Blood Surge returns None when expired."""
         # Set surge with past expiration
-        self.char.ndb.blood_surge = {
+        self.char.db.blood_surge = {
             'trait': 'Strength',
             'bonus': 3,
             'expires': time.time() - 1  # Expired 1 second ago
@@ -375,7 +383,7 @@ class BloodSurgeManagementTests(EvenniaTest):
 
     def test_deactivate_blood_surge(self):
         """Test deactivating Blood Surge."""
-        self.char.ndb.blood_surge = {
+        self.char.db.blood_surge = {
             'trait': 'Strength',
             'bonus': 2,
             'expires': time.time() + 3600
@@ -406,7 +414,7 @@ class BloodSurgeManagementTests(EvenniaTest):
         """Test Blood Surge expires after approximately 1 hour."""
         expected_duration = 3600  # 1 hour in seconds
 
-        self.char.ndb.blood_surge = {
+        self.char.db.blood_surge = {
             'trait': 'Strength',
             'bonus': 2,
             'expires': time.time() + expected_duration
