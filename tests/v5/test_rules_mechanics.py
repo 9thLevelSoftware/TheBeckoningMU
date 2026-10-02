@@ -884,6 +884,14 @@ class ThinBloodXPTests(EvenniaCommandTest):
         self.char.generation = 14
         self.char.blood_potency = 0
         self.char.db.experience["total_earned"] = 100
+        self.char.set_advantage("merits", "Thin-blood Alchemist", 1)
+
+    def test_alchemy_needs_the_thin_blood_alchemist_merit(self):
+        """QR p.11: Thin-Blood Alchemy comes only through the Thin-blood Alchemist merit."""
+        self.char.set_advantage("merits", "Thin-blood Alchemist", 0)
+        out = self.call(CmdSpend(), "discipline Thin-Blood Alchemy = Far Reach", caller=self.char)
+        self.assertIn("Thin-blood Alchemist merit", out)
+        self.assertEqual((self.char.xp, self.char.get_trait("Thin-Blood Alchemy")), (100, 0))
 
     def test_thin_bloods_cant_buy_vampire_disciplines(self):
         """R-3/R-14: only Thin-Blood Alchemy is bought with XP."""

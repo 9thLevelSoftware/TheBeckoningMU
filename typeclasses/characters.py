@@ -1102,6 +1102,8 @@ class Character(ObjectParent, DefaultCharacter):
                              "can't be worked out. Ask staff to update your character.")
         if ref.name == "Thin-Blood Alchemy" and self.clan != "Thin-Blood":
             raise ValueError("Only thin-bloods can learn Thin-Blood Alchemy")
+        if ref.name == "Thin-Blood Alchemy" and "Thin-blood Alchemist" not in self.advantages["merits"]:
+            raise ValueError("Thin-Blood Alchemy needs the Thin-blood Alchemist merit (QR p.11)")
         if self.clan == "Thin-Blood" and ref.name != "Thin-Blood Alchemy":
             raise ValueError("Thin-bloods can't buy Disciplines with XP (the Discipline Affinity merit gives "
                              "one permanent dot); only Thin-Blood Alchemy")
