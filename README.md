@@ -73,7 +73,7 @@ evennia status
 
 - After each `git pull`, run `evennia migrate` before starting the server.
 - **Backups:** stop the server (`evennia stop`), then copy `server/evennia.db3`. The database is a single SQLite file.
-- **Web builder access:** the builder currently admits any account with Django's `is_staff` flag. Until the builder's permission checks land, do not grant `is_staff` to builders you don't fully trust.
+- **Web builder access:** the web builder (`/builder/`) and its review page require the in-game `Builder` permission or higher (grant it on the **account** in game with `perm *<account> = Builder`; without the `*` the permission lands on a character, which the website ignores). Django's `is_staff` flag grants nothing there. Builders can review other people's projects but never their own; Admins and above may approve their own, and every review records who made it (shown under "Recently Reviewed" on the review page). A project's map and its live connection room are locked once it is submitted, and the sandbox is built from the snapshot taken at approval. Only drafts can be deleted by their owner; Admins can delete any project.
 
 The server is fully headless. Connect with a telnet/MUD client or use the bundled web client.
 
@@ -95,7 +95,7 @@ Web routes (assuming the default web port):
 - **Homepage / public site**: `http://localhost:6665/`
 - **Character creation**: `http://localhost:6665/character-creation/`
 - **Staff character approval**: `http://localhost:6665/staff/character-approval/`
-- **Builder (staff)**: `http://localhost:6665/builder/`
+- **Builder (in-game `Builder` permission)**: `http://localhost:6665/builder/`
 - **Admin**: `http://localhost:6665/admin/`
 - **Traits API**: `http://localhost:6665/api/traits/`
 
