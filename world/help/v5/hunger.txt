@@ -2,78 +2,55 @@
 |W|                        HUNGER SYSTEM                              |
 |[R+===================================================================+|n
 
-Hunger replaces the traditional Blood Pool in V5. It represents the vampire's
-desperation for blood and the closeness of the Beast.
+Hunger replaces the old Blood Pool. It measures how close the Beast is
+(Quick Reference p.4). It runs from 0 to 5; a new vampire starts at 1.
 
-|WHUNGER SCALE (0-5):|n
+|WHUNGER DICE:|n
 
-|WHunger 0|n - |WSated|n
-  - No Hunger dice
-  - Rare and temporary - the vampire is fully fed
+Your |[RHunger dice|n replace regular dice in every roll, one per point of
+Hunger, up to the whole pool. |yroll|n and |ypower|n use your current Hunger.
 
-|WHunger 1-2|n - |wPeckish / Hungry|n
-  - 1-2 Hunger dice replace normal dice in rolls
-  - Manageable but noticeable urge to feed
+|yExample:|n Dexterity 3 + Stealth 2 = 5 dice at Hunger 2
+  - You roll |W3 regular dice|n + |[R2 Hunger dice|n
 
-|WHunger 3-4|n - |yRavenous / Famished|n
-  - 3-4 Hunger dice in rolls
-  - Strong compulsion to feed
-  - May trigger frenzy in stressful situations
+  - Hunger dice count successes like any other die (6-10).
+  - |yMessy critical:|n a critical (a successful roll with a pair of
+    10s) where a Hunger die shows one of the 10s. You succeed; the
+    Storyteller decides the complication.
+  - |yBestial failure:|n a failed roll with any Hunger die showing 1.
+    You fail and act out a Compulsion.
+  - A Willpower re-roll never changes Hunger dice.
 
-|WHunger 5|n - |[RStarving|n
-  - All dice are Hunger dice
-  - |[RCritical state|n - frenzy tests at difficulty +2
-  - Cannot reduce Hunger below 1 without special circumstances
+|WHUNGER 4 AND 5:|n
 
-|WHUNGER DICE MECHANICS:|n
-
-When you roll dice, normal dice are replaced by |[RHunger dice|n based on
-your current Hunger level.
-
-|yExample:|n You have Dexterity 3 + Stealth 2 = 5 dice pool, Hunger 2
-  - You roll |W3 normal dice|n + |[R2 Hunger dice|n
-
-|ySuccesses:|n Both normal and Hunger dice count successes (6+)
-|yCriticals (10s):|n Hunger dice rolling 10 create |[RMessy Criticals|n
-|yBestial Failure:|n Total failure with Hunger dice present triggers the Beast
-
-|WMESSY CRITICAL:|n
-
-When a critical success (pair of 10s) includes at least one Hunger die:
-  - |gYou succeed spectacularly|n
-  - |[RBUT|n the Beast feeds on your success
-  - Violent, dramatic, or obvious supernatural display
-  - May threaten the Masquerade or create complications
-
-|WBESTIAL FAILURE:|n
-
-When you fail a roll (0 successes) and rolled Hunger dice:
-  - You fail the task
-  - Your clan |[RCompulsion|n activates
-  - The Beast asserts control temporarily
-  - Roleplayed as character acting on their vice
+  - |yHunger 4+:|n you are prone to Hunger frenzy (see |yhelp frenzy|n).
+  - |yHunger 5:|n you can't Rouse the Blood. |yrouse|n, |ybloodsurge|n
+    and any power that needs a Rouse check are refused until you feed.
 
 |WINCREASING HUNGER:|n
 
-Hunger increases when you:
-  - Fail a |yRouse check|n (rolling discipline powers)
-  - Wake for the night (sometimes)
-  - Use certain high-level powers
-  - Sustain significant damage
+Hunger rises by 1 each time you fail a |yRouse check|n (a 1-5 on one
+die). You Rouse to:
+  - use most discipline powers (some cost two or three checks)
+  - |ybloodsurge|n
+  - rise for the night, mend damage, or show the Blush of Life
 
-|yCommand:|n Your current Hunger is shown on your |y+sheet|n
+Blood Potency lets you re-roll a failed Rouse check for discipline
+powers up to a level set by the Blood Potency table (|yhelp blood_commands|n).
+
+|yCommands:|n |yhunger|n shows your Hunger, resonance and any Blood Surge;
+|yrouse [<reason>]|n makes a Rouse check.
 
 |WDECREASING HUNGER (FEEDING):|n
 
-Hunger decreases by feeding on:
-  - |wMortals|n - Most effective, but risks Masquerade breach
-  - |wAnimals|n - Only works at low Blood Potency
-  - |wBlood bags|n - Only works at low Blood Potency
-  - |wOther vampires|n - Creates blood bonds, politically dangerous
+Hunger falls when you feed:
+  - |wMortals|n: the usual way; risks the Masquerade
+  - |wAnimals and bagged blood|n: slake less, or nothing, at higher
+    Blood Potency
+  - |wOther vampires|n: risks blood bonds
 
-Feeding is |yroleplayed|n - use |y+feed|n command to mechanically reduce Hunger
-after describing your feeding scene.
+Roleplay the scene, then use |yfeed|n or |y+hunt|n.
 
 |[r+===================================================================+|n
 
-|ySee also:|n help rouse, help disciplines, help frenzy, help compulsion
+|ySee also:|n help roll, help dice_commands, help blood_commands, help frenzy

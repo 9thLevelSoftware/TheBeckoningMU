@@ -8,19 +8,20 @@ horror, political intrigue, and the struggle between human and monster.
 
 |WCORE MECHANICS:|n
 
-|yDice Pools:|n Roll d10s equal to Attribute + Skill
-  - Successes: 6+ on any die
-  - Criticals: Pairs of 10s grant +2 successes
+|yDice Pools:|n Roll d10s equal to Attribute + Skill (see |yhelp roll|n)
+  - Successes: each die showing 6-10
+  - Criticals: each pair of 10s counts as 4 successes
   - Difficulty: Number of successes needed
 
 |yHunger System:|n Replaces Blood Pool (see |yhelp hunger|n)
   - Hunger dice replace normal dice in pools
-  - Messy Criticals when Hunger dice roll 10 in pairs
-  - Bestial Failures when you fail with Hunger dice
+  - Messy Critical: a critical where a Hunger die shows a 10
+  - Bestial Failure: a failed roll with a Hunger die showing 1
 
 |yRouse Checks:|n Single d10 roll when using disciplines
   - Success (6+): No Hunger increase
   - Failure (1-5): Hunger increases by 1
+  - Not possible at Hunger 5
 
 |WCHARACTER COMPONENTS:|n
 
