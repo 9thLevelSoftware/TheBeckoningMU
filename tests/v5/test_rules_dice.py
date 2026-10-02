@@ -303,12 +303,15 @@ class PowerCommandTests(EvenniaCommandTest):
     def test_multi_rouse_past_hunger_5_rolls_every_check_and_owes_a_frenzy_test(self):
         """At Hunger 4 a 3-Rouse power still works; Hunger stops at 5 and a frenzy test is owed."""
         self.char.hunger = 4
-        with dice(8, 3, 3, 3):  # pool die, then all three Rouse dice
+        # pool die, then all three Rouse dice, then the owed frenzy tests' dice
+        with dice(8, 3, 3, 3, *[8] * 20):
             output = self.call(CmdPower(), "Bond Famulus", caller=self.char)
         self.assertEqual(self.char.hunger, 5)
         self.assertEqual(strip_ansi(output).count("Rouse Check (Bond Famulus)"), 3)
         self.assertIn("hunger frenzy", output)
-        self.assertEqual(self.char.db.pending_frenzy_test["difficulty"], 4)
+        # PR 6: the owed test is rolled at once and the record cleared
+        self.assertIn("Hunger frenzy test", strip_ansi(output))
+        self.assertIsNone(self.char.db.pending_frenzy_test)
         self.assertTrue(self.char.ndb.last_roll["result"].is_success)
 
     def test_no_frenzy_test_when_hunger_stays_within_5(self):

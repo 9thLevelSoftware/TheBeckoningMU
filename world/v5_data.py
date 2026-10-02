@@ -896,6 +896,8 @@ ALL_DISCIPLINES = {**DISCIPLINES, **NON_CORE_DISCIPLINES}
 #   flaw_choices, advantage_choices - "spend N dots among these" grants:
 #                        "from" names, "from_categories" MERITS/FLAWS categories
 #   excluded_clans, max_blood_potency - who may not take the type
+#   blood_source       - the FEEDING_SOURCES key a successful hunt feeds on,
+#                        if not a human ("drink"; used by +hunt)
 
 PREDATOR_TYPES = {
     "Alleycat": {
@@ -913,6 +915,7 @@ PREDATOR_TYPES = {
     "Bagger": {
         "description": "Feed on blood bags, corpses and other preserved blood",
         "hunting_pool": "Intelligence + Streetwise",
+        "blood_source": "bag",
         "specialties": [("Larceny", "Lock Picking"), ("Streetwise", "Black Market")],
         "disciplines": ["Blood Sorcery", "Obfuscate"],
         # Core: Tremere only. (The Players Guide p.107 adds Banu Haqim; add it
@@ -967,6 +970,7 @@ PREDATOR_TYPES = {
     "Farmer": {
         "description": "Feed on animals only",
         "hunting_pool": "Composure + Animal Ken",
+        "blood_source": "animal",
         "specialties": [("Animal Ken", "Specific animal"), ("Survival", "Hunting")],
         "disciplines": ["Animalism", "Protean"],
         "humanity": 1,
@@ -1174,6 +1178,22 @@ BLOOD_POTENCY = {
          "feeding_penalty": ("Animal and bagged blood slake no Hunger; slake 3 less Hunger per human; "
                              "must drain and kill a human to reduce Hunger below 3")},
 }
+
+# The feeding_penalty text above as numbers, for the feeding code (same
+# errata table; tests/test_v5_data.py checks they agree with the text):
+#   animal_bagged_slake    - fraction of the Hunger animal and bagged blood
+#                            slakes (BP 2 "half" rounds down: UNVERIFIED)
+#   human_slake_penalty    - "slake N less Hunger per human"
+#   min_hunger_without_kill - lowest Hunger feeding reaches without draining
+#                            and killing the vessel (QR p.12: only a kill
+#                            reaches Hunger 0)
+for _bp, (_animal, _penalty, _floor) in {
+    0: (1, 0, 1), 1: (1, 0, 1), 2: (0.5, 0, 1), 3: (0, 0, 1), 4: (0, 1, 1), 5: (0, 1, 2),
+    6: (0, 2, 2), 7: (0, 2, 2), 8: (0, 2, 3), 9: (0, 2, 3), 10: (0, 3, 3),
+}.items():
+    BLOOD_POTENCY[_bp].update(
+        animal_bagged_slake=_animal, human_slake_penalty=_penalty, min_hunger_without_kill=_floor
+    )
 
 # ============================================================================
 # GENERATION, AGE AND BLOOD POTENCY
@@ -1744,4 +1764,78 @@ FRENZY_PROVOCATIONS = {
             "Fully exposed to direct sunlight": 4,
         },
     },
+}
+
+# ============================================================================
+# EXPERIENCE COSTS
+# ============================================================================
+# Source: V5 Quick Reference 2.0 p.1 (Experience chart; the core book's
+# Experience table). Each entry is (basis, multiplier):
+#   "new_level" - the new rating x multiplier
+#   "level"     - the ritual's or formula's level x multiplier
+#   "per_dot"   - multiplier per dot bought
+#   "flat"      - multiplier, once
+# Humanity and Willpower are not bought: Willpower is Composure + Resolve and
+# Humanity changes at the Storyteller's discretion (QR p.3).
+
+XP_COSTS = {
+    "attribute": ("new_level", 5),
+    "skill": ("new_level", 3),
+    "specialty": ("flat", 3),
+    "clan_discipline": ("new_level", 5),
+    "other_discipline": ("new_level", 7),
+    "caitiff_discipline": ("new_level", 6),
+    "ritual": ("level", 3),
+    "formula": ("level", 3),
+    "advantage": ("per_dot", 3),
+    "blood_potency": ("new_level", 10),
+}
+
+
+def xp_cost(kind, amount):
+    """XP for one purchase: ``amount`` is the new rating, the ritual/formula
+    level, or the number of dots, as XP_COSTS[kind] says (ignored for flat)."""
+    basis, multiplier = XP_COSTS[kind]
+    return multiplier if basis == "flat" else amount * multiplier
+
+
+# ============================================================================
+# HUNTING AND FEEDING
+# ============================================================================
+# Source: V5 Quick Reference 2.0 p.12 (Hunting Ground and feeding Source
+# tables, from core p.307 and p.212). The hunting roll is the predator
+# type's hunting_pool against the hunting ground's difficulty.
+
+HUNTING_GROUNDS = {
+    "slum": {"difficulty": 2,
+             "description": "Slum neighborhood, Skid Row, public housing projects or banlieues, the Rack"},
+    "bohemian": {"difficulty": 3,
+                 "description": "Bohemian or hipster neighborhood, gentrifying or blighted working-class neighborhood"},
+    "downtown": {"difficulty": 4,
+                 "description": ("Healthy working-class neighborhood, downtown business district, tourist "
+                                 "district, airport or casino")},
+    "suburbs": {"difficulty": 5,
+                "description": "Manufacturing, warehouse or port district; urban parkland; middle-class suburban sprawl"},
+    "wealthy": {"difficulty": 6, "description": "Wealthy neighborhood"},
+}
+
+# Hunger slaked per source (QR p.12). "kind" is what the Blood Potency
+# feeding penalties apply to: "animal"/"bagged" (animal_bagged_slake) or
+# "human" (human_slake_penalty and min_hunger_without_kill). "kill" is the
+# only way to reach Hunger 0.
+FEEDING_SOURCES = {
+    "small animals": {"slake": 1, "kind": "animal", "time": "one scene",
+                      "description": "Multiple small animals (three to four cats, a dozen or more rats)"},
+    "animal": {"slake": 1, "kind": "animal", "time": "one turn",
+               "description": "Medium-sized animal (raccoon, dog, coyote)"},
+    "large animal": {"slake": 2, "kind": "animal", "time": "one scene", "description": "Large animal (horse)"},
+    "bag": {"slake": 1, "kind": "bagged", "time": "one turn", "description": "Blood bag"},
+    "sip": {"slake": 1, "kind": "human", "time": "three turns", "description": "Sip from a human"},
+    "drink": {"slake": 2, "kind": "human", "time": "one scene",
+              "description": "Maximum non-harmful drink from a human"},
+    "harmful": {"slake": 4, "kind": "human", "time": "one turn per Hunger slaked",
+                "description": ("Harmful drink that risks the human's death unless treated (1-4 Hunger; "
+                                "Aggravated damage equal to the Hunger slaked)")},
+    "kill": {"slake": 5, "kind": "human", "time": "five turns", "kill": True,
+             "description": "Human drained and killed (the only way to reach Hunger 0)"},
 }

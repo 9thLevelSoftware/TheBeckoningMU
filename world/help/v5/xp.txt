@@ -2,105 +2,56 @@
 |W|                     EXPERIENCE POINT SYSTEM                       |
 |[R+===================================================================+|n
 
-Experience Points (XP) allow you to improve your character over time, buying
-new dots in Attributes, Skills, Disciplines, and other traits.
+Experience points (XP) buy new dots. Staff award XP with +xpaward.
 
-|WVIEWING YOUR XP:|n
+|WVIEWING XP|n
 
-|y+xp|n
-  - View your current XP total and XP log
-  - See recent XP gains and expenditures
+|y+xp|n           your current, earned and spent XP
+|y+xp/log|n       your recent awards and purchases
+|y+xp/costs|n     the cost table below
 
-|y+xp/costs|n
-  - Display the XP costs for all trait types
-  - Quick reference for character advancement planning
+|WSPENDING XP|n
 
-|WSPENDING XP:|n
+|y+spend attribute <name>|n                   e.g. +spend attribute strength
+|y+spend skill <name>|n                       e.g. +spend skill brawl
+|y+spend specialty <skill> = <specialty>|n   e.g. +spend specialty brawl = Grappling
+|y+spend discipline <name>|n                  e.g. +spend discipline potence
+|y+spend advantage <background or merit>|n   e.g. +spend advantage Resources
+|y+spend advantage <background> = <who>|n    e.g. +spend advantage Allies = street gang
+|y+spend bp|n                                 raise Blood Potency by one
+|y+spend ritual <name>|n                      a Blood Sorcery ritual
+|y+spend formula <name>|n                     a Thin-Blood Alchemy formula
 
-|y+spend <trait>=<dots>|n
-  - Spend XP to increase a trait
-  - Example: +spend Strength=3 (buy Strength to 3 dots)
-  - Example: +spend Auspex=2 (buy Auspex to 2 dots)
+Each spend buys one step. The name must be a real trait of that type
+(+spend skill strength is refused), and nothing is charged when a spend is
+refused.
 
-|yTrait Types:|n
-  - Attributes (Strength, Dexterity, Stamina, etc.)
-  - Skills (Athletics, Academics, Streetwise, etc.)
-  - Disciplines (Animalism, Auspex, Celerity, etc.)
-  - Backgrounds (Resources, Allies, Contacts, etc.)
+|WXP COSTS|n (V5 Quick Reference 2.0 p.1)
 
-|WXP COSTS:|n
+  Attribute                  new level x 5    (Strength 3 to 4: 20 XP)
+  Skill                      new level x 3    (Brawl 2 to 3: 9 XP)
+  Specialty                  3
+  Clan Discipline            new level x 5
+  Other Discipline           new level x 7
+  Caitiff Discipline         new level x 6    (every discipline, for Caitiff)
+  Blood Sorcery Ritual       ritual level x 3 (needs Blood Sorcery at that level)
+  Thin-blood Formula         formula level x 3 (needs Thin-Blood Alchemy at that level)
+  Thin-Blood Alchemy         new level x 5    (thin-bloods only; each dot comes with
+                                               a formula: +spend discipline
+                                               Thin-Blood Alchemy = <formula>)
+  Advantage                  3 per dot        (backgrounds and merits; a 2-dot
+                                               merit costs 6)
+  Blood Potency              new level x 10   (up to your Generation's maximum:
+                                               13th and 12th Generation: 3)
 
-|yAttributes:|n
-  - New Dot x 5 XP
-  - Example: Strength 2 to 3 = 15 XP
+Willpower is Composure + Resolve: raise those attributes and it rises with
+them. Humanity changes only at the Storyteller's discretion. Neither is
+bought with XP. Thin-bloods can't buy other Disciplines (the Discipline
+Affinity merit gives one permanent dot). Flaws aren't bought, and thin-blood merits are taken at
+character creation.
 
-|ySkills:|n
-  - New Dot x 3 XP
-  - Example: Academics 1 to 2 = 6 XP
+To justify a new Discipline dot your character should feed on blood of the
+matching Resonance; a new out-of-clan Discipline needs a taste of the blood
+of someone who has it (QR p.1). Staff judge this.
 
-|yIn-Clan Disciplines:|n
-  - New Dot x 5 XP
-  - Example: Auspex 2 to 3 = 15 XP (for Malkavian)
-
-|yOut-of-Clan Disciplines:|n
-  - New Dot x 7 XP
-  - Example: Potence 1 to 2 = 14 XP (for Malkavian)
-
-|yBackgrounds:|n
-  - New Dot x 3 XP
-  - Example: Resources 2 to 3 = 9 XP
-
-|yClan/Generation:|n
-  - Cannot be purchased with XP (story only)
-
-|WEARNING XP:|n
-
-XP is awarded by staff for:
-  - |wActive Roleplay|n - Regular attendance and quality RP (weekly)
-  - |wStory Participation|n - Participating in plots and events
-  - |wCharacter Development|n - Deep character moments and growth
-  - |wCommunity Contribution|n - Helping new players, running scenes
-  - |wCreativity|n - Exceptional logs, wiki contributions, artwork
-
-|yTypical Awards:|n
-  - 2-3 XP per week for active play
-  - 1-5 XP bonus for exceptional roleplay
-  - 5-10 XP for major story conclusions
-
-|WADVANCEMENT GUIDELINES:|n
-
-- You can only raise a trait by 1 dot at a time
-- Some traits require IC justification (new Disciplines, etc.)
-- Staff may request roleplay before approving certain purchases
-- Check |y+xp/costs|n before spending to avoid mistakes
-
-|WEXAMPLES:|n
-
-|yBuy Strength from 2 to 3:|n
-  +spend Strength=3
-  Cost: 15 XP (New Dot 3 x 5)
-
-|yBuy Academics from 1 to 2:|n
-  +spend Academics=2
-  Cost: 6 XP (New Dot 2 x 3)
-
-|yBuy in-clan Auspex from 2 to 3:|n
-  +spend Auspex=3
-  Cost: 15 XP (New Dot 3 x 5, Malkavian in-clan)
-
-|yBuy out-of-clan Fortitude from 0 to 1:|n
-  +spend Fortitude=1
-  Cost: 7 XP (New Dot 1 x 7, not Malkavian in-clan)
-
-|yView all costs:|n
-  +xp/costs
-
-|WSTAFF COMMANDS:|n (Staff only)
-
-|y+xpaward <player>=<amount>/<reason>|n
-  - Award XP to a player
-  - Example: +xpaward Marcus=3/Excellent roleplay this week
-
-|[r+===================================================================+|n
-
-|ySee also:|n help disciplines, help attributes, help skills, help +sheet
+|ySee also:|n help disciplines, help backgrounds, help alchemy

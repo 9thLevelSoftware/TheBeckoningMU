@@ -1,90 +1,53 @@
 """
 XP System Utility Functions for V5
 
-Handles experience point costs, spending, and tracking.
+Costs come from world.v5_data.XP_COSTS (QR p.1). Every purchase goes through
+Character.spend_xp, which validates the trait and writes the trait, the XP
+total and the log together; the spend_xp_on_* helpers here are thin
+wrappers that return (success, message).
 """
 
 from collections.abc import Mapping
+from datetime import datetime
 
-from world.v5_data import MERITS, UnknownTrait, WrongCategory, resolve_trait
+from world.v5_data import UnknownTrait, WrongCategory, xp_cost
 
-from .clan_utils import get_inclan_disciplines, unavailable_clan
+from .clan_utils import unavailable_clan
+
+
+def _cost(character, name, category, note=None):
+    """(cost, new) for a purchase, or (None, None) if it is past its cap.
+
+    Raises UnknownTrait/WrongCategory for a name that isn't a trait of that kind.
+    """
+    try:
+        plan = character.xp_spend_cost(name, category, note)
+    except (UnknownTrait, WrongCategory):
+        raise
+    except ValueError:
+        return (None, None)
+    return (plan["cost"], plan["new"])
 
 
 def get_xp_cost_attribute(character, attribute_name):
-    """
-    Calculate XP cost to raise an attribute.
-
-    Cost = New Rating × 5 XP
-
-    Args:
-        character: Character object
-        attribute_name (str): Attribute name
-
-    Returns:
-        tuple: (cost: int, new_rating: int)
-    """
-    current = character.get_trait(attribute_name, 'attributes')
-    new_rating = current + 1
-
-    if new_rating > 5:
-        return (None, None)  # Cannot exceed 5
-
-    cost = new_rating * 5
-    return (cost, new_rating)
+    """XP to raise an attribute: new rating x 5. Returns (cost, new_rating); (None, None) at the cap."""
+    return _cost(character, attribute_name, "attribute")
 
 
 def get_xp_cost_skill(character, skill_name):
-    """
-    Calculate XP cost to raise a skill.
-
-    Cost = New Rating × 3 XP
-
-    Args:
-        character: Character object
-        skill_name (str): Skill name
-
-    Returns:
-        tuple: (cost: int, new_rating: int)
-    """
-    current = character.get_trait(skill_name, 'skills')
-    new_rating = current + 1
-
-    if new_rating > 5:
-        return (None, None)  # Cannot exceed 5
-
-    cost = new_rating * 3
-    return (cost, new_rating)
+    """XP to raise a skill: new rating x 3. Returns (cost, new_rating); (None, None) at the cap."""
+    return _cost(character, skill_name, "skill")
 
 
 def get_xp_cost_specialty(character, skill_name, specialty_name=None):
-    """
-    Calculate XP cost for a specialty.
-
-    Cost = 3 XP (flat)
-
-    Args:
-        character: Character object
-        skill_name (str): Skill to add specialty to
-        specialty_name (str, optional): The specialty; if the skill already
-            has it, the cost is None
-
-    Returns:
-        int: Cost (3 XP or None if invalid)
-    """
-    ref = resolve_trait(skill_name, 'skills')
-
-    # Check if skill is at least 1
-    if character.get_trait(ref.key) < 1:
+    """XP for a specialty: 3. None if the skill is unrated or already has that specialty."""
+    try:
+        plan = character.xp_spend_cost(skill_name, "specialty", specialty_name or "?")
+    except (UnknownTrait, WrongCategory):
+        raise
+    except ValueError:
         return None
-
-    # A skill may hold several specialties, but not the same one twice
-    if specialty_name is not None:
-        existing = [name.lower() for name in character.specialties.get(ref.key, [])]
-        if str(specialty_name).strip().lower() in existing:
-            return None
-
-    return 3
+    return plan["cost"]
 
 
 def unavailable_clan_message(character):
@@ -102,180 +65,40 @@ def unavailable_clan_message(character):
 
 def get_xp_cost_discipline(character, discipline_name):
     """
-    Calculate XP cost to raise a discipline.
-
-    Cost:
-    - In-clan: New Rating × 5 XP
-    - Out-of-clan: New Rating × 7 XP
-
-    Args:
-        character: Character object
-        discipline_name (str): Discipline name
+    XP to raise a discipline (QR p.1): new rating x 5 in-clan, x 6 for
+    Caitiff (any discipline), x 7 otherwise.
 
     Returns:
-        tuple: (cost: int, new_rating: int, is_in_clan: bool)
+        tuple: (cost, new_rating, is_in_clan); (None, None, None) at the cap
     """
-    # Get current level
     current = character.get_trait(discipline_name, 'disciplines')
     new_rating = current + 1
-
     if new_rating > 5:
-        return (None, None, None)  # Cannot exceed 5
+        return (None, None, None)
+    from world.v5_data import resolve_trait
 
-    # Check if in-clan
-    inclan_disciplines = get_inclan_disciplines(character)
-    is_in_clan = discipline_name.lower() in [d.lower() for d in inclan_disciplines]
-
-    # Calculate cost
-    if is_in_clan:
-        cost = new_rating * 5
-    else:
-        cost = new_rating * 7
-
-    return (cost, new_rating, is_in_clan)
-
-
-def get_xp_cost_background(character, background_name):
-    """
-    Calculate XP cost to raise a background.
-
-    Cost = 3 XP per dot
-
-    Args:
-        character: Character object
-        background_name (str): Background name
-
-    Returns:
-        tuple: (cost: int, new_rating: int)
-    """
-    current = character.get_trait(background_name, 'backgrounds')
-    new_rating = current + 1
-
-    if new_rating > 5:
-        return (None, None)  # Cannot exceed 5
-
-    cost = 3  # Flat 3 XP per dot
-    return (cost, new_rating)
-
-
-def get_xp_cost_merit(character, merit_name):
-    """
-    Calculate XP cost to raise a merit.
-
-    Cost = 3 XP per dot
-
-    Args:
-        character: Character object
-        merit_name (str): Merit name
-
-    Returns:
-        tuple: (cost: int, new_rating: int)
-    """
-    canonical = next((name for name in MERITS if name.lower() == str(merit_name).strip().lower()), None)
-    if canonical is None:
-        raise UnknownTrait(f"Unknown merit: {merit_name}")
-    current = character.advantages['merits'].get(canonical, 0)
-    new_rating = current + 1
-
-    if new_rating > 5:
-        return (None, None)  # Cannot exceed 5
-
-    cost = 3  # Flat 3 XP per dot
-    return (cost, new_rating)
-
-
-def get_xp_cost_humanity(character):
-    """
-    Calculate XP cost to raise Humanity.
-
-    Cost = New Rating × 10 XP
-
-    Args:
-        character: Character object
-
-    Returns:
-        tuple: (cost: int, new_rating: int)
-    """
-    current = character.humanity
-    new_rating = current + 1
-
-    if new_rating > 10:
-        return (None, None)  # Cannot exceed 10
-
-    cost = new_rating * 10
-    return (cost, new_rating)
-
-
-def get_xp_cost_willpower(character):
-    """
-    Calculate XP cost to raise permanent Willpower.
-
-    Cost = 8 XP (flat)
-
-    Args:
-        character: Character object
-
-    Returns:
-        tuple: (cost: int, new_rating: int)
-    """
-    current = character.willpower_max
-    new_rating = current + 1
-
-    if new_rating > 10:
-        return (None, None)  # Cannot exceed 10
-
-    cost = 8  # Flat 8 XP
-    return (cost, new_rating)
+    kind = character.discipline_cost_kind(resolve_trait(discipline_name, 'disciplines').name)
+    return (xp_cost(kind, new_rating), new_rating, kind == "clan_discipline")
 
 
 def get_current_xp(character):
-    """
-    Get character's current unspent XP.
-
-    Args:
-        character: Character object
-
-    Returns:
-        int: Current XP
-    """
+    """Unspent XP."""
     return character.xp
 
 
 def get_total_earned_xp(character):
-    """
-    Get character's total earned XP (lifetime).
-
-    Args:
-        character: Character object
-
-    Returns:
-        int: Total earned XP
-    """
+    """Total XP earned."""
     return character.xp_earned
 
 
 def get_total_spent_xp(character):
-    """
-    Get character's total spent XP.
-
-    Args:
-        character: Character object
-
-    Returns:
-        int: Total spent XP
-    """
+    """Total XP spent."""
     return character.xp_spent
 
 
 def award_xp(character, amount, reason="", awarded_by=None):
     """
     Award XP to a character.
-
-    Args:
-        character: Character object
-        amount (int): XP amount to award
-        reason (str): Reason for award
-        awarded_by: Character/account awarding XP
 
     Returns:
         tuple: (success: bool, message: str)
@@ -284,19 +107,10 @@ def award_xp(character, amount, reason="", awarded_by=None):
         return (False, "XP amount must be positive.")
 
     if not isinstance(character.db.experience, Mapping):
-        character.db.experience = {
-            'total_earned': 0,
-            'total_spent': 0,
-            'log': []
-        }
+        character.db.experience = {'total_earned': 0, 'total_spent': 0, 'log': []}
 
     exp = character.db.experience
-
-    # Update totals (unspent XP is derived: earned - spent)
     exp['total_earned'] = exp.get('total_earned', 0) + amount
-
-    # Log the award
-    from datetime import datetime
     log_entry = {
         'type': 'award',
         'amount': amount,
@@ -305,263 +119,59 @@ def award_xp(character, amount, reason="", awarded_by=None):
         'date': datetime.now().isoformat(),
         'balance': character.xp
     }
-
     if 'log' not in exp:
         exp['log'] = []
     exp['log'].append(log_entry)
-
     character.db.experience = exp
 
     return (True, f"Awarded {amount} XP. Current XP: {character.xp}")
 
 
-def spend_xp_on_attribute(character, attribute_name, reason=""):
+def spend_xp(character, name, category, note=None, reason=""):
     """
-    Spend XP to raise an attribute.
-
-    Args:
-        character: Character object
-        attribute_name (str): Attribute to raise
-        reason (str): Reason for purchase
+    Spend XP through Character.spend_xp.
 
     Returns:
-        tuple: (success: bool, message: str)
+        tuple: (success: bool, message: str); nothing changes on failure.
     """
     try:
-        cost, new_rating = get_xp_cost_attribute(character, attribute_name)
-    except (UnknownTrait, WrongCategory) as err:
-        return (False, f"{err}.")
+        result = character.spend_xp(name, category, note=note, reason=reason)
+    except (UnknownTrait, WrongCategory, ValueError) as err:
+        return (False, f"{str(err).rstrip('.')}.")
+    return (True, f"{result['label']} for {result['cost']} XP.")
 
-    if cost is None:
-        return (False, f"Cannot raise {attribute_name} further (max 5).")
 
-    current_xp = get_current_xp(character)
-    if current_xp < cost:
-        return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
-
-    # Raise attribute
-    character.set_trait(attribute_name, new_rating, 'attributes')
-
-    # Deduct XP
-    _deduct_xp(character, cost, f"Raised {attribute_name} to {new_rating}" + (f" - {reason}" if reason else ""))
-
-    return (True, f"Raised {attribute_name} to {new_rating} for {cost} XP.")
+def spend_xp_on_attribute(character, attribute_name, reason=""):
+    """Spend XP to raise an attribute. Returns (success, message)."""
+    return spend_xp(character, attribute_name, "attribute", reason=reason)
 
 
 def spend_xp_on_skill(character, skill_name, reason=""):
-    """
-    Spend XP to raise a skill.
-
-    Args:
-        character: Character object
-        skill_name (str): Skill to raise
-        reason (str): Reason for purchase
-
-    Returns:
-        tuple: (success: bool, message: str)
-    """
-    try:
-        cost, new_rating = get_xp_cost_skill(character, skill_name)
-    except (UnknownTrait, WrongCategory) as err:
-        return (False, f"{err}.")
-
-    if cost is None:
-        return (False, f"Cannot raise {skill_name} further (max 5).")
-
-    current_xp = get_current_xp(character)
-    if current_xp < cost:
-        return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
-
-    # Raise skill
-    character.set_trait(skill_name, new_rating, 'skills')
-
-    # Deduct XP
-    _deduct_xp(character, cost, f"Raised {skill_name} to {new_rating}" + (f" - {reason}" if reason else ""))
-
-    return (True, f"Raised {skill_name} to {new_rating} for {cost} XP.")
+    """Spend XP to raise a skill. Returns (success, message)."""
+    return spend_xp(character, skill_name, "skill", reason=reason)
 
 
 def spend_xp_on_specialty(character, skill_name, specialty_name, reason=""):
-    """
-    Spend XP to add a specialty.
-
-    Args:
-        character: Character object
-        skill_name (str): Skill to add specialty to
-        specialty_name (str): Name of specialty
-        reason (str): Reason for purchase
-
-    Returns:
-        tuple: (success: bool, message: str)
-    """
-    try:
-        cost = get_xp_cost_specialty(character, skill_name, specialty_name)
-    except (UnknownTrait, WrongCategory) as err:
-        return (False, f"{err}.")
-
-    if cost is None:
-        return (False, f"Cannot add specialty {specialty_name} to {skill_name}. The skill needs at least 1 dot and can't already have that specialty.")
-
-    current_xp = get_current_xp(character)
-    if current_xp < cost:
-        return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
-
-    # Add specialty
-    character.add_specialty(skill_name, specialty_name)
-
-    # Deduct XP
-    _deduct_xp(character, cost, f"Added specialty: {skill_name} ({specialty_name})" + (f" - {reason}" if reason else ""))
-
-    return (True, f"Added specialty {specialty_name} to {skill_name} for {cost} XP.")
+    """Spend XP to add a specialty. Returns (success, message)."""
+    return spend_xp(character, skill_name, "specialty", note=specialty_name, reason=reason)
 
 
 def spend_xp_on_discipline(character, discipline_name, reason=""):
-    """
-    Spend XP to raise a discipline.
-
-    Args:
-        character: Character object
-        discipline_name (str): Discipline to raise
-        reason (str): Reason for purchase
-
-    Returns:
-        tuple: (success: bool, message: str)
-    """
-    refusal = unavailable_clan_message(character)
-    if refusal:
-        return (False, refusal)
-
-    try:
-        cost, new_rating, is_in_clan = get_xp_cost_discipline(character, discipline_name)
-    except (UnknownTrait, WrongCategory) as err:
-        return (False, f"{err}.")
-
-    if cost is None:
-        return (False, f"Cannot raise {discipline_name} further (max 5).")
-
-    current_xp = get_current_xp(character)
-    if current_xp < cost:
-        return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
-
-    # Raise discipline
-    character.set_trait(discipline_name, new_rating, 'disciplines')
-
-    # Deduct XP
-    clan_str = " (in-clan)" if is_in_clan else " (out-of-clan)"
-    _deduct_xp(character, cost, f"Raised {discipline_name} to {new_rating}{clan_str}" + (f" - {reason}" if reason else ""))
-
-    return (True, f"Raised {discipline_name} to {new_rating} for {cost} XP{clan_str}.")
-
-
-def spend_xp_on_humanity(character, reason=""):
-    """
-    Spend XP to raise Humanity.
-
-    Args:
-        character: Character object
-        reason (str): Reason for purchase
-
-    Returns:
-        tuple: (success: bool, message: str)
-    """
-    cost, new_rating = get_xp_cost_humanity(character)
-
-    if cost is None:
-        return (False, "Cannot raise Humanity further (max 10).")
-
-    current_xp = get_current_xp(character)
-    if current_xp < cost:
-        return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
-
-    # Raise Humanity
-    character.humanity = new_rating
-
-    # Deduct XP
-    _deduct_xp(character, cost, f"Raised Humanity to {new_rating}" + (f" - {reason}" if reason else ""))
-
-    return (True, f"Raised Humanity to {new_rating} for {cost} XP.")
-
-
-def spend_xp_on_willpower(character, reason=""):
-    """
-    Refuse: Willpower is Composure + Resolve and is never bought directly.
-
-    Raise Composure or Resolve instead.
-
-    Args:
-        character: Character object
-        reason (str): Unused
-
-    Returns:
-        tuple: (False, message)
-    """
-    return (False, "Willpower is Composure + Resolve. Raise one of those attributes instead.")
-
-
-def _deduct_xp(character, amount, reason):
-    """
-    Internal function to deduct XP and log it.
-
-    Args:
-        character: Character object
-        amount (int): XP to deduct
-        reason (str): Reason for expenditure
-    """
-    exp = character.db.experience
-
-    exp['total_spent'] = exp.get('total_spent', 0) + amount
-
-    # Log the expenditure
-    from datetime import datetime
-    log_entry = {
-        'type': 'spend',
-        'amount': -amount,
-        'reason': reason,
-        'date': datetime.now().isoformat(),
-        'balance': character.xp
-    }
-
-    if 'log' not in exp:
-        exp['log'] = []
-    exp['log'].append(log_entry)
-
-    character.db.experience = exp
+    """Spend XP to raise a discipline. Returns (success, message)."""
+    return spend_xp(character, discipline_name, "discipline", reason=reason)
 
 
 def get_xp_log(character, limit=10):
-    """
-    Get character's XP log (recent entries).
-
-    Args:
-        character: Character object
-        limit (int): Number of recent entries to return
-
-    Returns:
-        list: XP log entries
-    """
+    """The character's most recent XP log entries."""
     exp = character.db.experience if isinstance(character.db.experience, Mapping) else {}
     log = exp.get('log', [])
-
     return log[-limit:] if limit else log
 
 
 def format_xp_summary(character):
-    """
-    Format XP summary for display.
-
-    Args:
-        character: Character object
-
-    Returns:
-        str: Formatted XP summary
-    """
-    current = get_current_xp(character)
-    earned = get_total_earned_xp(character)
-    spent = get_total_spent_xp(character)
-
-    lines = []
-    lines.append(f"Current XP: {current}")
-    lines.append(f"Total Earned: {earned}")
-    lines.append(f"Total Spent: {spent}")
-
-    return "\n".join(lines)
+    """XP summary for display."""
+    return "\n".join([
+        f"Current XP: {get_current_xp(character)}",
+        f"Total Earned: {get_total_earned_xp(character)}",
+        f"Total Spent: {get_total_spent_xp(character)}",
+    ])

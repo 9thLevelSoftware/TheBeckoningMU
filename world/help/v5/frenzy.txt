@@ -29,7 +29,8 @@ The number after each provocation is the Difficulty of the frenzy test.
 Roll |WWillpower + Humanity / 3|n (current Willpower plus a third of your
 Humanity, rounded down) against the provocation's Difficulty. If you fail,
 the Storyteller takes control of you until the frenzy ends. You can spend
-Willpower to regain control from a frenzy.
+Willpower to regain control from a frenzy. The frenzy test is a Willpower
+test: it uses |wno Hunger dice|n and no Blood Surge.
 
 Clan banes can change the roll: a |yBrujah|n subtracts Bane Severity dice
 from rolls to resist fury frenzy (see help clans).
@@ -38,72 +39,49 @@ from rolls to resist fury frenzy (see help clans).
 humiliated (fury, Difficulty 2). They roll 5 + 2 = 7 dice and need two
 successes.
 
-|WFRENZY CONSEQUENCES:|n
+|WHUNGER FRENZY FROM A ROUSE PAST HUNGER 5|n (core p.211)
 
-When you enter frenzy:
+Hunger never rises above 5. You can't choose to Rouse the Blood at Hunger 5,
+but a Rouse can still be forced on you:
+  - a power with two or three Rouse checks, started below Hunger 5, whose
+    failed checks would take you past 5: you owe a hunger frenzy test at
+    |wDifficulty 4|n for each failed check past 5 (the power still works);
+  - rising for the night (|wrouse/wake|n): the Rouse is rolled even at
+    Hunger 5. If it fails there, Hunger stays at 5, you make one hunger
+    frenzy test at Difficulty 4 (QR p.13), and you fall into torpor (QR p.4;
+    staff decide how long it lasts).
+The command that caused it rolls the test(s) at once; once one fails you
+are in frenzy and the rest aren't rolled. A test still owed shows in
+|whunger|n and on your sheet; roll it with |w+frenzy/pending|n.
 
-• You |Wlose control|n of your character - the ST or game system determines
-  your actions
-• You gain the |WBeast's Traits|n - increased physical prowess but no
-  cunning
-• You cannot use |WDisciplines|n that require concentration (Dominate,
-  Auspex, etc.)
-• You |Wmay|n use physical Disciplines automatically (Celerity, Potence)
-• You gain |W1 Stain|n for actions taken during frenzy (at ST discretion)
-• You may violate your |WConvictions|n or harm |WTouchstones|n, gaining more
-  Stains
+|WIN FRENZY|n
 
-|WRIDING THE WAVE:|n
+The Storyteller takes control of you (QR p.4): in |wfury|n you stop at nothing
+to destroy the source of the provocation, in |whunger|n you seek fresh human
+blood from the closest source, in |wterror|n you flee the danger. You can
+spend Willpower to regain control (QR p.3).
 
-Instead of resisting frenzy, you can choose to |W"ride the wave"|n - you
-accept the frenzy and give in to the Beast, but maintain some narrative
-control over your actions.
+|WRIDING THE WAVE|n (QR p.4)
 
-Benefits:
-• You don't need to roll to resist
-• You can guide your actions somewhat (with ST approval)
-• You may avoid some Stains by directing the frenzy appropriately
+When a frenzy test is called for you may choose not to resist and "ride the
+wave": you keep control of your character but must play out the frenzy to
+its end.
 
-Drawbacks:
-• You're still in frenzy - the Beast is in charge
-• You must pursue the frenzy's goal (feed, fight, flee)
-• You may still gain Stains for your actions
+|WCOMMANDS|n
 
-|WENDING FRENZY:|n
+|w+frenzy|n                               your frenzy test pool and any test you owe
+|w+frenzy/check <fury|hunger|terror>|n    the provocations and their difficulties
+|w+frenzy/resist <difficulty> [<type>]|n  roll to resist (the type matters for banes)
+|w+frenzy/pending|n                       roll a hunger frenzy test you owe
 
-Frenzy typically lasts until:
-• The trigger is resolved (fed enough, enemy defeated, escaped danger)
-• The ST determines the scene has ended
-• Another vampire uses |WDominate|n to snap you out of it
-• You fulfill the Beast's desire
+|WCLAN BANES & FRENZY|n (see help clans)
 
-After frenzy ends, you regain control and must deal with the consequences
-of your actions.
+|WBrujah|n - Violent Temper: subtract Bane Severity dice from rolls to resist
+  fury frenzy (+frenzy/resist <difficulty> fury applies it).
+|WGangrel|n - Bestial Features: in frenzy, gain animal features equal to Bane
+  Severity, each -1 to an Attribute, lasting one more night (only one if
+  you ride the wave).
 
-|WCOMMANDS:|n
-
-|W+frenzy|n
-  Check your current frenzy risk based on Humanity and Hunger
-
-|W+frenzy/check <type>|n
-  Assess frenzy risk for a specific trigger (hunger, fury, terror)
-  Example: |W+frenzy/check hunger|n
-
-|W+frenzy/resist <difficulty>|n
-  Roll to resist frenzy against a Difficulty
-  Example: |W+frenzy/resist 4|n
-
-|WCLAN BANES & FRENZY:|n (V5 core clan chapter; see help clans)
-
-|WBrujah|n - Violent Temper
-  Subtract Bane Severity dice from rolls to resist fury frenzy
-
-|WGangrel|n - Bestial Features
-  In frenzy, gain animal features equal to Bane Severity, each -1 to an
-  Attribute, lasting one more night (only one if you ride the wave)
-
-|WRELATED TOPICS:|n
-
-See also: |W+help humanity|n, |W+help hunger|n, |W+help clans|n
+|ySee also:|n help humanity, help hunger, help clans
 
 |[R+===================================================================+|n

@@ -25,9 +25,11 @@ MAX_HUNGER = 5
 HUNGER_5_REFUSAL = "You are at Hunger 5 and cannot Rouse the Blood. Feed first."
 
 # Core p.211 / p.220: a Rouse that would take Hunger past 5 calls for an
-# immediate hunger frenzy test at Difficulty 4. Nothing rolls it automatically
-# yet: the pending test is recorded on the character (flag_hunger_frenzy) for
-# the frenzy code to pick up, and the player is told to make it.
+# immediate hunger frenzy test at Difficulty 4. The owed test is recorded on
+# the character (flag_hunger_frenzy, one test per failure past 5); the command
+# that caused it rolls it at once through
+# commands.v5.utils.humanity_utils.roll_pending_frenzy_tests, which clears the
+# record. A record left over (shown by `hunger` and +sheet) is rolled by +frenzy.
 HUNGER_FRENZY_DIFFICULTY = 4
 
 
@@ -134,11 +136,12 @@ def resolve_rouse(character, reason: str, checks) -> RouseResult:
     hunger_before = character.hunger
     failures = sum(1 for check in checks if not check.success)
     hunger_after = min(MAX_HUNGER, hunger_before + failures)
-    frenzy_test = hunger_before + failures > MAX_HUNGER
+    overflow = max(0, hunger_before + failures - MAX_HUNGER)
+    frenzy_test = overflow > 0
     if hunger_after != hunger_before:
         character.hunger = hunger_after
     if frenzy_test:
-        flag_hunger_frenzy(character, reason)
+        flag_hunger_frenzy(character, reason, count=overflow)
     return RouseResult(
         reason=reason,
         hunger_before=hunger_before,
@@ -170,17 +173,35 @@ def perform_rouse_check(character, reason: str = "", power_level: int | None = N
     return resolve_rouse(character, reason, checks)
 
 
-def flag_hunger_frenzy(character, reason: str) -> None:
-    """Record that the character owes a hunger frenzy test at Difficulty 4.
+def perform_forced_rouse(character, reason: str = "") -> RouseResult:
+    """A Rouse check the vampire can't refuse, such as rising for the night.
 
-    Stored in ``character.db.pending_frenzy_test`` for the frenzy code,
-    which rolls the test and clears it.
+    It is rolled even at Hunger 5 (one die, no Blood Potency re-roll). A
+    failure below Hunger 5 raises Hunger as usual; a failure at Hunger 5
+    leaves Hunger at 5 and records one hunger frenzy test at Difficulty 4
+    (QR p.13 "Fail Rouse Check while at Hunger 5"; core p.211), which the
+    caller rolls. A failed rise at Hunger 5 also means torpor (QR p.4); the
+    caller handles that.
     """
+    return resolve_rouse(character, reason, [roll_rouse_die(character, None, label=reason)])
+
+
+def flag_hunger_frenzy(character, reason: str, count: int = 1) -> None:
+    """Record that the character owes ``count`` hunger frenzy tests at Difficulty 4.
+
+    One test is owed for each Rouse failure past Hunger 5; a record already
+    pending is added to. Stored in ``character.db.pending_frenzy_test``
+    ({"type", "difficulty", "reason", "time", "count"}); the frenzy code
+    (humanity_utils.roll_pending_frenzy_tests) rolls the tests and clears it.
+    """
+    pending = character.db.pending_frenzy_test
+    already = int(pending.get("count") or 1) if pending else 0
     character.db.pending_frenzy_test = {
         "type": "hunger",
         "difficulty": HUNGER_FRENZY_DIFFICULTY,
         "reason": reason,
         "time": time.time(),
+        "count": already + max(1, int(count)),
     }
 
 
@@ -253,7 +274,7 @@ def format_rouse_lines(result: RouseResult) -> list:
     if result.frenzy_test:
         lines.append(
             "|r|hYour Hunger can't rise past 5: you must test for hunger frenzy now "
-            f"(Difficulty {HUNGER_FRENZY_DIFFICULTY}).|n The Storyteller runs the test."
+            f"(Difficulty {HUNGER_FRENZY_DIFFICULTY}).|n"
         )
     return lines
 
@@ -273,8 +294,10 @@ def _format_rouse_message(result: RouseResult) -> str:
             lines.append(f"Roll: |y{check.roll}|n")
         if check.success:
             lines.append(f"|gSuccess.|n Hunger stays at |r{result.hunger_after}|n.")
-        else:
+        elif result.hunger_change:
             lines.append(f"|rFailed.|n Hunger rises from |r{result.hunger_before}|n to |r{result.hunger_after}|n.")
+        else:
+            lines.append(f"|rFailed.|n Hunger stays at |r{result.hunger_after}|n (it can't rise past 5).")
         if result.frenzy_test:
             lines.append(format_rouse_lines(result)[-1])
         return "\n".join(lines)

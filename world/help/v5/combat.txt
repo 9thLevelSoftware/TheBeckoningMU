@@ -1,280 +1,66 @@
-# V5 Combat System
-
-## Overview
-
-The V5 Combat System provides mechanics for resolving conflicts between characters, from simple brawls to deadly confrontations. Combat in Vampire: The Masquerade 5th Edition emphasizes narrative flow while maintaining mechanical rigor.
-
-## Core Concepts
-
-### Health Tracker
-
-Characters have Health boxes equal to **Stamina + 3**. Each box can contain:
-- **O** = Healthy (no damage)
-- **/** = Superficial Damage (heals quickly)
-- **X** = Aggravated Damage (severe, hard to heal)
-
-Example: `[O O / / X X]` shows 2 healthy, 2 superficial, 2 aggravated boxes.
-
-### Damage Types
-
-**Superficial Damage**
-- Fills health boxes from left to right
-- Relatively easy to heal for vampires (Blood Surge)
-- When all boxes are filled with superficial damage, additional superficial damage converts to aggravated
-- Represents: Bruises, minor cuts, fatigue
-
-**Aggravated Damage**
-- Fills health boxes from right to left
-- Very difficult to heal, requires extended rest or powerful magic
-- Takes precedence over superficial damage
-- Represents: Fire, sunlight, supernatural attacks, grievous wounds
-
-**Lethal Damage**
-- For mortals, fills from left like superficial but harder to heal
-- For vampires, converts to superficial damage (due to undead resilience)
-- Represents: Gunshots, stab wounds, serious injuries
-
-### Impairment
-
-When a character is reduced to **half their maximum Health or less**, they suffer a **-2 dice penalty** to all actions. This represents the difficulty of functioning while grievously injured.
-
-Example: Character with 5 Health at 2 Health or less is Impaired (-2 dice).
-
-## Combat Resolution
-
-### 1. Attack Roll
-
-**Command:** `+attack <target>=<dice pool>`
-
-The attacker rolls their attack pool against the defender's Defense. Common attack pools:
-- **Brawl:** Strength + Brawl
-- **Melee:** Strength + Melee (or Dexterity + Melee for finesse weapons)
-- **Firearms:** Composure + Firearms (or Dexterity + Firearms for quick shots)
-
-**Example:**
-```
-+attack Bob=Strength + Brawl
-+attack Alice=Dexterity + Firearms
-```
-
-The system automatically:
-- Calculates your total dice pool from specified traits
-- Applies impairment penalty if you're injured
-- Rolls against target's Defense
-- Displays margin of success for damage
-
-### 2. Defense
-
-**Defense = Dexterity + Athletics**
-
-Defense is calculated automatically when you're attacked. Modifiers include:
-- **Celerity:** Active Celerity powers add defense bonus
-- **Cover:** Storyteller may add situational modifiers
-- **Surprised:** Defense may be reduced or negated
-
-### 3. Damage Application
-
-**Command:** `+damage <target>=<amount>/<type>`
-
-After a successful attack, apply damage based on:
-- Weapon damage rating
-- Margin of success on attack roll
-- Special abilities (Potence adds damage)
-
-**Examples:**
-```
-+damage Bob=3/superficial
-+damage Alice=2/aggravated
-+damage Charlie=5/lethal
-```
-
-**Damage Calculation:**
-- Base weapon damage + margin of success
-- Plus any discipline bonuses (Potence)
-- Minus any damage reduction (Fortitude)
-
-### 4. Healing
-
-**Command:** `+heal <target>=<amount>/<type>`
-
-Healing damage depends on the type:
-
-**Superficial Damage:**
-- Vampires: Blood Surge (Rouse check) heals based on Blood Potency
-- Mortals: First Aid, medical care, or natural healing over time
-- Generally heals quickly (hours to days)
-
-**Aggravated Damage:**
-- Vampires: Extended rest in torpor, or powerful blood rituals
-- Mortals: Extended medical care
-- Generally heals slowly (weeks to months)
-
-**Examples:**
-```
-+heal self=2/superficial
-+heal Bob=1/aggravated
-```
-
-## Discipline Effects in Combat
-
-### Celerity
-- **Defense Bonus:** Active Celerity powers provide bonus to Defense
-- **Initiative:** Act faster in combat rounds
-- **Extra Actions:** Some powers grant additional actions
-
-### Fortitude
-- **Damage Reduction:** Reduce incoming damage (soak)
-- **Resilience:** Resist effects that would incapacitate
-- **Endurance:** Ignore impairment penalties
-
-### Potence
-- **Damage Bonus:** Add extra damage to physical attacks
-- **Crushing Blows:** Overwhelm defenses and armor
-- **Feats of Strength:** Grapple and overpower opponents
-
-## Combat Commands
-
-### +attack <target>=<pool>
-Perform attack roll against target.
-
-**Usage:**
-```
-+attack Bob=Strength + Brawl
-+attack Alice=Dexterity + Melee
-+attack Charlie
-```
-
-If no pool specified, defaults to "Strength + Brawl".
-
-### +damage <target>=<amount>/<type>
-Apply damage to target.
-
-**Usage:**
-```
-+damage Bob=3/superficial
-+damage Alice=2/aggravated
-+damage Charlie=4/lethal
-```
-
-If no type specified, defaults to superficial.
-
-### +heal <target>=<amount>/<type>
-Heal damage on target.
-
-**Usage:**
-```
-+heal self=2/superficial
-+heal Bob=1/aggravated
-+heal Alice=3
-```
-
-Requires appropriate permissions or use of healing powers.
-
-### +health [target]
-Display current health status.
-
-**Usage:**
-```
-+health
-+health Bob
-```
-
-Shows health boxes, damage breakdown, and impairment status.
-
-## Combat Tactics
-
-### For Attackers
-1. **Choose Your Pool Wisely:** Use your best traits for attack pools
-2. **Leverage Disciplines:** Activate Potence before attacking, use Celerity for defense
-3. **Target Weaknesses:** Some opponents have better physical or mental defenses
-4. **Manage Hunger:** Remember that using disciplines requires Rouse checks
-
-### For Defenders
-1. **Boost Defense:** Activate Celerity powers before combat
-2. **Use Cover:** Ask ST for situational defense bonuses
-3. **Fortitude Soak:** Active Fortitude reduces incoming damage
-4. **Escape When Needed:** Discretion is the better part of valor
-
-### For Storytellers
-1. **Narrative First:** Use combat to enhance story, not replace it
-2. **Consequence Matters:** Combat should have lasting effects
-3. **Flexible Difficulty:** Adjust target numbers for dramatic tension
-4. **Environmental Factors:** Use terrain, time pressure, and complications
-
-## Combat Flow Example
-
-```
-> +attack Bob=Strength + Brawl
-
-═══════════════════════════════════════════════════════════════════════════
-│ ATTACK ROLL
-═══════════════════════════════════════════════════════════════════════════
-
-Attacker: Alice
-Target: Bob
-Attack Pool: Strength 3 + Brawl 2 = 5
-Defense: 4
-
-Roll: [6] [8] [3] [9] [1] → 3 successes
-
-Attack succeeds! 3 successes vs 4 defense.
-Margin of success: 0
-
-Damage: Base weapon damage + 0 (margin)
-
-Use +damage Bob=<amount>/<type> to apply damage.
-──────────────────────────────────────────────────────────────────────────
-
-> +damage Bob=2/superficial
-
-═══════════════════════════════════════════════════════════════════════════
-│ DAMAGE APPLIED
-═══════════════════════════════════════════════════════════════════════════
-
-Target: Bob
-You take 2 Superficial damage.
-
-Health: [O / / X] (Impaired: -2 dice)
-──────────────────────────────────────────────────────────────────────────
-```
-
-## Tips for Narrative Combat
-
-1. **Describe Actions:** Don't just roll dice, describe what your character does
-2. **Use Environment:** Incorporate surroundings into combat
-3. **Character Goals:** What does each character want from this confrontation?
-4. **Consequences:** Win or lose, what changes after this combat?
-5. **Pacing:** Keep combat moving, don't get bogged down in minutiae
-
-## When Combat Goes Wrong
-
-### Torpor (Vampires)
-When all Health boxes are filled with damage:
-- If any boxes contain Aggravated: Final Death (character destroyed)
-- If all Superficial: Enter Torpor (death-like sleep)
-- Torpor duration depends on Humanity and Blood Potency
-
-### Death (Mortals)
-Mortals die when all Health boxes are filled with Lethal or Aggravated damage.
-
-### Surrender and Mercy
-Combat doesn't always end in death. Consider:
-- Yielding before taking fatal damage
-- Taking prisoners for interrogation
-- Creating Blood Bonds through forced feeding
-- Leaving survivors as warnings
-
-## See Also
-
-- `help disciplines` - Discipline powers that affect combat
-- `help blood surge` - Using blood to enhance physical abilities
-- `help rouse check` - Hunger and discipline activation
-- `help health` - Health management outside combat
-- `help torpor` - What happens when vampires "die"
-
-## Related Commands
-
-- `+disciplines` - View and activate discipline powers
-- `+sheet` - View full character sheet
-- `+roll` - Make custom dice rolls
-- `+blood` - Blood pool and hunger management
+|[R+===================================================================+
+|W|                         V5 COMBAT                                 |
+|[R+===================================================================+|n
+
+Combat in V5 is a series of contested rolls (V5 core p.123-126). The
+Storyteller frames each turn; the dice settle who gets hurt.
+
+|WATTACKS ARE CONTESTED|n
+
+The attacker rolls an attack pool (one Attribute plus one Skill) and the
+defender rolls a defense pool, each with their own Hunger dice (mortals and
+ghouls roll none):
+  Unarmed: Strength + Brawl        Melee: Strength + Melee
+  Ranged:  Dexterity + Firearms
+The defender automatically rolls their best standard defense: Dexterity +
+Athletics to dodge, or against a close-combat attack Strength or Dexterity
++ Brawl or Melee to fight back. Only staff choose another.
+
+The attacker hits if they get at least as many successes as the defender
+(a tie goes to the attacker). The damage is the |wmargin|n (attacker's
+successes minus the defender's, at least 1: a tie does 1) plus the weapon's
+damage, plus an active Potence bonus. An active Celerity bonus adds to the
+defense. In a two-sided brawl the Storyteller applies the damage the
+defender deals back.
+
+|WDAMAGE|n
+
+Health = Stamina + 3 boxes. Mark Superficial damage with / and
+Aggravated damage with X (QR p.3).
+  - |wVampires halve mundane Superficial damage|n, rounding up, before it is
+    marked: 3 Superficial marks 2. Mortals, ghouls and thin-bloods
+    (without the Vampiric Resilience merit) take it all.
+  - Fire, sunlight, claws and some powers deal Aggravated damage, which is
+    not halved. Fortitude's damage reduction applies to Superficial damage
+    only.
+  - When the track is full, each further Superficial point turns a
+    Superficial box into Aggravated.
+
+|WIMPAIRMENT AND TORPOR|n
+
+  - A |wfull|n Health track (any mix of damage) is |wImpaired|n: -2 dice to
+    Physical tests. A half-full track has no penalty. Spending Willpower
+    ignores the penalty for a turn.
+  - A full Willpower track is Impaired too: -2 dice to Mental and Social tests.
+  - A Humanity tracker full of Stains (Degeneration) is Impaired: -2 dice to
+    all tests until your Remorse test.
+  - A vampire whose Health track is |wfull of Aggravated damage|n falls into
+    torpor. A mortal in the same state is dying.
+
+|WMENDING|n (QR p.13)
+
+  - Superficial: once per turn, Rouse the Blood to mend damage equal to
+    your Blood Potency's mend amount (BP 0-1: 1, 2-3: 2, 4-7: 3, 8-9: 4,
+    10: 5). At Hunger 5 you can't Rouse, so you can't mend.
+  - Aggravated: at nightfall, three Rouse checks heal 1 Aggravated damage
+    (the Storyteller applies this).
+  - Willpower: at the start of a session, heal Superficial Willpower damage
+    up to your Composure or Resolve (whichever is higher).
+
+|WWHO MARKS DAMAGE|n
+
++attack reports the damage; the Storyteller marks it with +damage. Players
+may mark damage on themselves and mend their own Superficial damage with
++heal. Only staff can damage, heal or stain another character.
+
+|ySee also:|n help combat_commands, help +attack, help +damage, help +heal, help roll

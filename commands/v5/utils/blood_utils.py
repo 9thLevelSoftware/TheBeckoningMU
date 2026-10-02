@@ -102,7 +102,7 @@ def increase_hunger(character, amount: int = 1) -> Dict[str, Any]:
 
     warning = None
     if new_hunger >= 5:
-        warning = "|r|hWARNING:|n You are at |r|hHunger 5|n! The Beast is in control. You cannot use most Discipline powers."
+        warning = "|r|hWARNING:|n You are at |r|hHunger 5|n! You can't Rouse the Blood until you feed."
     elif new_hunger >= 4:
         warning = "|rWARNING:|n You are at |rHunger 4|n. The Beast is very close to the surface. Feed soon!"
 
