@@ -31,6 +31,28 @@ benchmark_package = ModuleType("dice_benchmark")
 benchmark_package.__path__ = [str(Path("dice").resolve())]
 sys.modules["dice_benchmark"] = benchmark_package
 from dice_benchmark.dice_roller import roll_v5_pool
+from dice_benchmark.roll_result import RollResult
+
+behavior_cases = [
+    ([6], [], 1, (1, True, False, False, False, "success")),
+    ([10, 10], [], 4, (4, True, True, False, False, "critical_success")),
+    ([10], [10], 4, (4, True, True, True, False, "messy_critical")),
+    ([2], [1], 1, (0, False, False, False, True, "bestial_failure")),
+    ([1], [1], 1, (0, False, False, False, False, "failure")),
+]
+for regular, hunger, difficulty, expected in behavior_cases:
+    result = RollResult(regular, hunger, difficulty)
+    actual = (
+        result.total_successes,
+        result.is_success,
+        result.is_critical,
+        result.is_messy_critical,
+        result.is_bestial_failure,
+        result.result_type,
+    )
+    if actual != expected:
+        raise AssertionError(f"Dice behavior mismatch for {regular=}, {hunger=}: {actual!r}")
+
 
 ITERATIONS = 30_000
 random.seed(211)
