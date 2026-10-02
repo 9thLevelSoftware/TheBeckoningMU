@@ -1,6 +1,6 @@
 """
-seed_traits copies world/v5_data.py into the legacy traits tables, and the
-web chargen validator only accepts clans that v5_data offers.
+seed_traits copies world/v5_data.py into the legacy traits tables.
+(The web chargen validator's clan check is tested in tests/test_rules_chargen.py.)
 """
 
 from io import StringIO
@@ -10,7 +10,6 @@ from evennia.utils import create
 from evennia.utils.test_resources import EvenniaTest
 
 from traits.models import CharacterPower, DisciplinePower, Trait
-from traits.utils import validate_v5_chargen_pools
 
 
 def seed():
@@ -46,12 +45,3 @@ class SeedTraitsTests(EvenniaTest):
         self.assertEqual((bond.cost, bond.level), ("3 Rouse Checks", 1))
         self.assertFalse(Trait.objects.filter(name="Oblivion", category__code="disciplines").exists())
 
-
-class ChargenClanTests(EvenniaTest):
-    def test_parked_clan_is_rejected(self):
-        errors = validate_v5_chargen_pools({}, clan="Lasombra")
-        self.assertIn("Clan 'Lasombra' is not available", errors)
-
-    def test_core_clan_is_not_rejected_for_its_name(self):
-        errors = validate_v5_chargen_pools({}, clan="Brujah")
-        self.assertFalse([e for e in errors if "not available" in e])

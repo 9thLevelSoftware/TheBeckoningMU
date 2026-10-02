@@ -211,6 +211,38 @@ class Character(ObjectParent, DefaultCharacter):
             if not self.attributes.has(key):
                 self.attributes.add(key, factory())
 
+    # Stores a chargen application owns. reset_sheet() puts these back to a
+    # new character's values; snapshot_sheet()/restore_sheet() let a caller
+    # undo a failed rewrite.
+    SHEET_STORES = {
+        "stats": _new_stats,
+        "vampire": _new_vampire,
+        "pools": _new_pools,
+        "humanity_data": _new_humanity_data,
+        "advantages": _new_advantages,
+        "experience": lambda: {"total_earned": 0, "total_spent": 0, "log": []},
+    }
+
+    def reset_sheet(self):
+        """Reset every chargen-owned store to a new character's values.
+
+        For an application being resubmitted before approval, so the new
+        sheet replaces the old one instead of merging with it.
+        """
+        for key, factory in self.SHEET_STORES.items():
+            self.attributes.add(key, factory())
+
+    def snapshot_sheet(self):
+        """Plain copies of the chargen-owned stores, for restore_sheet()."""
+        return {key: deserialize(self.attributes.get(key)) for key in self.SHEET_STORES}
+
+    def restore_sheet(self, snapshot):
+        for key, value in snapshot.items():
+            if value is None:
+                self.attributes.remove(key)
+            else:
+                self.attributes.add(key, value)
+
     # ------------------------------------------------------------------
     # Store helpers: (re)create a store or sub-dict instead of crashing
     # on a missing or wrongly shaped one.

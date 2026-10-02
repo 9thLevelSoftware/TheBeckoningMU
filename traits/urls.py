@@ -3,20 +3,20 @@ URL configuration for traits API endpoints.
 """
 
 from django.urls import path
+
 from .api import (
+    CharacterApprovalAPI,
+    CharacterCreateAPI,
+    CharacterDetailAPI,
+    CharacterEditDataAPI,
+    CharacterExportAPI,
+    CharacterResubmitAPI,
+    CharacterValidationAPI,
+    DisciplinePowersAPI,
+    MyCharactersAPI,
+    PendingCharactersAPI,
     TraitCategoriesAPI,
     TraitsAPI,
-    DisciplinePowersAPI,
-    CharacterValidationAPI,
-    CharacterExportAPI,
-    CharacterAvailableTraitsAPI,
-    CharacterCreateAPI,
-    PendingCharactersAPI,
-    CharacterDetailAPI,
-    CharacterApprovalAPI,
-    MyCharactersAPI,
-    CharacterEditDataAPI,
-    CharacterResubmitAPI,
 )
 
 app_name = 'traits'
@@ -31,7 +31,6 @@ urlpatterns = [
     path('character/validate/', CharacterValidationAPI.as_view(), name='character_validate'),
     path('character/create/', CharacterCreateAPI.as_view(), name='character_create'),
     path('character/<int:character_id>/export/', CharacterExportAPI.as_view(), name='character_export'),
-    path('character/<int:character_id>/available-traits/', CharacterAvailableTraitsAPI.as_view(), name='character_available_traits'),
 
     # Character approval endpoints
     path('pending-characters/', PendingCharactersAPI.as_view(), name='pending_characters'),

@@ -7,7 +7,7 @@ predator types, backgrounds, merits and flaws, the Blood Potency table,
 generation tables, resonances and frenzy provocations). Game code imports
 from here; nothing reads rules data from the database, and no other module
 may hardcode these values. The `traits` app's legacy reference tables are
-seeded from these constants by `seed_traits` for the web chargen API.
+seeded from these constants by `seed_traits`.
 
 The content follows the V5 core book (2018) with Renegade's official
 errata. Each table's comment cites its source: a core-book page, the V5
@@ -36,14 +36,6 @@ ATTRIBUTES = {
     "Mental": ["Intelligence", "Wits", "Resolve"]
 }
 
-# Helper function to create attribute dict with default value
-def _create_attribute_dict(default_value=1):
-    """Create a dict of all attributes with default value."""
-    attrs = {}
-    for category_attrs in ATTRIBUTES.values():
-        for attr in category_attrs:
-            attrs[attr.lower()] = default_value
-    return attrs
 
 # ============================================================================
 # SKILLS (organized by category)
@@ -64,14 +56,6 @@ SKILLS = {
     ]
 }
 
-# Helper function to create skills dict with default value
-def _create_skills_dict(default_value=0):
-    """Create a dict of all skills with default value."""
-    skills = {}
-    for category_skills in SKILLS.values():
-        for skill in category_skills:
-            skills[skill.lower()] = default_value
-    return skills
 
 # ============================================================================
 # CLANS (with in-clan disciplines, banes, compulsions)
@@ -1585,93 +1569,6 @@ RESONANCE_INTENSITIES = {
     2: {"name": "Intense", "discipline_dice": 1, "dyscrasia": False},
     3: {"name": "Acute", "discipline_dice": 1, "dyscrasia": True},
 }
-
-# ============================================================================
-# STATS TEMPLATE (legacy flat shape)
-# ============================================================================
-# Legacy: only traits/utils.py (web chargen) still uses this; it goes when
-# web chargen writes through the Character accessors. The character schema
-# is the nested one in typeclasses/characters.py.
-
-def _get_default_stats_template():
-    """
-    Returns the default character stats template structure.
-    This is used to initialize character.db.stats in the legacy system.
-    """
-    return {
-        # Attributes (default value 1)
-        "attributes": _create_attribute_dict(1),
-        
-        # Skills (default value 0)
-        "skills": _create_skills_dict(0),
-        
-        # Disciplines (populated based on clan)
-        "disciplines": {},
-        
-        # Backgrounds/Advantages
-        "backgrounds": {},
-        
-        # Specialties
-        "specialties": {},
-        
-        # Core stats
-        "humanity": 7,
-        "willpower": 0,  # Calculated
-        "health": 0,     # Calculated
-        "hunger": 1,
-        "blood_potency": 0,
-        
-        # Character info
-        "splat": "mortal",
-        "clan": None,
-        "generation": 13,
-        
-        # Admin tracking
-        "xp": 0,
-        "approved": False,
-        "approved_by": None,
-        "notes": ""
-    }
-
-# STATS is the base template for character stats
-STATS = _get_default_stats_template()
-
-# ============================================================================
-# TRAIT CATEGORY LOOKUP
-# ============================================================================
-
-def get_trait_category(trait_name):
-    """
-    Legacy lookup used only by traits/utils.py (web chargen). It treats every
-    unknown name as a background; game code uses resolve_trait() instead.
-
-    Get the category (attributes, skills, disciplines) for a given trait name.
-    
-    Args:
-        trait_name: Name of the trait to look up
-        
-    Returns:
-        String category name or None if not found
-    """
-    trait_lower = trait_name.lower()
-    
-    # Check attributes
-    for attr in _create_attribute_dict().keys():
-        if attr == trait_lower:
-            return "attributes"
-    
-    # Check skills
-    for skill in _create_skills_dict().keys():
-        if skill == trait_lower:
-            return "skills"
-    
-    # Check disciplines
-    if trait_name in DISCIPLINES:
-        return "disciplines"
-
-    # Check if it's a background (anything else is assumed to be background/advantage)
-    return "backgrounds"
-
 
 # ============================================================================
 # DISCIPLINE POWER INDEX

@@ -370,15 +370,59 @@ class CharacterBio(models.Model):
     approved_by = models.CharField(max_length=100, blank=True, help_text="Who approved this character")
     approved_at = models.DateTimeField(blank=True, null=True, help_text="When was this character approved")
 
+    # The application as last submitted (world.rules_chargen.Submission.as_dict()).
+    # It prefills the edit form after a rejection and shows staff what was
+    # asked for. It is never read as the character sheet: the sheet lives in
+    # the character's Attributes, behind the Character accessors.
+    submission = models.JSONField(default=dict, blank=True)
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # Allowed status changes: {(from, to): permission the actor needs}.
+    # "owner" means the owning account; the others are Evennia permissions.
+    TRANSITIONS = {
+        ('submitted', 'approved'): 'Builder',
+        ('submitted', 'rejected'): 'Builder',
+        ('rejected', 'submitted'): 'owner',
+        ('approved', 'revoked'): 'Admin',
+        ('revoked', 'submitted'): 'owner',
+    }
+    REVIEW_STATUSES = ('approved', 'rejected', 'revoked')
+
+    class TransitionError(Exception):
+        """The status change isn't allowed from the current status (or it changed meanwhile)."""
 
     class Meta:
         app_label = 'traits'
 
     def __str__(self):
-        return f"{self.character.db_key}'s Bio ({self.splat})"
+        return f"{self.character.db_key}'s Bio ({self.status})"
+
+    def can_transition(self, to):
+        return (self.status, to) in self.TRANSITIONS
+
+    def transition(self, to, by=None, **fields):
+        """Move to status `to`, recording the reviewer for staff decisions.
+
+        The write is conditional on the status this instance holds, so two
+        reviewers acting at once can't both succeed. Raises TransitionError
+        if the change isn't in TRANSITIONS or the stored status has moved on.
+        Extra `fields` (e.g. rejection_notes) are written in the same update.
+        """
+        from django.utils import timezone
+
+        if not self.can_transition(to):
+            raise self.TransitionError(f"Can't go from {self.status} to {to}")
+        values = dict(fields, status=to, updated_at=timezone.now())
+        if to in self.REVIEW_STATUSES:
+            values.update(reviewed_by=by, reviewed_at=timezone.now())
+        updated = CharacterBio.objects.filter(pk=self.pk, status=self.status).update(**values)
+        if not updated:
+            raise self.TransitionError(f"{self.character.db_key}'s application changed meanwhile")
+        self.refresh_from_db()
+        return self
 
     @property
     def is_vampire(self):

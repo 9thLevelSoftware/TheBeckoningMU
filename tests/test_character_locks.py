@@ -26,14 +26,27 @@ def ensure_game_lockfuncs():
 
 
 def login(account, sessid):
-    """Log `account` in on a fresh test session and return the session."""
+    """Log `account` in on a fresh test session and return the session.
+
+    Call logout_all() before the test's tearDown restores the session handler.
+    """
     dummy = ServerSession()
     dummy.init_session("telnet", ("localhost", "testmode"), evennia.SESSION_HANDLER)
     dummy.sessid = sessid
     evennia.SESSION_HANDLER.portal_connect(dummy.get_sync_data())
     session = evennia.SESSION_HANDLER.session_from_sessid(sessid)
     evennia.SESSION_HANDLER.login(session, account, testmode=True)
+    _LOGGED_IN.append(sessid)
     return session
+
+
+_LOGGED_IN = []
+
+
+def logout_all():
+    """Drop the sessions login() made, so accounts can be deleted cleanly."""
+    while _LOGGED_IN:
+        evennia.SESSION_HANDLER.pop(_LOGGED_IN.pop(), None)
 
 
 class CharacterLockTests(EvenniaTest):
@@ -50,6 +63,7 @@ class CharacterLockTests(EvenniaTest):
         )
 
     def tearDown(self):
+        logout_all()
         for account in (self.player, self.other, self.builder, self.admin):
             account.delete()
         super().tearDown()
