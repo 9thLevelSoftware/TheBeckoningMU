@@ -54,7 +54,8 @@ Hunger falls when you feed:
     Blood Potency
   - |wOther vampires|n: risks blood bonds
 
-Roleplay the scene, then use |yfeed|n or |y+hunt|n.
+Feed with |y+hunt|n (once a day), or ask for a staff-run scene with
+|y+hunt/staffed|n; staff record the scene's feeding (see help hunt).
 
 |[r+===================================================================+|n
 

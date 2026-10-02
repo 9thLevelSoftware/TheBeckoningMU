@@ -81,8 +81,25 @@ def find_ground(name):
     return matches[0] if len(matches) == 1 else None
 
 
-def hunting_pool(character):
+def _is_physical(pool_text):
+    """True if the pool uses a Physical Attribute (so Health impairment applies)."""
+    from world.v5_data import resolve_trait
+
+    for part in pool_text.split("+"):
+        try:
+            ref = resolve_trait(part.strip())
+        except UnknownTrait:
+            continue
+        if ref.category == "attributes" and ref.group == "physical":
+            return True
+    return False
+
+
+def hunting_pool(character, alternative=False):
     """The character's hunting roll from PREDATOR_TYPES, as (pool text, None) or (None, reason).
+
+    ``alternative`` picks the type's ``alt_hunting_pool`` (the book's second
+    option, e.g. Alleycat Wits + Streetwise).
 
     Blood Leech has no single hunting roll in the book, and characters
     without a predator type (thin-bloods, fledglings) have none either:
@@ -91,7 +108,13 @@ def hunting_pool(character):
     predator = character.predator_type
     if not predator:
         return None, "You have no predator type, so your hunts are run by the Storyteller (+hunt/staffed)."
-    pool = PREDATOR_TYPES.get(predator, {}).get("hunting_pool")
+    data = PREDATOR_TYPES.get(predator, {})
+    if alternative:
+        pool = data.get("alt_hunting_pool")
+        if not pool:
+            return None, f"{predator}s have no alternative hunting roll."
+        return pool, None
+    pool = data.get("hunting_pool")
     if not pool:
         return None, (f"{predator}s have no single hunting roll in the book; the Storyteller runs your hunts "
                       "(+hunt/staffed).")
@@ -143,6 +166,11 @@ def slake(character, source, amount=None):
     Without a kill Hunger can't go below ``min_hunger_without_kill``; a
     kill takes it to 0.
 
+    Animal Succulence (Animalism 3) adds 1 to animal blood and counts Blood
+    Potency two lower for the animal penalty. At "half" (BP 2) the half
+    point is kept in Character.slake_carry and counted when a second half
+    arrives (reviews/bp2-half-research.md: medium confidence).
+
     Returns:
         dict: {"source", "slaked", "old_hunger", "new_hunger", "kill", "penalty_note"}
     """
@@ -153,10 +181,19 @@ def slake(character, source, amount=None):
     slaked = data["slake"] if amount is None else amount
     note = None
     if data["kind"] in ("animal", "bagged"):
-        reduced = int(slaked * row["animal_bagged_slake"])
-        if reduced != slaked:
-            note = row["feeding_penalty"]
-        slaked = reduced
+        penalty_row = row
+        if data["kind"] == "animal" and "Animal Succulence" in character.known_powers:
+            slaked += 1
+            penalty_row = BLOOD_POTENCY.get(max(0, character.blood_potency - 2), BLOOD_POTENCY[0])
+        fraction = penalty_row["animal_bagged_slake"]
+        if fraction != 1:
+            note = penalty_row["feeding_penalty"]
+        if fraction == 0.5:
+            whole = slaked * 0.5 + character.slake_carry
+            slaked = int(whole)
+            character.slake_carry = whole - slaked
+        else:
+            slaked = int(slaked * fraction)
     elif row["human_slake_penalty"] and not kill:
         slaked = max(0, slaked - row["human_slake_penalty"])
         note = row["feeding_penalty"]
@@ -172,7 +209,24 @@ def slake(character, source, amount=None):
             "penalty_note": note}
 
 
-def hunt(character, ground):
+HUNT_WINDOW = 24 * 3600  # one +hunt per character per 24 hours (owner decision)
+
+
+def hunt_refusal(character, now):
+    """Why the character can't +hunt now, or None (cooldown, Hunger floor)."""
+    floor = BLOOD_POTENCY.get(character.blood_potency, BLOOD_POTENCY[0])["min_hunger_without_kill"]
+    if character.hunger <= floor:
+        return (f"Your Hunger is {character.hunger}: you can't feed any further without a kill. "
+                "Ask for a staff-run scene (+hunt/staffed).")
+    last = character.last_hunt
+    if last is not None and now - last < HUNT_WINDOW:
+        hours = int((HUNT_WINDOW - (now - last)) // 3600) + 1
+        return (f"You have already hunted in the last 24 hours (again in about {hours} hour(s)). "
+                "For more, ask for a staff-run scene (+hunt/staffed).")
+    return None
+
+
+def hunt(character, ground, alternative=False, now=None):
     """
     Hunt on a hunting ground: the predator type's hunting roll against the
     ground's difficulty. A win feeds: a human vessel gives the maximum
@@ -180,12 +234,22 @@ def hunt(character, ground):
     blood source (Farmer: an animal, Bagger: a blood bag). Hunger never
     reaches 0 this way.
 
+    One hunt per 24 hours, successful or not, and none at the no-kill
+    Hunger floor (hunt_refusal). ``alternative`` rolls the type's
+    ``alt_hunting_pool``. The resonance changes only when Hunger was slaked.
+
     Returns:
         dict: {"success", "refused" (a reason or None), "pool_text", "pool",
                "breakdown", "difficulty", "roll", "feeding" (slake result or
                None), "resonance", "complication", "message"}
     """
-    pool_text, refusal = hunting_pool(character)
+    import time
+
+    now = time.time() if now is None else now
+    refusal = hunt_refusal(character, now)
+    if refusal:
+        return {"success": False, "refused": refusal, "message": refusal}
+    pool_text, refusal = hunting_pool(character, alternative)
     if refusal:
         return {"success": False, "refused": refusal, "message": refusal}
     try:
@@ -196,7 +260,11 @@ def hunt(character, ground):
         return {"success": False, "refused": message, "message": message}
 
     difficulty = HUNTING_GROUNDS[ground]["difficulty"]
-    roll = roll_v5_pool(max(1, min(MAX_POOL, pool)), character.dice_hunger, difficulty)
+    penalty = min(0, character.dice_penalty(physical=_is_physical(pool_text)))
+    if penalty:
+        breakdown += f", {penalty} (impaired)"
+    roll = roll_v5_pool(max(1, min(MAX_POOL, pool + penalty)), character.dice_hunger, difficulty)
+    character.last_hunt = now
     result = {"success": roll.is_success, "refused": None, "pool_text": pool_text, "pool": pool,
               "breakdown": breakdown, "difficulty": difficulty, "roll": roll, "feeding": None,
               "resonance": None, "complication": None}
@@ -213,7 +281,9 @@ def hunt(character, ground):
     source = PREDATOR_TYPES.get(character.predator_type, {}).get("blood_source") or "drink"
     feeding = slake(character, source)
     result["feeding"] = feeding
-    if FEEDING_SOURCES[source]["kind"] == "human":
+    if feeding["slaked"] <= 0:
+        found = "a vessel" if FEEDING_SOURCES[source]["kind"] == "human" else FEEDING_SOURCES[source]["description"].lower()
+    elif FEEDING_SOURCES[source]["kind"] == "human":
         resonance = determine_resonance(ground)
         set_resonance(character, resonance["type"], resonance["intensity"])
         result["resonance"] = resonance

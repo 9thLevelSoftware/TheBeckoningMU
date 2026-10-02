@@ -92,6 +92,11 @@ def add_stain(character, count=1):
         )
     if new_stains:
         message += " Make a Remorse test at the end of the session (+remorse)."
+    if character.degenerating:
+        message += (
+            " Your Humanity tracker is full: you are Impaired (Degeneration), -2 dice to all tests "
+            "until your Remorse test."
+        )
 
     return {
         'stains': new_stains,

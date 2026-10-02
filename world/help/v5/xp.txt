@@ -36,6 +36,9 @@ refused.
   Caitiff Discipline         new level x 6    (every discipline, for Caitiff)
   Blood Sorcery Ritual       ritual level x 3 (needs Blood Sorcery at that level)
   Thin-blood Formula         formula level x 3 (needs Thin-Blood Alchemy at that level)
+  Thin-Blood Alchemy         new level x 5    (thin-bloods only; each dot comes with
+                                               a formula: +spend discipline
+                                               Thin-Blood Alchemy = <formula>)
   Advantage                  3 per dot        (backgrounds and merits; a 2-dot
                                                merit costs 6)
   Blood Potency              new level x 10   (up to your Generation's maximum:
@@ -43,7 +46,8 @@ refused.
 
 Willpower is Composure + Resolve: raise those attributes and it rises with
 them. Humanity changes only at the Storyteller's discretion. Neither is
-bought with XP. Flaws aren't bought, and thin-blood merits are taken at
+bought with XP. Thin-bloods can't buy other Disciplines (the Discipline
+Affinity merit gives one permanent dot). Flaws aren't bought, and thin-blood merits are taken at
 character creation.
 
 To justify a new Discipline dot your character should feed on blood of the

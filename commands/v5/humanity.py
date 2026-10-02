@@ -5,16 +5,10 @@ Commands for managing Humanity, Convictions, Touchstones, Stains, Remorse, and F
 """
 
 from evennia import default_cmds
-from evennia.commands.command import Command
 
 from commands.v5.utils.display_utils import (
     BLOOD_RED,
-    BOX_BL,
-    BOX_BR,
     BOX_H,
-    BOX_TL,
-    BOX_TR,
-    BOX_V,
     RESET,
     SHADOW_GREY,
     VAMPIRE_GOLD,
@@ -44,7 +38,7 @@ class CmdHumanity(default_cmds.MuxCommand):
     Usage:
         +humanity
         +humanity/conviction <text>
-        +humanity/touchstone <name>=<description>
+        +humanity/touchstone <name>=<description>[/<conviction number>]
         +humanity/conviction/remove <number>
         +humanity/touchstone/remove <number>
 
@@ -118,11 +112,15 @@ class CmdHumanity(default_cmds.MuxCommand):
             else:
                 # Add touchstone
                 if "=" not in self.args:
-                    caller.msg("Usage: +humanity/touchstone <name>=<description>")
-                    caller.msg("Example: +humanity/touchstone Sarah=My sister who keeps me grounded")
+                    caller.msg("Usage: +humanity/touchstone <name>=<description>[/<conviction number>]")
+                    caller.msg("Example: +humanity/touchstone Sarah=My sister who keeps me grounded/1")
                     return
                 name, description = self.args.split("=", 1)
-                result = add_touchstone(caller, name.strip(), description.strip())
+                description, _, number = description.rpartition("/") if "/" in description else (description, "", "1")
+                if not number.strip().isdigit():
+                    caller.msg("The Conviction number must be a number (see +humanity).")
+                    return
+                result = add_touchstone(caller, name.strip(), description.strip(), int(number) - 1)
                 caller.msg(result['message'])
             return
 
@@ -150,6 +148,8 @@ class CmdHumanity(default_cmds.MuxCommand):
             stain_dots = "✗" * stains + "○" * max(0, room - stains)
             lines.append(f"  {BLOOD_RED}Stains:{RESET}   {stain_dots} ({stains}/{room})")
             lines.append(f"  {BLOOD_RED}>>> Make a Remorse test at the end of the session (+remorse).{RESET}")
+            if character.degenerating:
+                lines.append(f"  {BLOOD_RED}Impaired (Degeneration): -2 dice to all tests until your Remorse test.{RESET}")
         else:
             lines.append(f"  {SHADOW_GREY}Stains:   none ({10 - humanity} unmarked boxes){RESET}")
 
@@ -167,7 +167,7 @@ class CmdHumanity(default_cmds.MuxCommand):
         touchstones = status['touchstones']
         if touchstones:
             for i, ts in enumerate(touchstones, 1):
-                lines.append(f"    {i}. {ts['name']} - {ts['description']}")
+                lines.append(f"    {i}. {ts['name']} - {ts['description']} (Conviction {ts.get('conviction_index', 0) + 1})")
         else:
             lines.append(f"    {SHADOW_GREY}None set. Use +humanity/touchstone to add one.{RESET}")
 
@@ -244,12 +244,13 @@ class CmdStain(default_cmds.MuxCommand):
             target.msg(f"{BLOOD_RED}{result['message']}{RESET}")
 
 
-class CmdRemorse(Command):
+class CmdRemorse(default_cmds.MuxCommand):
     """
     Make your end-of-session Remorse test.
 
     Usage:
         +remorse
+        +remorse <character>      (staff: run a character's test now)
 
     Roll one die for each unmarked box on your Humanity tracker: 10 minus
     your Humanity minus your Stains, with a minimum of one die (QR p.3).
@@ -259,7 +260,13 @@ class CmdRemorse(Command):
     Example:
         Humanity 7 with 2 Stains: 10 - 7 - 2 = 1 die. A 6 or higher keeps
         your Humanity at 7.
+
+    The book makes this one test at the end of a session, so you can make
+    it once every 24 hours; staff can run more with +remorse <character>.
+    The result is shown to the room.
     """
+
+    REMORSE_WINDOW = 24 * 3600
 
     key = "+remorse"
     aliases = ["remorse"]
@@ -267,21 +274,44 @@ class CmdRemorse(Command):
     help_category = "V5"
 
     def func(self):
+        import time
+
         caller = self.caller
+        if self.args.strip():
+            if not _is_staff(caller):
+                caller.msg("Only staff can run someone else's Remorse test.")
+                return
+            target = caller.search(self.args.strip())
+            if not target:
+                return
+        else:
+            target = caller
 
-        if not caller.attributes.has("vampire"):
-            caller.msg("This command is only available to vampires.")
+        if not target.attributes.has("vampire") or not target.is_kindred:
+            caller.msg("Remorse tests are for vampires.")
             return
 
-        stains = get_stains(caller)
+        stains = get_stains(target)
         if stains == 0:
-            caller.msg("You have no Stains. No Remorse roll is needed.")
+            caller.msg(f"{'You have' if target == caller else target.key + ' has'} no Stains. No Remorse roll is needed.")
             return
+
+        now = time.time()
+        if target == caller and not _is_staff(caller):
+            last = caller.last_remorse
+            if last is not None and now - last < self.REMORSE_WINDOW:
+                hours = int((self.REMORSE_WINDOW - (now - last)) // 3600) + 1
+                caller.msg(
+                    "You've made your Remorse test for this session. The next one is open in about "
+                    f"{hours} hour(s), or ask staff."
+                )
+                return
 
         from dice.commands import forget_roll
 
-        forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
-        result = remorse_roll(caller)
+        forget_roll(target)  # a Willpower re-roll can't reach back past this roll
+        result = remorse_roll(target)
+        target.last_remorse = now
 
         lines = []
         lines.append(f"{VAMPIRE_GOLD}{BOX_H * 78}{RESET}")
@@ -310,7 +340,14 @@ class CmdRemorse(Command):
         lines.append("\n  All Stains have been cleared.")
         lines.append(f"\n{VAMPIRE_GOLD}{BOX_H * 78}{RESET}")
 
-        caller.msg("\n".join(lines))
+        target.msg("\n".join(lines))
+        if target != caller:
+            caller.msg(f"You run {target.key}'s Remorse test: {result['message']}")
+        if target.location:
+            outcome = "keeps their Humanity" if result['success'] else "loses 1 Humanity"
+            target.location.msg_contents(
+                f"|c{target.name}|n makes a Remorse test and {outcome}.", exclude=[target]
+            )
 
 
 class CmdFrenzy(default_cmds.MuxCommand):

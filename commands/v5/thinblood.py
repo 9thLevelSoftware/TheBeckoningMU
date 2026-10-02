@@ -6,6 +6,7 @@ Commands for Thin-Blood vampires and Alchemy.
 
 from evennia import default_cmds
 
+from dice.commands import _is_staff
 from dice.dice_roller import MAX_DIFFICULTY
 from dice.rouse_checker import format_rouse_lines
 from world.ansi_theme import (
@@ -40,20 +41,24 @@ class CmdAlchemy(default_cmds.MuxCommand):
 
     Usage:
         +alchemy
-        +alchemy/distill <formula>[=<method>] [vs <difficulty>]
+        +alchemy/distill <formula>[=<method>]
         +alchemy/use <formula>
+        +alchemy/teach <character>=<formula>     (staff: grant a formula, no XP)
 
-    Thin-Blood Alchemy (core p.282-288) is not a Discipline with powers:
-    you learn formulas (+spend formula <name>, formula level x 3 XP; the
-    Thin-blood Alchemist merit gives one), distil a dose, then use it.
+    Thin-Blood Alchemy (core p.282-288) is not a Discipline with powers.
+    Each dot comes with one formula, chosen when you buy it (+spend
+    discipline Thin-Blood Alchemy = <formula>); more formulas cost formula
+    level x 3 XP (+spend formula <name>). The Thin-blood Alchemist merit's
+    dot and formula are granted by staff with +alchemy/teach. You distil a
+    dose of a formula you know, then use it.
 
     Distilling costs 1 Rouse check and rolls a method pool with your Hunger
     dice:
         athanor     Athanor Corporis: Stamina + Thin-Blood Alchemy (default)
         calcinatio  Calcinatio: Manipulation + Thin-Blood Alchemy
         fixatio     Fixatio: Intelligence + Thin-Blood Alchemy
-    The difficulty is 3 unless the Storyteller sets another. A success
-    gives one dose.
+    The difficulty is 3 (staff may set another with "vs <difficulty>"). A
+    success gives one dose. The room sees the distillation.
 
     Using a dose pays the formula's own Rouse cost and rolls its dice pool,
     if it has one. At Hunger 5 you can't Rouse, so you can't distil or use a
@@ -74,10 +79,13 @@ class CmdAlchemy(default_cmds.MuxCommand):
     def func(self):
         """Execute command."""
         caller = self.caller
-        if not is_thin_blood(caller):
+        if not is_thin_blood(caller) and "teach" not in self.switches:
             caller.msg(f"{BLOOD_RED}Only Thin-Bloods can use Alchemy.{RESET}")
             return
 
+        if "teach" in self.switches:
+            self.teach()
+            return
         if "distill" in self.switches or "craft" in self.switches:
             self.distill()
         elif "use" in self.switches:
@@ -137,6 +145,9 @@ class CmdAlchemy(default_cmds.MuxCommand):
         if not lhs:
             caller.msg("Usage: +alchemy/distill <formula>[=<method>] [vs <difficulty>]")
             return
+        if difficulty != DEFAULT_DISTILL_DIFFICULTY and not _is_staff(caller):
+            caller.msg(f"{BLOOD_RED}Only staff can set a distillation's difficulty.{RESET}")
+            return
         if not 1 <= difficulty <= MAX_DIFFICULTY:
             caller.msg(f"{BLOOD_RED}Difficulty must be between 1 and {MAX_DIFFICULTY}.{RESET}")
             return
@@ -156,6 +167,33 @@ class CmdAlchemy(default_cmds.MuxCommand):
         lines.append(f"{GOLD if result['success'] else BLOOD_RED}{result['message']}{RESET}")
         lines.extend(format_rouse_lines(result["rouse_result"]))
         caller.msg("\n".join(lines))
+        if caller.location:
+            outcome = "and succeeds" if result["success"] else "and fails"
+            caller.location.msg_contents(
+                f"|c{caller.name}|n distils {result['formula']['name']} ({result['method']}, Difficulty "
+                f"{difficulty}: {result['roll_result'].total_successes} successes) {outcome}.",
+                exclude=[caller],
+            )
+
+    def teach(self):
+        caller = self.caller
+        if not _is_staff(caller):
+            caller.msg(f"{BLOOD_RED}Only staff can grant a formula.{RESET}")
+            return
+        if not self.lhs or not self.rhs:
+            caller.msg("Usage: +alchemy/teach <character>=<formula>")
+            return
+        target = caller.search(self.lhs.strip())
+        if not target:
+            return
+        try:
+            formula = target.learn_ritual_or_formula("formula", self.rhs.strip())
+        except LookupError as err:
+            caller.msg(f"{BLOOD_RED}{err}{RESET}")
+            return
+        caller.msg(f"{target.key} now knows {formula['name']}.")
+        if target != caller:
+            target.msg(f"{GOLD}You learn the formula {formula['name']}.{RESET}")
 
     def use_formula(self):
         caller = self.caller

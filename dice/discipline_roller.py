@@ -118,6 +118,8 @@ def roll_discipline_power(
             nothing was charged and a pending surge is kept.
     """
     power = lookup_power(power_name)
+    if not getattr(character, "is_kindred", True):
+        with_rouse = False  # only vampires Rouse the Blood (Character.splat)
     check_power_use(character, power, with_rouse=with_rouse)
     if not power.get("dice_pool"):
         raise PowerRefused(f"{power['name']} has no dice roll.")
@@ -133,7 +135,10 @@ def roll_discipline_power(
     surge_dice = _usable_surge(character, with_rouse)
     if surge_dice:
         pool_breakdown["Blood Surge"] = surge_dice
-    total_pool = max(1, base_pool + bp_bonus + resonance_bonus + surge_dice)
+    degeneration = min(0, character.dice_penalty()) if hasattr(character, "dice_penalty") else 0
+    if degeneration:
+        pool_breakdown["Degeneration (Humanity tracker full)"] = degeneration
+    total_pool = max(1, base_pool + bp_bonus + resonance_bonus + surge_dice + degeneration)
     if total_pool > MAX_POOL:
         surge_note = f", including {surge_dice} Blood Surge dice; the surge is kept" if surge_dice else ""
         raise ValueError(f"Pool size cannot exceed {MAX_POOL} dice (got {total_pool}{surge_note})")
@@ -144,7 +149,8 @@ def roll_discipline_power(
         difficulty = min(MAX_DIFFICULTY, max(1, defense["roll_result"].total_successes))
 
     hunger_before = character.hunger
-    roll_result = roll_v5_pool(pool_size=total_pool, hunger=hunger_before, difficulty=difficulty)
+    # Hunger dice only for vampires (Character.dice_hunger: 0 for a ghoul or mortal)
+    roll_result = roll_v5_pool(pool_size=total_pool, hunger=character.dice_hunger, difficulty=difficulty)
 
     checks = []
     if with_rouse:

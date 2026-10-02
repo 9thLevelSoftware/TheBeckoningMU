@@ -44,7 +44,9 @@ class CmdHunt(default_cmds.MuxCommand):
 
     Usage:
         +hunt <hunting ground>
+        +hunt <hunting ground>=alt          (your predator type's alternative pool)
         +hunt/staffed <hunting ground>
+        +hunt/reset <character>             (staff: allow another hunt now)
 
     Hunting grounds and their difficulty (QR p.12):
         slum      2  slums, Skid Row, housing projects
@@ -61,6 +63,11 @@ class CmdHunt(default_cmds.MuxCommand):
     Hunger 1 (2 or 3 at high Blood Potency). The vessel's resonance is set
     on your blood.
 
+    You can hunt once every 24 hours, whether or not you find a vessel, and
+    not at all once your Hunger is as low as feeding without a kill can take
+    it. Staff-run scenes (+hunt/staffed) are the way to feed more. Your
+    resonance changes only when the hunt slakes Hunger.
+
     Blood Leeches and characters without a predator type have no hunting
     roll: use +hunt/staffed, which asks staff for a hunt scene.
     """
@@ -72,11 +79,18 @@ class CmdHunt(default_cmds.MuxCommand):
 
     def func(self):
         caller = self.caller
+        if "reset" in self.switches:
+            self._reset()
+            return
         if not caller.attributes.has("vampire") or not caller.is_kindred:
             caller.msg("|rOnly vampires hunt.|n")
             return
 
-        ground = find_ground(self.args) if self.args.strip() else None
+        alternative = (self.rhs or "").strip().lower() in ("alt", "alternative")
+        if self.rhs and not alternative:
+            caller.msg("Usage: +hunt <hunting ground>[=alt]")
+            return
+        ground = find_ground(self.lhs) if (self.lhs or "").strip() else None
         if ground is None:
             caller.msg(f"Usage: +hunt <hunting ground>. Grounds (difficulty): {GROUND_LIST}")
             return
@@ -92,7 +106,7 @@ class CmdHunt(default_cmds.MuxCommand):
         from dice.commands import forget_roll
 
         forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
-        result = hunt(caller, ground)
+        result = hunt(caller, ground, alternative=alternative)
         if result["refused"]:
             caller.msg(f"|y{result['refused']}|n")
             return
@@ -110,6 +124,20 @@ class CmdHunt(default_cmds.MuxCommand):
         if result["complication"]:
             output.append(f"|rComplication:|n {result['complication']['desc']} (the Storyteller decides what follows)")
         caller.msg("\n".join(output))
+
+    def _reset(self):
+        from dice.commands import _is_staff
+
+        caller = self.caller
+        if not _is_staff(caller):
+            caller.msg("|rOnly staff can reset a hunt.|n")
+            return
+        target = caller.search(self.args.strip()) if self.args.strip() else None
+        if not target:
+            caller.msg("Usage: +hunt/reset <character>")
+            return
+        target.last_hunt = None
+        caller.msg(f"{target.key} may hunt again.")
 
     def _create_hunt_job(self, ground):
         """Create a Job for staff to run a hunt scene."""
@@ -187,6 +215,9 @@ class CmdHuntingInfo(Command):
         if predator:
             output.append(f"  {PREDATOR_TYPES[predator]['description']}")
         output.append(f"{PALE_IVORY}Hunting roll:{RESET} {pool_text or refusal}")
+        alt_pool, _ = hunting_pool(caller, alternative=True)
+        if alt_pool:
+            output.append(f"{PALE_IVORY}Alternative roll:{RESET} {alt_pool} (+hunt <ground>=alt)")
 
         output.append(f"\n{PALE_IVORY}Hunting grounds (QR p.12):{RESET}")
         for key, data in HUNTING_GROUNDS.items():

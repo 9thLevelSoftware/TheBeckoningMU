@@ -230,17 +230,32 @@ class HungerFrenzyTests(EvenniaCommandTest):
             self.call(CmdPower(), "Bond Famulus", caller=self.char)
         self.assertEqual(frenzy.call_count, 1)
 
-    def test_rising_at_hunger_5_is_a_frenzy_test_not_a_rouse(self):
+    def test_rising_at_hunger_5_is_rolled_and_a_pass_costs_nothing(self):
+        """R-1: the forced Rouse is rolled; only a failure at Hunger 5 calls for the test."""
         self.char.hunger = 5
         with (
             patch.object(humanity_utils, "resist_frenzy", wraps=humanity_utils.resist_frenzy) as frenzy,
             all_dice(8),
+        ):
+            self.call(CmdRouse(), "/wake", caller=self.char)
+        self.assertEqual(self.char.hunger, 5)
+        self.assertEqual(frenzy.call_count, 0)
+        self.assertIsNone(self.char.torpor)
+
+    def test_failing_to_rise_at_hunger_5_is_a_frenzy_test_and_torpor(self):
+        """QR p.13 (fail a Rouse at Hunger 5: hunger frenzy, Difficulty 4) and QR p.4 (torpor)."""
+        self.char.hunger = 5
+        with (
+            patch.object(humanity_utils, "resist_frenzy", wraps=humanity_utils.resist_frenzy) as frenzy,
+            dice(3, *[8] * 20),
         ):
             output = self.call(CmdRouse(), "/wake", caller=self.char)
         self.assertEqual(self.char.hunger, 5)
         self.assertEqual(frenzy.call_count, 1)
         self.assertEqual(frenzy.call_args.args[1], 4)
         self.assertIn("Hunger frenzy test", strip_ansi(output))
+        self.assertIn("torpor", strip_ansi(output))
+        self.assertIsNotNone(self.char.torpor)
 
     def test_rising_below_hunger_5_is_an_ordinary_rouse(self):
         self.char.hunger = 2
@@ -484,11 +499,44 @@ class AttackTests(EvenniaCommandTest):
         self.assertFalse(result["success"])
         self.assertEqual(result["damage"], 0)
 
-    def test_a_tie_goes_to_the_attacker(self):
+    def test_a_tie_goes_to_the_attacker_for_1_plus_weapon(self):
+        """R-2: a tie hits for 1 + weapon (Basic Rules, Conflict Pools)."""
         with dice(8, 2, 2, 8, 2, 2, 2, 2):
-            result = combat_utils.calculate_attack(self.attacker, self.defender, "Strength + Brawl", weapon=1)
+            result = combat_utils.calculate_attack(
+                self.attacker, self.defender, "Strength + Brawl", weapon=1, defense_pool_desc="Dexterity + Athletics"
+            )
         self.assertTrue(result["success"])
+        self.assertEqual(result["damage"], 2)
+
+    def test_an_unarmed_tie_still_does_1(self):
+        with dice(8, 2, 2, 8, 2, 2, 2, 2):
+            result = combat_utils.calculate_attack(
+                self.attacker, self.defender, "Strength + Brawl", defense_pool_desc="Dexterity + Athletics"
+            )
         self.assertEqual(result["damage"], 1)
+
+    def test_defender_rolls_their_best_standard_defense(self):
+        """R-16/R-19: the defender's pool is chosen for them, not by the attacker."""
+        self.defender.set_trait("Strength", 4)
+        self.defender.set_trait("Brawl", 3)  # Strength + Brawl 7 beats Dexterity + Athletics 3
+        self.assertEqual(combat_utils.best_defense_pool(self.defender, "Strength + Brawl"), "Strength + Brawl")
+        # against a gun only a dodge works
+        self.assertEqual(combat_utils.best_defense_pool(self.defender, "Dexterity + Firearms"), "Dexterity + Athletics")
+
+    def test_player_cant_choose_the_defense_or_stack_traits(self):
+        attacker = self.char2  # a player
+        attacker.set_trait("Strength", 3)
+        with no_dice():
+            out = self.call(CmdAttack(), "Char=Strength + Brawl vs Occult", caller=attacker)
+            self.assertIn("Only staff can choose", out)
+            out = self.call(CmdAttack(), "Char=Strength + Brawl + Strength + Brawl", caller=attacker)
+            self.assertIn("one Attribute plus one Skill", out)
+
+    def test_fortitude_reduction_only_reduces_superficial(self):
+        """R-6: Fortitude's damage reduction doesn't touch Aggravated damage."""
+        self.defender.db.active_effects = [{"discipline": "Fortitude", "damage_reduction": 2}]
+        combat_utils.apply_damage(self.defender, 2, "aggravated")
+        self.assertEqual(self.defender.damage["health"]["aggravated"], 2)
 
     def test_attack_shows_and_rolls_the_same_pool(self):
         """F-042: an impaired attacker loses 2 dice from the pool shown and the pool rolled."""
@@ -653,11 +701,48 @@ class HuntTests(EvenniaCommandTest):
         self.assertIn("Strength + Brawl", output)
         self.assertEqual(self.char.hunger, 2)  # a non-harmful drink slakes 2
 
-    def test_hunting_never_reaches_hunger_0(self):
+    def test_no_hunt_at_the_hunger_floor(self):
+        """R-13: at the no-kill floor +hunt rolls nothing and the resonance is kept."""
         self.char.hunger = 1
+        from commands.v5.utils import blood_utils
+
+        blood_utils.set_resonance(self.char, "Choleric", 2)
+        with no_dice():
+            out = self.call(CmdHunt(), "slum", caller=self.char)
+        self.assertIn("without a kill", out)
+        self.assertEqual(self.char.hunger, 1)
+        self.assertEqual(self.char.resonance["type"], "Choleric")
+        self.assertIsNone(self.char.last_hunt)
+
+    def test_one_hunt_per_24_hours_even_after_a_failure(self):
+        """R-12 (owner decision): one +hunt per 24 hours, success or failure."""
+        with all_dice(2):
+            self.call(CmdHunt(), "slum", caller=self.char)
+        self.assertEqual(self.char.hunger, 4)
+        with no_dice():
+            out = self.call(CmdHunt(), "slum", caller=self.char)
+        self.assertIn("already hunted", out)
+        self.char.last_hunt = time.time() - 25 * 3600
         with all_dice(8):
             self.call(CmdHunt(), "slum", caller=self.char)
-        self.assertEqual(self.char.hunger, 1)
+        self.assertEqual(self.char.hunger, 2)
+
+    def test_staff_can_reset_the_hunt_timer(self):
+        self.char.last_hunt = time.time()
+        self.call(CmdHunt(), "/reset Char2", caller=self.char1)
+        self.assertIsNone(self.char.last_hunt)
+
+    def test_alternative_pool(self):
+        """R-11: +hunt <ground>=alt rolls the type's alternative pool (Alleycat: Wits + Streetwise)."""
+        self.char.set_trait("Wits", 2)
+        self.char.set_trait("Streetwise", 3)
+        with (
+            patch("commands.v5.utils.hunting_utils.roll_v5_pool", wraps=dice_roller.roll_v5_pool) as roll,
+            all_dice(8),
+        ):
+            out = self.call(CmdHunt(), "downtown=alt", caller=self.char)
+        self.assertEqual(roll.call_args.args[0], 5)
+        self.assertIn("Wits + Streetwise", out)
 
     def test_failed_hunt_keeps_hunger(self):
         with all_dice(2):
@@ -718,8 +803,10 @@ class TouchstoneTests(EvenniaCommandTest):
         """The book ties Touchstones to Convictions; there is no Humanity / 2 cap."""
         char = self.char1
         humanity_utils.set_humanity(char, 4)  # the old cap would have been 2
-        for name in ("Anna", "Ben", "Cleo"):
-            result = humanity_utils.add_touchstone(char, name, "friend")
+        for text in ("Never kill", "Protect children", "Keep promises"):
+            char.add_conviction(text)
+        for index, name in enumerate(("Anna", "Ben", "Cleo")):
+            result = humanity_utils.add_touchstone(char, name, "friend", index)
             self.assertTrue(result["success"], result["message"])
         self.assertEqual(len(char.touchstones), 3)
         self.assertNotIn("max", strip_ansi(self.call(CmdHumanity(), "", caller=char)).split("Touchstones:")[1][:10])
@@ -770,3 +857,162 @@ class AlchemyTests(EvenniaTest):
         with no_dice():
             result = thin_blood_utils.craft_formula(self.char, "Far Reach")
         self.assertIn("cannot Rouse", result["message"])
+
+
+class TouchstoneConvictionTests(EvenniaCommandTest):
+    def test_a_touchstone_needs_an_existing_conviction(self):
+        """R-22: the conviction index must name one of the character's Convictions."""
+        char = self.char1
+        self.assertFalse(humanity_utils.add_touchstone(char, "Anna", "sister", 0)["success"])
+        char.add_conviction("Never kill")
+        self.assertFalse(humanity_utils.add_touchstone(char, "Anna", "sister", 1)["success"])
+        out = self.call(CmdHumanity(), "/touchstone Anna=sister/1", caller=char)
+        self.assertIn("Touchstone added", out)
+        self.assertEqual(char.touchstones[0]["conviction_index"], 0)
+
+
+# ---------------------------------------------------------------------------
+# Review round 1 (reviews/pr-6.md)
+# ---------------------------------------------------------------------------
+
+
+class ThinBloodXPTests(EvenniaCommandTest):
+    def setUp(self):
+        super().setUp()
+        self.char = self.char2
+        self.char.clan = "Thin-Blood"
+        self.char.generation = 14
+        self.char.blood_potency = 0
+        self.char.db.experience["total_earned"] = 100
+
+    def test_thin_bloods_cant_buy_vampire_disciplines(self):
+        """R-3/R-14: only Thin-Blood Alchemy is bought with XP."""
+        out = self.call(CmdSpend(), "discipline Dominate", caller=self.char)
+        self.assertIn("Nothing was spent", out)
+        self.assertEqual((self.char.xp, self.char.get_trait("Dominate")), (100, 0))
+
+    def test_each_alchemy_dot_comes_with_a_formula(self):
+        """R-4: buying an Alchemy dot needs, and grants, one formula (new level x 5)."""
+        out = self.call(CmdSpend(), "discipline Thin-Blood Alchemy", caller=self.char)
+        self.assertIn("Nothing was spent", out)
+        out = self.call(CmdSpend(), "discipline Thin-Blood Alchemy = Envelop", caller=self.char)  # level 2
+        self.assertIn("Nothing was spent", out)
+        self.call(CmdSpend(), "discipline Thin-Blood Alchemy = Far Reach", caller=self.char)
+        self.assertEqual(self.char.get_trait("Thin-Blood Alchemy"), 1)
+        self.assertEqual(self.char.known_formulas, ["Far Reach"])
+        self.assertEqual(self.char.xp, 95)
+
+    def test_staff_teach_grants_a_formula(self):
+        """R-9: the Thin-blood Alchemist merit's formula has a staff grant path."""
+        from commands.v5.thinblood import CmdAlchemy
+
+        out = self.call(CmdAlchemy(), "/teach Char2=Haze", caller=self.char2)
+        self.assertIn("Only staff", out)
+        self.call(CmdAlchemy(), "/teach Char2=Haze", caller=self.char1)
+        self.assertEqual(self.char.known_formulas, ["Haze"])
+
+    def test_players_cant_set_the_distillation_difficulty(self):
+        """R-15: the difficulty is 3 unless staff set it."""
+        from commands.v5.thinblood import CmdAlchemy
+
+        self.char.set_trait("Thin-Blood Alchemy", 1)
+        self.char.learn_ritual_or_formula("formula", "Far Reach")
+        with no_dice():
+            out = self.call(CmdAlchemy(), "/distill far reach vs 1", caller=self.char)
+        self.assertIn("Only staff", out)
+        self.assertFalse(self.char.db.crafted_formulae)
+
+
+class DegenerationTests(EvenniaCommandTest):
+    def test_full_humanity_tracker_impairs_rolls(self):
+        """R-5: Stains filling the Humanity tracker: Impaired, -2 dice to all tests (QR p.3)."""
+        from dice.commands import CmdRoll
+
+        char = self.char2
+        humanity_utils.set_humanity(char, 8)
+        result = humanity_utils.add_stain(char, 2)
+        self.assertIn("Impaired", result["message"])
+        self.assertTrue(char.degenerating)
+        char.hunger = 0
+        with all_dice(8):
+            self.call(CmdRoll(), "5", caller=char)
+        self.assertEqual(len(char.ndb.last_roll["result"].regular_dice), 3)
+        self.assertIn("Degeneration", strip_ansi(self.call(CmdHumanity(), "", caller=char)))
+
+
+class GhoulPowerTests(EvenniaTest):
+    def test_ghoul_power_rolls_no_hunger_dice_and_no_rouse(self):
+        """R-8/R-18: only vampires roll Hunger dice or Rouse the Blood, on power too."""
+        char = self.char2
+        char.splat = "ghoul"
+        char.hunger = 3
+        char.set_trait("Animalism", 2)
+        char.learn_power("Feral Whispers")
+        with all_dice(1):
+            result = discipline_roller.roll_discipline_power(char, "Feral Whispers")
+        self.assertEqual(result["roll_result"].hunger_dice, [])
+        self.assertFalse(result["roll_result"].is_bestial_failure)
+        self.assertIsNone(result["rouse_result"])
+        self.assertEqual(char.hunger, 3)
+        self.assertIsNone(char.db.pending_frenzy_test)
+
+
+class FeedingCarryTests(EvenniaTest):
+    def test_bp_2_animal_blood_slakes_half_a_point_carried(self):
+        """BP 2: animal and bagged blood slake half; the half point is carried."""
+        from commands.v5.utils import hunting_utils
+
+        char = self.char2
+        char.blood_potency = 2
+        char.hunger = 4
+        hunting_utils.slake(char, "bag")
+        self.assertEqual((char.hunger, char.slake_carry), (4, 0.5))
+        hunting_utils.slake(char, "bag")
+        self.assertEqual((char.hunger, char.slake_carry), (3, 0.0))
+        hunting_utils.slake(char, "large animal")
+        self.assertEqual(char.hunger, 2)
+
+    def test_animal_succulence_adds_one_and_lowers_the_penalty(self):
+        """BP 4 counts as BP 2 for animal blood and the animal gives 1 more: (1 + 1) / 2 = 1."""
+        from commands.v5.utils import hunting_utils
+
+        char = self.char2
+        char.blood_potency = 4
+        char.set_trait("Animalism", 2)
+        char.learn_power("Animal Succulence")
+        char.hunger = 4
+        hunting_utils.slake(char, "animal")
+        self.assertEqual(char.hunger, 3)
+
+
+class HerdUseTests(EvenniaTest):
+    def test_background_use_doesnt_reset_the_weekly_herd(self):
+        """R-7: +background/use Herd records the weekly timer; it doesn't defeat it."""
+        char = self.char2
+        char.set_trait("Herd", 2)
+        char.hunger = 4
+        self.assertTrue(background_utils.use_background(char, "Herd", "a favour")["success"])
+        self.assertFalse(background_utils.use_background(char, "Herd", "another")["success"])
+        self.assertFalse(background_utils.use_herd_to_feed(char)["success"])
+        background_utils.reset_background_uses(char)  # a new session keeps the week
+        self.assertFalse(background_utils.use_herd_to_feed(char)["success"])
+        self.assertEqual(char.hunger, 4)
+
+
+class RemorseOncePerSessionTests(EvenniaCommandTest):
+    def test_remorse_once_per_24_hours_but_staff_can_run_more(self):
+        """R-17: one player Remorse test per 24 hours; staff can run another."""
+        from commands.v5.humanity import CmdRemorse
+
+        char = self.char2
+        humanity_utils.add_stain(char, 1)
+        with all_dice(8):
+            self.call(CmdRemorse(), "", caller=char)
+        humanity_utils.add_stain(char, 1)
+        with no_dice():
+            out = self.call(CmdRemorse(), "", caller=char)
+        self.assertIn("made your Remorse test", out)
+        self.assertEqual(char.stains, 1)
+        with all_dice(8):
+            self.call(CmdRemorse(), "Char2", caller=self.char1)
+        self.assertEqual(char.stains, 0)

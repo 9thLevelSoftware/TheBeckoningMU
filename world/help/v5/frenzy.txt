@@ -46,10 +46,10 @@ but a Rouse can still be forced on you:
   - a power with two or three Rouse checks, started below Hunger 5, whose
     failed checks would take you past 5: you owe a hunger frenzy test at
     |wDifficulty 4|n for each failed check past 5 (the power still works);
-  - rising for the night at Hunger 5 (|wrouse/wake|n): nothing is rolled
-    and you make one hunger frenzy test at Difficulty 4 instead. (The QR
-    adds that failing to rise at Hunger 5 can mean torpor; the Storyteller
-    rules on that.)
+  - rising for the night (|wrouse/wake|n): the Rouse is rolled even at
+    Hunger 5. If it fails there, Hunger stays at 5, you make one hunger
+    frenzy test at Difficulty 4 (QR p.13), and you fall into torpor (QR p.4;
+    staff decide how long it lasts).
 The command that caused it rolls the test(s) at once; once one fails you
 are in frenzy and the rest aren't rolled. A test still owed shows in
 |whunger|n and on your sheet; roll it with |w+frenzy/pending|n.

@@ -18,6 +18,9 @@ damage|n instead, for each Stain that doesn't fit.
 
 A messy critical doesn't add a Stain by itself.
 
+While Stains fill the tracker (Degeneration) you are Impaired: -2 dice to
+all tests until your Remorse test (QR p.3).
+
 |WREMORSE|n (QR p.3)
 
 At the end of each session, if you have Stains, make a Remorse test with
@@ -45,10 +48,12 @@ cost Stains, at the Storyteller's discretion.
 |w+humanity|n                                 Humanity, Stains, Convictions, Touchstones
 |w+humanity/conviction <text>|n               add a Conviction (up to 3)
 |w+humanity/conviction/remove <number>|n      remove a Conviction
-|w+humanity/touchstone <name>=<description>|n add a Touchstone
+|w+humanity/touchstone <name>=<description>[/<conviction #>]|n
+                                            add a Touchstone for a Conviction (default 1)
 |w+humanity/touchstone/remove <number>|n      remove a Touchstone
 |w+stain [<count>]|n                          mark Stains on yourself
 |w+stain <character>=<count>|n                (staff) mark Stains on someone else
-|w+remorse|n                                  make your Remorse test
+|w+remorse|n                                  make your Remorse test (once per 24 hours)
+|w+remorse <character>|n                      (staff) run a character's Remorse test
 
 |ySee also:|n help frenzy, help hunger

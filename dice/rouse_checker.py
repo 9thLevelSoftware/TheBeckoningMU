@@ -176,18 +176,14 @@ def perform_rouse_check(character, reason: str = "", power_level: int | None = N
 def perform_forced_rouse(character, reason: str = "") -> RouseResult:
     """A Rouse check the vampire can't refuse, such as rising for the night.
 
-    Below Hunger 5 it is an ordinary check (no Blood Potency re-roll). At
-    Hunger 5 nothing is rolled: core p.211 calls for an immediate hunger
-    frenzy test at Difficulty 4 instead, which is recorded
-    (flag_hunger_frenzy) for the caller to roll. Hunger stays at 5. (The
-    QR p.4 adds that failing to rise at Hunger 5 sends the vampire into
-    torpor; the Storyteller applies that.)
+    It is rolled even at Hunger 5 (one die, no Blood Potency re-roll). A
+    failure below Hunger 5 raises Hunger as usual; a failure at Hunger 5
+    leaves Hunger at 5 and records one hunger frenzy test at Difficulty 4
+    (QR p.13 "Fail Rouse Check while at Hunger 5"; core p.211), which the
+    caller rolls. A failed rise at Hunger 5 also means torpor (QR p.4); the
+    caller handles that.
     """
-    hunger_before = character.hunger
-    if hunger_before < MAX_HUNGER:
-        return perform_rouse_check(character, reason=reason)
-    flag_hunger_frenzy(character, reason, count=1)
-    return RouseResult(reason=reason, hunger_before=hunger_before, hunger_after=hunger_before, frenzy_test=True)
+    return resolve_rouse(character, reason, [roll_rouse_die(character, None, label=reason)])
 
 
 def flag_hunger_frenzy(character, reason: str, count: int = 1) -> None:

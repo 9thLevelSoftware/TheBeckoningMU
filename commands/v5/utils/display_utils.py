@@ -193,6 +193,10 @@ def _format_vitals_section(character):
         f"  Health: {character.current_health}/{character.health_max}"
         f"  Willpower: {character.current_willpower}/{character.willpower_max}"
     )
+    if getattr(character, "torpor", None):
+        vitals += f"\n |rIn torpor ({character.torpor.get('reason', 'see staff')})|n"
+    if getattr(character, "degenerating", False):
+        vitals += "\n |rImpaired (Degeneration): Humanity tracker full of Stains, -2 dice to all tests|n"
     pending = character.db.pending_frenzy_test
     if pending:
         vitals += (

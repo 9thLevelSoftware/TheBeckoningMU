@@ -7,15 +7,21 @@ Storyteller frames each turn; the dice settle who gets hurt.
 
 |WATTACKS ARE CONTESTED|n
 
-The attacker rolls an attack pool and the defender rolls a defense pool,
-each with their own Hunger dice (mortals and ghouls roll none):
+The attacker rolls an attack pool (one Attribute plus one Skill) and the
+defender rolls a defense pool, each with their own Hunger dice (mortals and
+ghouls roll none):
   Unarmed: Strength + Brawl        Melee: Strength + Melee
-  Ranged:  Dexterity + Firearms    Dodging: Dexterity + Athletics
+  Ranged:  Dexterity + Firearms
+The defender automatically rolls their best standard defense: Dexterity +
+Athletics to dodge, or against a close-combat attack Strength or Dexterity
++ Brawl or Melee to fight back. Only staff choose another.
 
 The attacker hits if they get at least as many successes as the defender
 (a tie goes to the attacker). The damage is the |wmargin|n (attacker's
-successes minus the defender's) plus the weapon's damage, plus an active
-Potence bonus. An active Celerity bonus adds to the defense.
+successes minus the defender's, at least 1: a tie does 1) plus the weapon's
+damage, plus an active Potence bonus. An active Celerity bonus adds to the
+defense. In a two-sided brawl the Storyteller applies the damage the
+defender deals back.
 
 |WDAMAGE|n
 
@@ -25,7 +31,8 @@ Aggravated damage with X (QR p.3).
     marked: 3 Superficial marks 2. Mortals, ghouls and thin-bloods
     (without the Vampiric Resilience merit) take it all.
   - Fire, sunlight, claws and some powers deal Aggravated damage, which is
-    not halved.
+    not halved. Fortitude's damage reduction applies to Superficial damage
+    only.
   - When the track is full, each further Superficial point turns a
     Superficial box into Aggravated.
 
@@ -35,6 +42,8 @@ Aggravated damage with X (QR p.3).
     Physical tests. A half-full track has no penalty. Spending Willpower
     ignores the penalty for a turn.
   - A full Willpower track is Impaired too: -2 dice to Mental and Social tests.
+  - A Humanity tracker full of Stains (Degeneration) is Impaired: -2 dice to
+    all tests until your Remorse test.
   - A vampire whose Health track is |wfull of Aggravated damage|n falls into
     torpor. A mortal in the same state is dying.
 

@@ -16,9 +16,9 @@ from world.ansi_theme import BLOOD_RED, BOX_BL, BOX_BR, BOX_H, BOX_TL, BOX_TR, B
 from .utils.combat_utils import (
     DAMAGE_TYPES,
     DEFAULT_ATTACK_POOL,
-    DEFAULT_DEFENSE_POOL,
     apply_damage,
     calculate_attack,
+    check_attack_pool,
     get_health_status,
     heal_damage,
     mend_superficial,
@@ -60,14 +60,18 @@ class CmdAttack(default_cmds.MuxCommand):
         +attack <target>
         +attack <target>=<attack pool>
         +attack <target>=<attack pool>/<weapon damage>
-        +attack <target>=<attack pool>/<weapon damage> vs <defense pool>
+        +attack <target>=<attack pool>/<weapon damage> vs <defense pool>   (staff)
 
-    Attacks are contested (V5 core p.123-126). You roll your attack pool
-    (default Strength + Brawl) and the target rolls their defense pool
-    (default Dexterity + Athletics, plus an active Celerity bonus). You hit
-    if you get at least as many successes as the target (a tie goes to the
-    attacker). The damage is your margin (your successes minus theirs) plus
-    the weapon's damage (and an active Potence bonus).
+    Attacks are contested (V5 core p.123-126). You roll your attack pool,
+    one Attribute plus one Skill (default Strength + Brawl). The target
+    automatically rolls their best standard defense: Dexterity + Athletics
+    to dodge, or against a close-combat attack Strength or Dexterity +
+    Brawl or Melee, plus an active Celerity bonus. Only staff can name the
+    defense pool. You hit if you get at least as many successes as the
+    target (a tie goes to the attacker). The damage is your margin (at least
+    1; a tie does 1) plus the weapon's damage (and an active Potence bonus).
+    In a two-sided brawl the Storyteller applies any damage the defender
+    deals back.
 
     Each side rolls its own Hunger dice (mortals and ghouls roll none) and
     loses 2 dice while its Health track is full (Impaired). The pool shown
@@ -97,7 +101,7 @@ class CmdAttack(default_cmds.MuxCommand):
             caller.msg(f"{BLOOD_RED}Usage:{RESET} +attack <target>[=<attack pool>[/<weapon damage>][ vs <defense pool>]]")
             return
 
-        attack_desc, weapon, defense_desc = DEFAULT_ATTACK_POOL, 0, DEFAULT_DEFENSE_POOL
+        attack_desc, weapon, defense_desc = DEFAULT_ATTACK_POOL, 0, None
         spec = (self.rhs or "").strip()
         if spec:
             if " vs " in spec.lower():
@@ -114,6 +118,15 @@ class CmdAttack(default_cmds.MuxCommand):
                     caller.msg(f"{BLOOD_RED}Error:{RESET} Weapon damage must be between 0 and 10.")
                     return
             attack_desc = spec or DEFAULT_ATTACK_POOL
+        staff = _is_staff(caller)
+        if defense_desc and not staff:
+            caller.msg(f"{BLOOD_RED}Error:{RESET} Only staff can choose the defender's pool; they defend with their best.")
+            return
+        if not staff:
+            error = check_attack_pool(attack_desc)
+            if error:
+                caller.msg(f"{BLOOD_RED}Error:{RESET} {error}")
+                return
 
         target = _find_character(caller, self.lhs.strip())
         if not target:
@@ -127,6 +140,7 @@ class CmdAttack(default_cmds.MuxCommand):
         if result.get("error"):
             caller.msg(f"{BLOOD_RED}Error:{RESET} {result['error']}")
             return
+        defense_desc = result["defense_pool"]
 
         output = _banner("ATTACK ROLL", BLOOD_RED)
         output += f"{GOLD}Attacker:{RESET} {caller.name} - {attack_desc}: {result['attack']['breakdown']}\n"
@@ -150,9 +164,11 @@ class CmdAttack(default_cmds.MuxCommand):
             target_msg += f"{PALE_IVORY}You avoid the attack.{RESET}\n"
         target.msg(target_msg)
         if caller.location:
-            outcome = "hits" if result["success"] else "misses"
+            outcome = f"hits for {result['damage']}" if result["success"] else "misses"
             caller.location.msg_contents(
-                f"|c{caller.name}|n attacks |c{target.name}|n and {outcome}.", exclude=[caller, target]
+                f"|c{caller.name}|n attacks |c{target.name}|n ({attack_desc} {result['attack']['pool']} dice, "
+                f"weapon {weapon} vs {defense_desc} {result['defense']['pool']} dice) and {outcome}.",
+                exclude=[caller, target],
             )
 
 

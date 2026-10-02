@@ -8,6 +8,14 @@ from world.v5_data import BACKGROUNDS, TRAIT_REGISTRY, UnknownTrait
 import random
 
 
+WEEK = 7 * 24 * 3600
+
+
+def weekly_key(background_name):
+    """The background_uses key holding a weekly background's last-use time."""
+    return f"{str(background_name).lower()}_week"
+
+
 def _background_uses(character):
     """The per-session background use counters, created if missing."""
     if character.db.background_uses is None:
@@ -109,12 +117,13 @@ def get_background_uses_remaining(character, background_name):
     elif uses_per_session == "dots * 2":
         max_uses = level * 2
     elif uses_per_session == "1 per week":
-        # Herd keeps the time of its last use (use_herd_to_feed)
+        # Weekly backgrounds (Herd) keep the time of their last use under
+        # their own key, which a session reset doesn't clear.
         import time
 
-        last = uses.get(background_name.lower())
-        if isinstance(last, (int, float)) and not isinstance(last, bool) and last > 1:
-            return 0 if time.time() - last < 7 * 24 * 3600 else 1
+        last = uses.get(weekly_key(background_name))
+        if isinstance(last, (int, float)) and not isinstance(last, bool):
+            return 0 if time.time() - last < WEEK else 1
         return 1
     else:
         max_uses = level
@@ -153,10 +162,15 @@ def use_background(character, background_name, task_description):
             "bonus": 0
         }
 
-    # Consume a use (if limited)
+    # Consume a use (if limited); a weekly background records the time
     if uses_remaining > 0:
+        import time
+
         uses = _background_uses(character)
-        uses[background_name.lower()] = uses.get(background_name.lower(), 0) + 1
+        if BACKGROUNDS.get(background_name, {}).get("uses_per_session") == "1 per week":
+            uses[weekly_key(background_name)] = time.time()
+        else:
+            uses[background_name.lower()] = uses.get(background_name.lower(), 0) + 1
 
     # Calculate bonus based on background type
     bonus = calculate_background_bonus(character, background_name, task_description)
@@ -186,7 +200,7 @@ def calculate_background_bonus(character, background_name, task_description):
     return level
 
 
-HERD_WEEK = 7 * 24 * 3600
+HERD_WEEK = WEEK
 
 
 def use_herd_to_feed(character, now=None):
@@ -196,7 +210,8 @@ def use_herd_to_feed(character, now=None):
     The Blood Potency rules still apply: only a kill takes Hunger below
     min_hunger_without_kill, and high Blood Potency slakes less per human
     (hunting_utils.slake). The week is counted from the last Herd feeding
-    (stored as a timestamp in db.background_uses["herd"]).
+    (stored as a timestamp in db.background_uses["herd_week"], shared with
+    +background/use Herd and kept by a session reset).
 
     Returns:
         dict: {"success": bool, "message": str, "hunger_reduced": int}
@@ -211,8 +226,8 @@ def use_herd_to_feed(character, now=None):
 
     now = time.time() if now is None else now
     uses = _background_uses(character)
-    last = uses.get("herd")
-    if isinstance(last, (int, float)) and not isinstance(last, bool) and last > 1 and now - last < HERD_WEEK:
+    last = uses.get(weekly_key("Herd"))
+    if isinstance(last, (int, float)) and not isinstance(last, bool) and now - last < HERD_WEEK:
         days = max(1, int((HERD_WEEK - (now - last)) // 86400) + 1)
         return {
             "success": False,
@@ -232,7 +247,7 @@ def use_herd_to_feed(character, now=None):
         }
 
     character.hunger = current - reduction
-    uses["herd"] = now
+    uses[weekly_key("Herd")] = now
     return {
         "success": True,
         "message": f"You feed safely from your Herd. Hunger reduced by {reduction}.",
@@ -284,9 +299,10 @@ def use_resources_to_acquire(character, item_description, item_rating):
 
 
 def reset_background_uses(character):
-    """Reset background uses (called at start of session).
+    """Reset the per-session background uses (start of session); weekly timers are kept.
 
     Args:
         character: The character object
     """
-    character.db.background_uses = {}
+    uses = _background_uses(character)
+    character.db.background_uses = {key: value for key, value in uses.items() if key.endswith("_week")}

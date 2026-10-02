@@ -2,17 +2,20 @@
 |W|                     COMBAT COMMANDS                              |
 |[R+===================================================================+|n
 
-|y+attack <target>[=<attack pool>[/<weapon damage>][ vs <defense pool>]]|n
-  A contested attack. You roll your attack pool (default Strength + Brawl)
-  and the target rolls their defense pool (default Dexterity + Athletics).
-  You hit with at least as many successes as the target; the damage is the
-  margin plus the weapon damage. An Impaired attacker or defender loses 2
-  dice, and the pool shown is the pool rolled. The attack only reports
-  the damage: the Storyteller marks it with +damage.
+|y+attack <target>[=<attack pool>[/<weapon damage>]]|n
+|y+attack <target>=<attack pool>/<weapon damage> vs <defense pool>|n   (staff)
+  A contested attack. You roll your attack pool, one Attribute plus one
+  Skill (default Strength + Brawl); the target rolls their best standard
+  defense (Dexterity + Athletics, or Strength/Dexterity + Brawl/Melee
+  against close combat). You hit with at least as many successes as the
+  target; the damage is the margin (at least 1) plus the weapon damage.
+  An Impaired attacker or defender loses 2 dice, and the pool shown is the
+  pool rolled. The room sees both pools and the weapon. The attack only
+  reports the damage: the Storyteller marks it with +damage.
 
   +attack Bob
   +attack Bob=Dexterity + Firearms/2
-  +attack Bob=Strength + Melee/2 vs Strength + Melee
+  +attack Bob=Strength + Melee/2 vs Strength + Melee     (staff)
 
 |y+damage <amount>[/<type>]|n                (yourself)
 |y+damage <target>=<amount>[/<type>]|n       (staff only for someone else)

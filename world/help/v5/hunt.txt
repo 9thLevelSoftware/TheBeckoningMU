@@ -25,21 +25,28 @@ dice, against the ground's Difficulty:
   Consensualist  Manipulation + Persuasion  Siren          Charisma + Subterfuge
   Farmer         Composure + Animal Ken     Blood Leech    no single roll
 
-There are no bonus dice. A Blood Leech, or a character without a Predator
+|y+hunt <ground>=alt|n rolls your type's alternative pool where the book
+gives one (Alleycat: Wits + Streetwise). There are no bonus dice. You can
+hunt |wonce every 24 hours|n, success or failure, and not at all once your
+Hunger is as low as feeding without a kill can take it; staff-run scenes
+are the way to feed more. A Blood Leech, or a character without a Predator
 Type (thin-bloods, fledglings), has no hunting roll: ask for a hunt scene
 with +hunt/staffed. |y+huntinfo|n shows your roll.
 
 |WFEEDING|n (QR p.12)
 
 On a win you feed. From a human you take the most you can without harming
-them, which slakes |w2 Hunger|n, and their Resonance becomes yours. A Farmer
+them, which slakes |w2 Hunger|n, and their Resonance becomes yours (only
+when the hunt slakes Hunger). A Farmer
 feeds on an animal (1 Hunger) and a Bagger on a blood bag (1 Hunger);
 neither carries a Resonance.
 
   - Only draining and killing a human takes Hunger to 0. Feeding without a
     kill stops at Hunger 1 (at Blood Potency 5-7 at 2, at 8-10 at 3).
   - High Blood Potency slakes less: animal and bagged blood slake half at
-    BP 2 and nothing above it, and from BP 4 each human slakes 1-3 less.
+    BP 2 (the half point is kept and counts with the next half) and nothing
+    above it, and from BP 4 each human slakes 1-3 less. Animal Succulence
+    adds 1 to animal blood and counts Blood Potency two lower for it.
 
 The vessel's Resonance and any complication on a messy critical or
 bestial failure are rolled for you as a game convention; the Storyteller
@@ -50,7 +57,8 @@ decides what a complication means.
 |y+hunt/staffed <ground>|n opens a Hunt Scenes job. Staff run the scene and
 record the feeding with |yfeed <character>=<source>[/<resonance>[/<intensity>]]|n
 (sources: small animals, animal, large animal, bag, sip, drink,
-harmful <1-4>, kill). Only staff can use feed.
+harmful <1-4>, kill). Only staff can use feed. Staff can let a character
+hunt again before the 24 hours are up with |y+hunt/reset <character>|n.
 
 |WHERD|n
 

@@ -358,6 +358,61 @@ class Character(ObjectParent, DefaultCharacter):
         return True
 
     @property
+    def torpor(self):
+        """{"reason", "time"} while the vampire is in torpor (set by the game, cleared by staff), else None."""
+        value = self._vampire_get("torpor", None)
+        return dict(value) if isinstance(value, Mapping) else None
+
+    @torpor.setter
+    def torpor(self, value):
+        self._vampire_set("torpor", dict(value) if value else None)
+
+    @property
+    def last_hunt(self):
+        """Time (time.time()) of the last +hunt, or None."""
+        value = self._vampire_get("last_hunt", None)
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+    @last_hunt.setter
+    def last_hunt(self, value):
+        self._vampire_set("last_hunt", None if value is None else float(value))
+
+    @property
+    def slake_carry(self):
+        """Half a point of Hunger slaked but not yet counted (BP 2 animal/bagged blood): 0 or 0.5."""
+        value = self._vampire_get("slake_carry", 0)
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
+
+    @slake_carry.setter
+    def slake_carry(self, value):
+        self._vampire_set("slake_carry", max(0.0, min(0.5, float(value or 0))))
+
+    @property
+    def last_remorse(self):
+        """Time (time.time()) of the last player-run Remorse test, or None."""
+        value = self._humanity_data().get("last_remorse")
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+    @last_remorse.setter
+    def last_remorse(self, value):
+        self._humanity_data()["last_remorse"] = None if value is None else float(value)
+
+    @property
+    def degenerating(self):
+        """True while Stains fill the Humanity tracker (QR p.3: Impaired, -2 to all tests)."""
+        return self.stains > 0 and self.humanity + self.stains >= 10
+
+    def dice_penalty(self, physical=False):
+        """Impairment dice for a test (QR p.3): -2 while the Humanity tracker is full of
+        Stains (all tests), and -2 for a Physical test while the Health track is full."""
+        penalty = -2 if self.degenerating else 0
+        if physical:
+            marks = self.damage["health"]
+            if marks["superficial"] + marks["aggravated"] >= self.health_max:
+                penalty -= 2
+        return penalty
+
+    @property
     def resonance(self):
         """Current resonance as {"type", "intensity", "expires"}, or None."""
         kind = self._vampire_get("current_resonance", None)
@@ -442,16 +497,20 @@ class Character(ObjectParent, DefaultCharacter):
     def add_touchstone(self, name, description="", conviction_index=0):
         """Add a Touchstone ({"name", "description", "conviction_index"}).
 
-        Structural checks only (non-empty name, whole-number index). How many
-        Touchstones a character may have is a rules check for the caller.
+        Each Touchstone belongs to one of the character's Convictions (core
+        p.172-173), so ``conviction_index`` must name an existing Conviction
+        (0-based). Raises ValueError for an empty name or a bad index.
         """
         name = str(name or "").strip()
         if not name:
             raise ValueError("A Touchstone needs a name")
+        index = _as_int(conviction_index, "Conviction index")
+        if not 0 <= index < len(self._humanity_list("convictions")):
+            raise ValueError("A Touchstone must belong to one of your Convictions; add the Conviction first")
         touchstone = {
             "name": name,
             "description": str(description or ""),
-            "conviction_index": _as_int(conviction_index, "Conviction index"),
+            "conviction_index": index,
         }
         self._humanity_list("touchstones").append(touchstone)
         return dict(touchstone)
@@ -881,8 +940,8 @@ class Character(ObjectParent, DefaultCharacter):
 
         Caitiff pay the Caitiff rate for every discipline; a discipline of
         the character's clan is a clan discipline; anything else is "other".
-        Thin-Blood Alchemy counts as a thin-blood's clan discipline
-        (UNVERIFIED: the XP chart has no thin-blood row).
+        Thin-Blood Alchemy counts as a thin-blood's clan discipline (new
+        level x 5; owner decision, the XP chart has no thin-blood row).
         """
         if self.clan == "Caitiff":
             return "caitiff_discipline"
@@ -898,19 +957,38 @@ class Character(ObjectParent, DefaultCharacter):
                              "can't be worked out. Ask staff to update your character.")
         if ref.name == "Thin-Blood Alchemy" and self.clan != "Thin-Blood":
             raise ValueError("Only thin-bloods can learn Thin-Blood Alchemy")
+        if self.clan == "Thin-Blood" and ref.name != "Thin-Blood Alchemy":
+            raise ValueError("Thin-bloods can't buy Disciplines with XP (the Discipline Affinity merit gives "
+                             "one permanent dot); only Thin-Blood Alchemy")
         new = self.get_trait(ref.key) + 1
         if new > TRAIT_RANGES["disciplines"][1]:
             raise ValueError(f"{ref.name} is already at its maximum")
         kind = self.discipline_cost_kind(ref.name)
 
+        # Each dot of Thin-Blood Alchemy comes with one formula (core p.282).
+        formula = None
+        if ref.name == "Thin-Blood Alchemy":
+            formula = find_ritual_or_formula("formula", note) if note else None
+            if formula is None:
+                raise ValueError("Each Alchemy dot comes with a formula: +spend discipline Thin-Blood Alchemy = "
+                                 "<formula> (see help alchemy)")
+            if formula["level"] > new:
+                raise ValueError(f"{formula['name']} is a level {formula['level']} formula; your new Alchemy "
+                                 f"rating is {new}")
+            if formula["name"] in self.known_formulas:
+                raise ValueError(f"You already know {formula['name']}")
+
         def apply(stores):
             disciplines = stores["stats"].setdefault("disciplines", {})
             entry = _discipline_entry(disciplines.get(ref.key))
             entry["level"] = new
+            if formula:
+                entry.setdefault("formulas", []).append(formula["name"])
             disciplines[ref.key] = entry
 
         rate = {"clan_discipline": "in-clan", "caitiff_discipline": "Caitiff", "other_discipline": "out-of-clan"}
-        return {"kind": kind, "cost": xp_cost(kind, new), "label": f"Raised {ref.name} to {new} ({rate[kind]})",
+        label = f"Raised {ref.name} to {new} ({rate[kind]})" + (f" with {formula['name']}" if formula else "")
+        return {"kind": kind, "cost": xp_cost(kind, new), "label": label,
                 "new": new, "roots": {"stats": _new_stats}, "apply": apply}
 
     def _plan_blood_potency(self, name, note):

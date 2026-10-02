@@ -37,7 +37,8 @@ def _effect_bonus(character, discipline, key):
 
 def get_combat_pool(character, pool_desc, include_impairment=True):
     """
-    A combat dice pool from "Attribute + Skill", less Health impairment.
+    A combat dice pool from "Attribute + Skill", less impairment (a full
+    Health track for this Physical test, and Degeneration; QR p.3).
 
     Returns:
         dict: {"pool": int, "base_pool": int, "impairment": int,
@@ -54,7 +55,7 @@ def get_combat_pool(character, pool_desc, include_impairment=True):
         base_pool += value
         breakdown_parts.append(f"{part} {value}")
 
-    impairment = get_impairment_penalty(character) if include_impairment else 0
+    impairment = character.dice_penalty(physical=True) if include_impairment else 0
     final_pool = max(1, min(MAX_POOL, base_pool + impairment))
 
     breakdown = " + ".join(breakdown_parts) + f" = {base_pool}"
@@ -66,22 +67,66 @@ def get_combat_pool(character, pool_desc, include_impairment=True):
             "breakdown": breakdown, "error": None}
 
 
+# The defender's standard defenses (core p.123-126): dodge with Dexterity +
+# Athletics against anything; against a close-combat attack, also fight back
+# with Brawl or Melee. The defender rolls the best of them.
+DODGE_POOL = "Dexterity + Athletics"
+CLOSE_DEFENSE_POOLS = (
+    "Strength + Brawl", "Dexterity + Brawl", "Strength + Melee", "Dexterity + Melee",
+)
+RANGED_SKILLS = ("firearms",)
+
+
+def check_attack_pool(pool_desc):
+    """Return an error unless the pool is one Attribute plus one Skill (each once)."""
+    from world.v5_data import resolve_trait
+
+    kinds = []
+    for part in (p.strip() for p in pool_desc.split("+")):
+        try:
+            kinds.append(resolve_trait(part).category)
+        except UnknownTrait:
+            return f"Unknown trait: {part or pool_desc}"
+    if sorted(kinds) != ["attributes", "skills"]:
+        return "An attack pool is one Attribute plus one Skill, e.g. Strength + Brawl."
+    return None
+
+
+def best_defense_pool(defender, attack_pool_desc):
+    """The defender's best standard defense pool against this attack.
+
+    Dexterity + Athletics (a dodge) against everything; against a close
+    combat attack (not Firearms) also Strength/Dexterity + Brawl/Melee. The
+    highest pool wins; a tie keeps the dodge.
+    """
+    skills = [p.strip().lower() for p in attack_pool_desc.split("+")]
+    candidates = [DODGE_POOL]
+    if not any(skill in RANGED_SKILLS for skill in skills):
+        candidates += list(CLOSE_DEFENSE_POOLS)
+    return max(candidates, key=lambda desc: get_combat_pool(defender, desc)["base_pool"])
+
+
 def calculate_attack(attacker, defender, attack_pool_desc=DEFAULT_ATTACK_POOL, weapon=0,
-                     defense_pool_desc=DEFAULT_DEFENSE_POOL):
+                     defense_pool_desc=None):
     """
     Resolve a contested attack (core p.123-126).
 
     The attacker rolls ``attack_pool_desc`` and the defender rolls
-    ``defense_pool_desc`` (plus an active Celerity defense bonus), each less
-    their Health impairment and each with their own Hunger dice. The attack
-    hits when the attacker's successes are at least the defender's (and at
-    least 1). Damage = margin + weapon damage (+ an active Potence bonus).
+    ``defense_pool_desc`` (default: their best standard defense,
+    best_defense_pool), plus an active Celerity defense bonus, each less
+    impairment and each with their own Hunger dice. The attack hits when the
+    attacker's successes are at least the defender's (and at least 1); a
+    tie hits too (owner decision). Damage = margin (at least 1 on a hit;
+    the Basic Rules give a tie 1 point) + weapon damage (+ an active Potence
+    bonus).
 
     Returns:
         dict: {"success", "attack", "defense" (pool dicts), "result",
                "defense_result" (RollResult), "margin", "weapon",
                "potence_bonus", "damage", "message", "error"}
     """
+    if not defense_pool_desc:
+        defense_pool_desc = best_defense_pool(defender, attack_pool_desc)
     attack = get_combat_pool(attacker, attack_pool_desc)
     defense = get_combat_pool(defender, defense_pool_desc)
     for pool in (attack, defense):
@@ -99,7 +144,7 @@ def calculate_attack(attacker, defender, attack_pool_desc=DEFAULT_ATTACK_POOL, w
 
     potence_bonus = _effect_bonus(attacker, "Potence", "damage_bonus")
     success = result.is_success
-    margin = max(0, result.total_successes - defense_result.total_successes) if success else 0
+    margin = max(1, result.total_successes - defense_result.total_successes) if success else 0
     damage = margin + weapon + potence_bonus if success else 0
 
     if success:
@@ -123,6 +168,7 @@ def calculate_attack(attacker, defender, attack_pool_desc=DEFAULT_ATTACK_POOL, w
         "error": None,
         "attack": attack,
         "defense": defense,
+        "defense_pool": defense_pool_desc,
         "result": result,
         "defense_result": defense_result,
         "margin": margin,
@@ -152,7 +198,8 @@ def apply_damage(character, damage_amount, damage_type="superficial", halve=True
     if damage_type not in DAMAGE_TYPES:
         return {"success": False, "message": f"Invalid damage type: {damage_type}", "health_status": ""}
 
-    soak = _effect_bonus(character, "Fortitude", "damage_reduction")
+    # Fortitude's damage reduction applies to Superficial damage only.
+    soak = _effect_bonus(character, "Fortitude", "damage_reduction") if damage_type == "superficial" else 0
     amount = max(0, damage_amount - soak)
     halved = False
     if damage_type == "superficial" and halve and character.halves_superficial:
