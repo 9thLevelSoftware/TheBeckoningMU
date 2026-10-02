@@ -629,9 +629,13 @@ if (typeof document !== 'undefined') {
             const url = editCharacterId
                 ? '/api/traits/character/' + editCharacterId + '/resubmit/'
                 : '/api/traits/character/create/';
-            const response = await postJSON(url, C.buildPayload(state));
-            const data = await response.json().catch(function () { return {}; });
-            if (!response.ok) {
+            const button = byId('submit-button');
+            if (button.disabled) return;
+            button.disabled = true;  // no double submissions while the request is in flight
+            const response = await postJSON(url, C.buildPayload(state)).catch(function () { return null; });
+            const data = response ? await response.json().catch(function () { return {}; }) : {};
+            if (!response || !response.ok) {
+                button.disabled = false;
                 showErrors(data.errors || [data.error || 'The server refused the character']);
                 toast('Not submitted: see the list of problems', 'danger');
                 return;

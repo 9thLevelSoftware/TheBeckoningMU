@@ -4,6 +4,7 @@ characters keeping their sheet, one character cap, best-effort follow-ups,
 the application job's lifecycle, and the approve rollback.
 """
 
+import json
 from unittest import mock
 
 from django.test import override_settings
@@ -17,23 +18,108 @@ from tests.test_character_locks import login
 from tests.test_chargen_web import CREATE, ChargenWebTestCase, run_command, url
 from traits import utils as chargen_utils
 from traits.models import CharacterBio
+from world.rules_chargen import parse_submission
 
 
 class ApplicantAddressTests(ChargenWebTestCase):
-    def test_address_is_recorded_and_same_origin_reviews_flagged(self):
-        _, char_id = self.create_as(self.player_a)
+    APPLICANT, REVIEWER = "203.0.113.5", "198.51.100.77"
+
+    def create_from(self, ip, payload=None):
+        self.as_(self.player_a)
+        body = json.dumps(payload or legal_payload())
+        response = self.client.post(CREATE, body, content_type="application/json", REMOTE_ADDR=ip)
+        return response.json().get("character_id")
+
+    def review_from(self, reviewer, char_id, ip, action="approve", notes=""):
+        self.as_(reviewer)
+        body = json.dumps({"action": action, "notes": notes})
+        return self.client.post(url(char_id, "approval"), body, content_type="application/json", REMOTE_ADDR=ip)
+
+    def test_addresses_are_recorded_and_same_origin_reviews_flagged(self):
+        char_id = self.create_from(self.APPLICANT)
         bio = CharacterBio.objects.get(character_id=char_id)
-        self.assertEqual(bio.applicant_ip, "127.0.0.1")
-        self.assertEqual(self.character(char_id).db.creator_ip, "127.0.0.1")
-        detail = self.as_(self.builder_b).get(url(char_id, "detail")).json()
+        self.assertEqual(bio.applicant_ip, self.APPLICANT)
+        self.assertEqual(self.character(char_id).db.creator_ip, self.APPLICANT)
+        self.as_(self.builder_b)
+        detail = self.client.get(url(char_id, "detail"), REMOTE_ADDR=self.APPLICANT).json()
         self.assertTrue(detail["same_origin_as_you"])
-        rows = self.client.get("/api/traits/pending-characters/").json()["pending_characters"]
-        self.assertTrue(rows[0]["same_origin_as_you"])
-        response = self.review(self.builder_b, char_id, "approve")
+        self.assertEqual(detail["bio"]["applicant_ip"], self.APPLICANT)
+        rows = self.client.get("/api/traits/pending-characters/", REMOTE_ADDR=self.REVIEWER).json()
+        self.assertFalse(rows["pending_characters"][0]["same_origin_as_you"])
+        response = self.review_from(self.builder_b, char_id, self.APPLICANT)
         self.assertTrue(response.json()["same_origin"])
         bio.refresh_from_db()
-        self.assertEqual(bio.reviewer_ip, "127.0.0.1")
-        self.assertTrue(self.as_(self.builder_b).get(url(char_id, "detail")).json()["bio"]["reviewed_same_origin"])
+        self.assertEqual(bio.reviewer_ip, self.APPLICANT)
+
+    def test_loopback_and_invalid_addresses_never_flag(self):
+        """Behind the Portal every request is 127.0.0.1 unless a trusted proxy says otherwise."""
+        char_id = self.create_from("127.0.0.1")
+        response = self.review_from(self.builder_b, char_id, "127.0.0.1")
+        self.assertFalse(response.json()["same_origin"])
+        detail = self.as_(self.builder_b).get(url(char_id, "detail")).json()
+        self.assertFalse(detail["bio"]["reviewed_same_origin"])
+        self.assertFalse(detail["same_origin_as_you"])
+
+        other = self.create_from("not-an-ip", legal_payload(name="Other Person"))
+        self.assertIsNone(CharacterBio.objects.get(character_id=other).applicant_ip)
+        self.assertIsNone(self.character(other).db.creator_ip)
+
+    def test_clean_ip_and_same_origin(self):
+        self.assertEqual(chargen_utils.clean_ip(" 2001:DB8::1 "), "2001:db8::1")
+        for junk in ("", None, "abc", "1.2.3.4; DROP", "300.1.1.1"):
+            self.assertIsNone(chargen_utils.clean_ip(junk))
+        self.assertTrue(chargen_utils.same_origin("203.0.113.5", "203.0.113.5"))
+        for pair in (("127.0.0.1", "127.0.0.1"), ("::1", "::1"), ("0.0.0.0", "0.0.0.0"), (None, None), ("x", "x")):
+            self.assertFalse(chargen_utils.same_origin(*pair), pair)
+
+    def test_players_never_see_addresses(self):
+        """R-33: no *_ip keys (nor the reviewed-from hint) in any player's response."""
+        char_id = self.create_from(self.APPLICANT)
+        self.review_from(self.builder_b, char_id, self.REVIEWER, action="reject", notes="Fix it")
+        for account in (self.player_a, self.player_c):
+            self.as_(account)
+            for path in (url(char_id, "detail"), url(char_id, "for-edit"), url(char_id, "export"),
+                         "/api/traits/my-characters/"):  # fmt: skip
+                response = self.client.get(path)
+                text = response.content.decode()
+                self.assertNotIn("_ip", text, (account.key, path))
+                self.assertNotIn(self.REVIEWER, text)
+                self.assertNotIn("reviewed_same_origin", text)
+        self.as_(self.builder_b)
+        self.assertEqual(self.client.get(url(char_id, "detail")).json()["bio"]["reviewer_ip"], self.REVIEWER)
+
+
+class ConcurrentCreateTests(ChargenWebTestCase):
+    """R-34: the unit re-checks name and cap on the reactor, so a request that
+    passed the web thread's checks alongside another can't create a duplicate."""
+
+    def test_same_name_twice(self):
+        sub = parse_submission(legal_payload())
+        chargen_utils.create_character_unit(self.player_a, sub)
+        with self.assertRaises(chargen_utils.ChargenError):
+            chargen_utils.create_character_unit(self.player_a, sub)
+        self.assertEqual(ObjectDB.objects.filter(db_key__iexact="Mara Voss").count(), 1)
+        self.assertEqual(CharacterBio.objects.count(), 1)
+        self.assertEqual(Job.objects.count(), 1)
+        self.assertEqual(len(self.player_a.characters.all()), 1)
+
+    @override_settings(MAX_NR_CHARACTERS=1)
+    def test_at_the_cap(self):
+        chargen_utils.create_character_unit(self.player_a, parse_submission(legal_payload()))
+        with self.assertRaises(chargen_utils.ChargenError) as caught:
+            chargen_utils.create_character_unit(self.player_a, parse_submission(legal_payload(name="Second Go")))
+        self.assertIn("at most 1", str(caught.exception))
+        self.assertFalse(ObjectDB.objects.filter(db_key="Second Go").exists())
+        self.assertEqual(CharacterBio.objects.count(), 1)
+
+    def test_web_checks_passed_but_unit_refuses(self):
+        """Simulate the race: the web-thread name check passes (patched), the unit still refuses."""
+        self.create_as(self.player_a)
+        with mock.patch("traits.api.name_problem", return_value=None):
+            response = self.post(CREATE, legal_payload(), self.player_c)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("already exists", response.json()["error"])
+        self.assertEqual(ObjectDB.objects.filter(db_key__iexact="Mara Voss").count(), 1)
 
 
 class NameAndPageTests(ChargenWebTestCase):

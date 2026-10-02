@@ -25,6 +25,7 @@ from traits.models import CharacterBio
 from traits.utils import (
     ChargenError,
     approve_unit,
+    clean_ip,
     create_character_unit,
     name_problem,
     over_character_limit,
@@ -32,6 +33,7 @@ from traits.utils import (
     resubmit_revoked_unit,
     resubmit_unit,
     revoke_unit,
+    same_origin,
 )
 from web.main_thread import call_in_main_thread
 from web.permissions import has_perm
@@ -74,8 +76,23 @@ class BaseAPIView(View):
 
 
 def client_ip(request):
-    """The request's REMOTE_ADDR (what Evennia itself records), or None."""
-    return request.META.get("REMOTE_ADDR") or None
+    """The request's address (REMOTE_ADDR, which Evennia rewrites from
+    X-Forwarded-For for UPSTREAM_IPS) if it is a valid IP, else None."""
+    return clean_ip(request.META.get("REMOTE_ADDR"))
+
+
+def _staff_address_data(request, bio):
+    """Addresses and same-origin hints, for Builders only (never the applicant)."""
+    if not has_perm(request.user, "Builder"):
+        return {}
+    return {
+        "applicant_ip": bio.applicant_ip,
+        "reviewer_ip": bio.reviewer_ip,
+        # A review made from the address the application came from: possibly
+        # an alt account approving its own character (forbidden by policy).
+        "reviewed_same_origin": same_origin(bio.applicant_ip, bio.reviewer_ip),
+        "same_origin_as_you": same_origin(bio.applicant_ip, client_ip(request)),
+    }
 
 
 def _bio_or_404(character_id):
@@ -458,11 +475,6 @@ def _bio_data(bio, character):
         "reviewed_by": bio.reviewed_by.username if bio.reviewed_by else None,
         "reviewed_at": bio.reviewed_at.isoformat() if bio.reviewed_at else None,
         "self_reviewed": bool(bio.reviewed_by_id and bio.reviewed_by_id == bio.account_id),
-        "applicant_ip": bio.applicant_ip,
-        "reviewer_ip": bio.reviewer_ip,
-        # A review made from the address the application came from: possibly
-        # an alt account approving its own character (forbidden by policy).
-        "reviewed_same_origin": bool(bio.applicant_ip and bio.applicant_ip == bio.reviewer_ip),
         "created_at": bio.created_at.isoformat() if bio.created_at else None,
         "rejection_notes": bio.rejection_notes,
         "rejection_count": bio.rejection_count,
@@ -680,7 +692,7 @@ class PendingCharactersAPI(BaseAPIView):
                     "submitted_date": bio.created_at.isoformat() if bio.created_at else None,
                     "reviewed_by": bio.reviewed_by.username if bio.reviewed_by else None,
                     "can_review": _can_review(request.user, bio),
-                    "same_origin_as_you": bool(bio.applicant_ip and bio.applicant_ip == client_ip(request)),
+                    "same_origin_as_you": same_origin(bio.applicant_ip, client_ip(request)),
                 }
             )
         return JsonResponse({"pending_characters": data})
@@ -713,13 +725,13 @@ class CharacterDetailAPI(BaseAPIView):
                 "character_id": character.id,
                 "character_name": character.db_key,
                 "player_name": bio.account.username if bio.account else None,
-                "bio": _bio_data(bio, character),
+                "bio": {**_bio_data(bio, character), **_staff_address_data(request, bio)},
                 "sheet": sheet,
                 "traits": _sheet_by_category(sheet),
                 "powers": powers,
                 "can_review": _can_review(request.user, bio),
                 "can_revoke": has_perm(request.user, "Admin"),
-                "same_origin_as_you": bool(bio.applicant_ip and bio.applicant_ip == client_ip(request)),
+                "same_origin_as_you": _staff_address_data(request, bio).get("same_origin_as_you", False),
             }
         )
 
@@ -767,6 +779,6 @@ class CharacterApprovalAPI(BaseAPIView):
                 "reviewed_by": request.user.username,
                 "reviewed_at": bio.reviewed_at.isoformat() if bio.reviewed_at else None,
                 "self_reviewed": bio.account_id == request.user.id,
-                "same_origin": bool(bio.applicant_ip and bio.applicant_ip == bio.reviewer_ip),
+                "same_origin": same_origin(bio.applicant_ip, bio.reviewer_ip),
             }
         )

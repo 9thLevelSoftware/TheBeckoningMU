@@ -66,6 +66,33 @@ def name_problem(name, account, exclude_id=None):
     return None
 
 
+def clean_ip(value):
+    """`value` as a normalized IP address string, or None if it isn't one."""
+    import ipaddress
+
+    try:
+        return str(ipaddress.ip_address(str(value or "").strip()))
+    except ValueError:
+        return None
+
+
+def same_origin(first, second):
+    """True if two recorded addresses are the same real client address.
+
+    Loopback, unspecified and unknown addresses never match: without a
+    trusted front proxy every request arrives from the Portal's 127.0.0.1,
+    which says nothing about who sent it. This is a hint for staff only;
+    reviewed_by and the staff policy are the control.
+    """
+    import ipaddress
+
+    first, second = clean_ip(first), clean_ip(second)
+    if not first or first != second:
+        return False
+    address = ipaddress.ip_address(first)
+    return not (address.is_loopback or address.is_unspecified)
+
+
 def active_application_count(account):
     """Pending and approved characters owned by `account`."""
     return CharacterBio.objects.filter(account=account, status__in=("submitted", "approved")).count()
@@ -181,12 +208,22 @@ def create_character_unit(account, sub, ip=None):
     """Create the character, write its sheet, open its application. Returns the character.
 
     The character is made with create_object (not Character.create), so the
-    only character cap is over_character_limit(), checked by the view, and
-    the gated locks are installed once, by basetype_setup. On any failure
-    everything created here is removed again and the exception is re-raised.
+    only character cap is over_character_limit() and the gated locks are
+    installed once, by basetype_setup. The view checks the name and the cap
+    first as a fast path; they are checked again here because units run one
+    at a time on the reactor, so two concurrent requests can't both pass.
+    On any failure everything created here is removed again and the
+    exception is re-raised.
     """
     from evennia.utils import create
 
+    problem = name_problem(sub.name, account)
+    if problem:
+        raise ChargenError(problem)
+    limit = over_character_limit(account)
+    if limit is not None:
+        raise ChargenError(f"You may have at most {limit} pending or approved characters")
+    ip = clean_ip(ip)
     character = bio = job = None
     try:
         character = create.create_object(
@@ -247,7 +284,7 @@ def approve_unit(bio_id, reviewer, notes="", ip=None):
         character.home = room
         if not character.move_to(room, quiet=True, move_type="teleport"):
             raise ChargenError(f"{character.key} couldn't be moved to the start location", status=500)
-        bio.transition("approved", by=reviewer, reviewer_ip=ip)
+        bio.transition("approved", by=reviewer, reviewer_ip=clean_ip(ip))
     except Exception:
         character.home = old_home
         character.location = old_location
@@ -267,7 +304,11 @@ def reject_unit(bio_id, reviewer, notes, ip=None):
     if not bio.can_transition("rejected"):
         raise ChargenError(f"An application that is {bio.status} can't be rejected", status=409)
     bio.transition(
-        "rejected", by=reviewer, reviewer_ip=ip, rejection_notes=notes, rejection_count=F("rejection_count") + 1
+        "rejected",
+        by=reviewer,
+        reviewer_ip=clean_ip(ip),
+        rejection_notes=notes,
+        rejection_count=F("rejection_count") + 1,
     )
     _best_effort(
         "rejection notification",
@@ -290,7 +331,7 @@ def revoke_unit(bio_id, reviewer, notes, ip=None):
     bio = CharacterBio.objects.select_related("character", "account").get(pk=bio_id)
     if not bio.can_transition("revoked"):
         raise ChargenError(f"An application that is {bio.status} can't be revoked", status=409)
-    bio.transition("revoked", by=reviewer, reviewer_ip=ip, rejection_notes=notes)
+    bio.transition("revoked", by=reviewer, reviewer_ip=clean_ip(ip), rejection_notes=notes)
     character = bio.character
     for session in list(character.sessions.all()):
         _best_effort("unpuppeting a revoked character", _evict, character, session, notes)
