@@ -37,6 +37,18 @@ GENERATION_RANGE = (4, 16)
 MAX_CONVICTIONS = 3
 ADVANTAGE_TABLES = {"merits": MERITS, "flaws": FLAWS}
 
+# Every Character carries these locks, however it was created (Character.create,
+# the `create` command, a raw create_object, a stock Evennia web view):
+# only the owning account may puppet it, and only once it is approved; the
+# owner may delete it (e.g. a pending application); only Admins edit it.
+# char_owner()/char_approved() are in server/conf/lockfuncs.py and read
+# traits.CharacterBio. Staff NPCs get `lock <obj> = puppet:perm(Builder)`.
+CHARACTER_LOCKS = (
+    "puppet:(char_owner() and char_approved()) or perm(Admin);"
+    "delete:char_owner() or perm(Admin);"
+    "edit:perm(Admin)"
+)
+
 
 def _new_stats():
     """The one db.stats shape: nested attributes and skills, keyed lower_snake_case."""
@@ -164,7 +176,23 @@ class Character(ObjectParent, DefaultCharacter):
     - db.active_effects: active powers and conditions
 
     Approval is not stored here: `is_approved` reads `CharacterBio.status`.
+    Ownership and approval are enforced by CHARACTER_LOCKS, which every
+    creation path installs.
     """
+
+    # Evennia formats this class attribute in some code paths; keep it equal
+    # to the default lockstring so none of them grants the stock owner-puppet lock.
+    lockstring = CHARACTER_LOCKS
+
+    @classmethod
+    def get_default_lockstring(cls, account=None, caller=None, **kwargs):
+        """The same gated locks for every creation path (see CHARACTER_LOCKS)."""
+        return CHARACTER_LOCKS
+
+    def basetype_setup(self):
+        """Install the gated locks on every new Character, however it is created."""
+        super().basetype_setup()
+        self.locks.add(CHARACTER_LOCKS)
 
     def at_object_creation(self):
         """Initialize every V5 store that is not already present."""

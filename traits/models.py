@@ -316,12 +316,24 @@ class CharacterBio(models.Model):
     # Character type
     splat = models.CharField(max_length=20, default='mortal', help_text="Character type (vampire, ghoul, mortal)")
 
+    # Ownership: the account that applied for this character. This is the
+    # one ownership fact (the char_owner() lockfunc reads it); it is never
+    # the character's current puppeteer (db_account).
+    account = models.ForeignKey(
+        'accounts.AccountDB',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='character_bios',
+        help_text="Account that owns this character",
+    )
+
     # Status lifecycle
     STATUS_CHOICES = [
-        ('draft', 'Draft'),
         ('submitted', 'Submitted'),
         ('rejected', 'Rejected'),
         ('approved', 'Approved'),
+        ('revoked', 'Revoked'),
     ]
     status = models.CharField(
         max_length=20,
@@ -341,6 +353,18 @@ class CharacterBio(models.Model):
         default=0,
         help_text="Number of times this character has been rejected"
     )
+
+    # Review record: the staff member who made the last approve, reject or
+    # revoke decision, and when.
+    reviewed_by = models.ForeignKey(
+        'accounts.AccountDB',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_character_bios',
+        help_text="Staff account that made the last review decision",
+    )
+    reviewed_at = models.DateTimeField(blank=True, null=True, help_text="When the last review decision was made")
 
     # Approval tracking
     approved_by = models.CharField(max_length=100, blank=True, help_text="Who approved this character")
