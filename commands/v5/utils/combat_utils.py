@@ -10,7 +10,6 @@ This module provides functions for:
 """
 
 from world.v5_dice import roll_pool, DiceResult
-from .blood_utils import mend_damage
 from .discipline_effects import get_active_effects
 from .trait_utils import get_trait_value
 from world.ansi_theme import BLOOD_RED, DARK_RED, RESET, GOLD, PALE_IVORY, SHADOW_GREY
@@ -51,7 +50,7 @@ def calculate_attack(attacker, defender, attack_pool_desc):
         total_pool += trait_value
 
     # Get attacker's hunger
-    hunger = attacker.db.vampire_stats.get("hunger", 0) if hasattr(attacker.db, "vampire_stats") else 0
+    hunger = attacker.hunger
 
     # Calculate defender's defense
     defense = calculate_defense(defender)
@@ -133,15 +132,15 @@ def apply_damage(character, damage_amount, damage_type="superficial"):
         }
 
     # Get current damage values
-    pools = character.db.pools
-    max_health = pools.get("health", 3)
-    superficial = pools.get("superficial_damage", 0)
-    aggravated = pools.get("aggravated_damage", 0)
+    max_health = character.health_max
+    marks = character.damage["health"]
+    superficial = marks["superficial"]
+    aggravated = marks["aggravated"]
 
     # Apply damage based on type
     if damage_type == "aggravated":
         new_aggravated = min(max_health, aggravated + actual_damage)
-        pools["aggravated_damage"] = new_aggravated
+        character.set_damage("health", aggravated=new_aggravated)
         damage_word = f"{BLOOD_RED}Aggravated{RESET}"
     elif damage_type in ["superficial", "lethal"]:
         # Lethal damage becomes superficial for vampires
@@ -153,11 +152,10 @@ def apply_damage(character, damage_amount, damage_type="superficial"):
             overflow = total_damage - max_health
             new_aggravated = min(max_health, aggravated + overflow)
             new_superficial = max_health - new_aggravated
-            pools["aggravated_damage"] = new_aggravated
-            pools["superficial_damage"] = new_superficial
+            character.set_damage("health", superficial=new_superficial, aggravated=new_aggravated)
             damage_word = f"{DARK_RED}Superficial{RESET} (overflow to {BLOOD_RED}Aggravated{RESET})"
         else:
-            pools["superficial_damage"] = new_superficial
+            character.set_damage("health", superficial=new_superficial)
             damage_word = f"{DARK_RED}Superficial{RESET}"
     else:
         return {
@@ -166,17 +164,13 @@ def apply_damage(character, damage_amount, damage_type="superficial"):
             "health_status": ""
         }
 
-    # Update current health
-    total_damage = pools["superficial_damage"] + pools["aggravated_damage"]
-    pools["current_health"] = max(0, max_health - total_damage)
-
     # Build message
     message = f"You take {GOLD}{actual_damage}{RESET} {damage_word} damage."
     if fortitude_soak > 0:
         message += f" ({GOLD}Fortitude{RESET} soaked {fortitude_soak})"
 
     # Check for death/torpor
-    if pools["current_health"] == 0:
+    if character.current_health == 0:
         if aggravated >= max_health:
             message += f"\n{BLOOD_RED}You have been destroyed!{RESET}"
         else:
@@ -211,10 +205,10 @@ def heal_damage(character, heal_amount, damage_type="superficial"):
             "health_status": ""
         }
 
-    pools = character.db.pools
+    marks = character.damage["health"]
 
     if damage_type == "superficial":
-        current_superficial = pools.get("superficial_damage", 0)
+        current_superficial = marks["superficial"]
         if current_superficial == 0:
             return {
                 "success": False,
@@ -223,11 +217,11 @@ def heal_damage(character, heal_amount, damage_type="superficial"):
             }
 
         healed = min(heal_amount, current_superficial)
-        pools["superficial_damage"] -= healed
+        character.set_damage("health", superficial=current_superficial - healed)
         damage_word = f"{DARK_RED}Superficial{RESET}"
 
     elif damage_type == "aggravated":
-        current_aggravated = pools.get("aggravated_damage", 0)
+        current_aggravated = marks["aggravated"]
         if current_aggravated == 0:
             return {
                 "success": False,
@@ -236,7 +230,7 @@ def heal_damage(character, heal_amount, damage_type="superficial"):
             }
 
         healed = min(heal_amount, current_aggravated)
-        pools["aggravated_damage"] -= healed
+        character.set_damage("health", aggravated=current_aggravated - healed)
         damage_word = f"{BLOOD_RED}Aggravated{RESET}"
     else:
         return {
@@ -244,11 +238,6 @@ def heal_damage(character, heal_amount, damage_type="superficial"):
             "message": f"Invalid damage type: {damage_type}",
             "health_status": ""
         }
-
-    # Update current health
-    max_health = pools.get("health", 3)
-    total_damage = pools["superficial_damage"] + pools["aggravated_damage"]
-    pools["current_health"] = max(0, max_health - total_damage)
 
     message = f"You heal {GOLD}{healed}{RESET} {damage_word} damage."
 
@@ -274,11 +263,9 @@ def get_health_status(character):
     Returns:
         str: Formatted health display
     """
-    pools = character.db.pools
-    max_health = pools.get("health", 3)
-    superficial = pools.get("superficial_damage", 0)
-    aggravated = pools.get("aggravated_damage", 0)
-    current = pools.get("current_health", max_health)
+    max_health = character.health_max
+    superficial = character.damage["health"]["superficial"]
+    aggravated = character.damage["health"]["aggravated"]
 
     # Build health boxes visualization
     # Aggravated fills from right, superficial from left
@@ -350,9 +337,8 @@ def get_impairment_penalty(character):
     Returns:
         int: Penalty to dice pools (0 or -2)
     """
-    pools = character.db.pools
-    max_health = pools.get("health", 3)
-    current_health = pools.get("current_health", max_health)
+    max_health = character.health_max
+    current_health = character.current_health
 
     # Impaired at half health or less
     if current_health <= max_health / 2:

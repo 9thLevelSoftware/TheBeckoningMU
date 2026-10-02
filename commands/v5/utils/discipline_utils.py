@@ -36,7 +36,7 @@ def get_character_disciplines(character):
         if disc_name == "Thin-Blood Alchemy":
             continue  # Handle separately
 
-        level = character.db.disciplines.get(disc_name, 0)
+        level = character.get_trait(disc_name)
         if level > 0:
             disciplines[disc_name] = level
 
@@ -57,7 +57,7 @@ def get_discipline_powers(character, discipline_name):
     if discipline_name not in DISCIPLINES:
         return []
 
-    char_level = character.db.disciplines.get(discipline_name, 0)
+    char_level = character.get_trait(discipline_name)
     if char_level == 0:
         return []
 
@@ -123,7 +123,7 @@ def can_use_power(character, discipline_name, power_name):
         return False, f"Unknown power: {power_name}"
 
     # Check character's discipline level
-    char_level = character.db.disciplines.get(discipline_name, 0)
+    char_level = character.get_trait(discipline_name)
     if char_level < power_level:
         return False, f"You need {discipline_name} {power_level} to use {power_name} (you have {char_level})"
 
@@ -136,7 +136,7 @@ def can_use_power(character, discipline_name, power_name):
             req_disc = " ".join(parts[:-1])
             req_level = int(parts[-1])
 
-            char_amalgam_level = character.db.disciplines.get(req_disc, 0)
+            char_amalgam_level = character.get_trait(req_disc)
             if char_amalgam_level < req_level:
                 return False, f"{power_name} requires {amalgam_req} (you have {req_disc} {char_amalgam_level})"
 
@@ -269,7 +269,8 @@ def check_resonance_bonus(character, discipline_name):
     Returns:
         dict: {"bonus": int, "resonance": str} or None
     """
-    current_resonance = character.db.resonance or ""
+    resonance = character.resonance
+    current_resonance = resonance["type"] if resonance else ""
 
     # Map disciplines to resonances that grant bonuses
     resonance_map = {

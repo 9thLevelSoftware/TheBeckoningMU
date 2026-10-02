@@ -11,18 +11,14 @@ import random
 
 def is_thin_blood(character):
     """Check if character is a Thin-Blood."""
-    if not hasattr(character.db, 'vampire'):
-        return False
-    return character.db.vampire.get("clan") == "Thin-Blood"
+    return character.clan == "Thin-Blood"
 
 
 def get_blood_potency(character):
     """Get character's Blood Potency (Thin-Bloods are always 0)."""
     if is_thin_blood(character):
         return 0
-    if not hasattr(character.db, 'vampire'):
-        return 0
-    return character.db.vampire.get("blood_potency", 1)
+    return character.blood_potency
 
 
 def has_ingredients(character, formula):
@@ -39,7 +35,7 @@ def has_ingredients(character, formula):
         return True, "No ingredients required"
 
     # Check if character has ingredient tracking
-    if not hasattr(character.db, "alchemy_ingredients"):
+    if character.db.alchemy_ingredients is None:
         character.db.alchemy_ingredients = {}
 
     ingredients = formula.get("ingredients", [])
@@ -67,10 +63,7 @@ def craft_formula(character, formula_name):
         dict: {"success": bool, "message": str, "formula": dict}
     """
     # Get Thin-Blood Alchemy level
-    if not hasattr(character.db, 'disciplines'):
-        character.db.disciplines = {}
-
-    alchemy_level = character.db.disciplines.get("Thin-Blood Alchemy", 0)
+    alchemy_level = character.get_trait("Thin-Blood Alchemy")
 
     if alchemy_level == 0:
         return {
@@ -100,11 +93,7 @@ def craft_formula(character, formula_name):
     # Craft roll: Intelligence + Thin-Blood Alchemy vs difficulty
     difficulty = formula.get("craft_difficulty", 3)
 
-    # Get attributes
-    if not hasattr(character.db, 'attributes'):
-        character.db.attributes = {}
-
-    pool = character.db.attributes.get("intelligence", 1) + alchemy_level
+    pool = character.get_trait("intelligence") + alchemy_level
 
     # Thin-Bloods don't use Hunger dice for Alchemy (Blood Potency 0)
     result = roll_pool(pool=pool, hunger=0, difficulty=difficulty)
@@ -115,7 +104,7 @@ def craft_formula(character, formula_name):
             character.db.alchemy_ingredients[ingredient] -= 1
 
         # Add formula to crafted formulae
-        if not hasattr(character.db, "crafted_formulae"):
+        if character.db.crafted_formulae is None:
             character.db.crafted_formulae = []
 
         character.db.crafted_formulae.append({
@@ -153,7 +142,7 @@ def use_alchemy(character, formula_name):
     Returns:
         dict: {"success": bool, "message": str, "effect": dict}
     """
-    if not hasattr(character.db, "crafted_formulae"):
+    if character.db.crafted_formulae is None:
         character.db.crafted_formulae = []
 
     # Find the crafted formula
@@ -187,7 +176,7 @@ def use_alchemy(character, formula_name):
     }
 
     # Add effect to character
-    if not hasattr(character.db, "active_effects"):
+    if character.db.active_effects is None:
         character.db.active_effects = []
 
     character.db.active_effects.append({
@@ -213,10 +202,7 @@ def get_thin_blood_powers(character):
     Returns:
         list: List of formula dicts
     """
-    if not hasattr(character.db, 'disciplines'):
-        character.db.disciplines = {}
-
-    alchemy_level = character.db.disciplines.get("Thin-Blood Alchemy", 0)
+    alchemy_level = character.get_trait("Thin-Blood Alchemy")
 
     if alchemy_level == 0:
         return []
@@ -301,18 +287,11 @@ def can_pass_as_mortal(character):
         return False
 
     # Automatic at low Hunger
-    if not hasattr(character.db, 'vampire'):
-        return False
-
-    hunger = character.db.vampire.get("hunger", 1)
-    if hunger <= 2:
+    if character.hunger <= 2:
         return True
 
     # Roll at higher Hunger
-    if not hasattr(character.db, 'attributes'):
-        return False
-
-    composure = character.db.attributes.get("composure", 1)
+    composure = character.get_trait("composure")
     if random.randint(1, 10) <= composure + 3:
         return True
 
@@ -327,7 +306,7 @@ def add_ingredient(character, ingredient_name, quantity=1):
         ingredient_name: Name of the ingredient
         quantity: Amount to add (default 1)
     """
-    if not hasattr(character.db, "alchemy_ingredients"):
+    if character.db.alchemy_ingredients is None:
         character.db.alchemy_ingredients = {}
 
     current = character.db.alchemy_ingredients.get(ingredient_name, 0)

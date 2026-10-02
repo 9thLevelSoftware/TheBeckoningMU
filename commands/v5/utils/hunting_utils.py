@@ -138,7 +138,7 @@ def roll_hunting(character, location="street", skill_bonus=0, predator_bonus=0):
     difficulty = HUNTING_DIFFICULTIES.get(location, HUNTING_DIFFICULTIES["default"])
 
     # Build dice pool (Wits + appropriate skill + bonuses)
-    wits = character.db.stats.get('attributes', {}).get('mental', {}).get('wits', 1)
+    wits = character.get_trait('wits')
     pool = wits + skill_bonus + predator_bonus
 
     # Roll dice
@@ -259,8 +259,7 @@ def get_predator_hunting_bonus(character):
             - preferred_locations: List of preferred hunting locations
             - special_ability: Special hunting ability (if any)
     """
-    vamp = character.db.vampire if hasattr(character.db, 'vampire') else {}
-    predator_type = vamp.get('predator_type', None)
+    predator_type = character.predator_type
 
     predator_bonuses = {
         "Alleycat": {

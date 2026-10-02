@@ -168,17 +168,8 @@ def _check_character_clan(character, clan: str) -> bool:
     if not character or not clan:
         return False
 
-    # Get clan from character's bio/traits
-    try:
-        from traits.models import CharacterBio
-
-        bio = CharacterBio.objects.get(character_id=character.id)
-        # Clan would be stored in traits or bio - adjust as needed
-        # For now, check if character has clan in db attributes
-        char_clan = character.db.clan or character.attributes.get("clan")
-        return char_clan and char_clan.lower() == clan.lower()
-    except Exception:
-        return False
+    char_clan = getattr(character, "clan", None)
+    return bool(char_clan) and char_clan.lower() == clan.lower()
 
 
 def _check_character_splat(character, splat: str) -> bool:
@@ -200,19 +191,9 @@ def _check_character_hunger(character, operator: str, value: int) -> bool:
     if not character:
         return False
 
-    # Get hunger from character traits
-    try:
-        from traits.models import CharacterTrait, Trait
-
-        hunger_trait = Trait.objects.get(name="Hunger")
-        char_hunger = CharacterTrait.objects.get(
-            character_id=character.id, trait=hunger_trait
-        )
-        hunger_value = char_hunger.rating
-    except Exception:
-        # Fall back to db attribute
-        hunger_value = getattr(character.db, "hunger", 0)
-
+    hunger_value = getattr(character, "hunger", None)
+    if hunger_value is None:
+        return False
     return _compare(hunger_value, operator, value)
 
 

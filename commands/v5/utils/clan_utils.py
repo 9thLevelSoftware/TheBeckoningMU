@@ -53,21 +53,15 @@ def get_clan(character):
     Returns:
         str or None: Clan name
     """
-    vampire = character.db.vampire
-    if not vampire:
-        return None
-    return vampire.get("clan", None)
+    return character.clan
 
 
 def set_clan(character, clan_name):
     """
     Set character's clan and apply clan-specific data.
 
-    This sets:
-    - Clan name
-    - Clan bane
-    - Clan compulsion
-    - In-clan disciplines (but does NOT grant dots automatically)
+    Only the clan name is stored (Character.clan); the bane, compulsion and
+    in-clan disciplines are derived from it. No discipline dots are granted.
 
     Args:
         character: Character object
@@ -82,20 +76,11 @@ def set_clan(character, clan_name):
     if not is_valid_clan(clan_name):
         return False
 
-    # Ensure vampire data exists
-    if not character.db.vampire:
-        raise ValueError("Character must be a vampire to have a clan.")
-
     # Check if clan already set (can't change clan mid-game without admin)
-    if character.db.vampire.get("clan") is not None:
+    if character.clan is not None:
         raise ValueError("Character already has a clan. Contact staff to change.")
 
-    clan_data = get_clan_info(clan_name)
-
-    # Set clan
-    character.db.vampire["clan"] = clan_name
-    character.db.vampire["bane"] = clan_data["bane"]
-    character.db.vampire["compulsion"] = clan_data["compulsion"]
+    character.clan = clan_name
 
     # Note: We don't automatically grant discipline dots here
     # That happens during character creation or via XP spending
@@ -185,10 +170,7 @@ def get_bane(character):
     Returns:
         str or None: Bane description
     """
-    vampire = character.db.vampire
-    if not vampire:
-        return None
-    return vampire.get("bane", None)
+    return character.bane
 
 
 def get_compulsion(character):
@@ -201,10 +183,7 @@ def get_compulsion(character):
     Returns:
         str or None: Compulsion description
     """
-    vampire = character.db.vampire
-    if not vampire:
-        return None
-    return vampire.get("compulsion", None)
+    return character.compulsion
 
 
 def trigger_compulsion(character):

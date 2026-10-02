@@ -1,18 +1,28 @@
 """
-V5 Vampire: The Masquerade Game Data Configuration
+V5 Vampire: The Masquerade rules data.
 
-This module contains all V5 game mechanics data in a database-ready format.
-Unlike the reference repository, this data is NOT hardcoded - it will be loaded
-into the database during initialization and can be modified without code changes.
+This module is the only source of V5 rules data in the game (attributes,
+skills, clans, disciplines and their powers, predator types, backgrounds,
+merits and flaws, the Blood Potency and XP tables). Game code imports from
+here; nothing reads rules data from the database. The `traits` app's
+legacy reference tables are seeded from these constants by `seed_traits`
+for the web chargen API.
 
-See: V5_REFERENCE_DATABASE.md for complete mechanics reference
-See: V5_IMPLEMENTATION_ROADMAP.md Phase 4+ for when this data gets used
+WARNING - CONTENT NOT YET VERIFIED. The structure here is authoritative, but
+several content tables are known to disagree with the V5 core book and are
+being corrected in a follow-up: the Blood Potency table, discipline powers
+(levels, Rouse costs, rituals mixed in with powers), clan banes and
+compulsions, predator types, merits and flaws, frenzy triggers and the
+resonance names and dyscrasias. Don't treat their values as rules until that
+correction lands.
 
-ARCHITECTURAL PRINCIPLE:
-- This file defines the DATA STRUCTURE only
-- Runtime trait data is loaded into the DB by the traits app (evennia seed_traits)
-- Game logic uses database queries, NOT direct imports from this file
+It also builds the trait registry (`TRAIT_REGISTRY`, `resolve_trait`) that
+`typeclasses.characters.Character.get_trait`/`set_trait` use to map a trait
+name to where it is stored on the character.
 """
+
+import re
+from typing import NamedTuple
 
 # ============================================================================
 # ATTRIBUTES (Physical, Social, Mental)
@@ -153,7 +163,6 @@ CLANS = {
 # DISCIPLINES (power levels 1-5)
 # ============================================================================
 
-# SKELETON ONLY - Full discipline powers defined in Phase 5
 DISCIPLINES = {
     "Animalism": {
         "type": "standard",
@@ -330,7 +339,6 @@ DISCIPLINES = {
                 }
             ]
         },
-        "powers": {}  # Populated in Phase 5
     },
     "Blood Sorcery": {
         "type": "ritual",
@@ -415,8 +423,7 @@ DISCIPLINES = {
                 }
             ]
         },
-        "powers": {},  # Populated in Phase 5
-        "rituals": []  # Populated in Phase 5
+        "rituals": []
     },
     "Celerity": {
         "type": "standard",
@@ -429,6 +436,14 @@ DISCIPLINES = {
                     "rouse": True,
                     "dice_pool": None,
                     "duration": "instant",
+                    "amalgam": None
+                },
+                {
+                    "name": "Rapid Reflexes",
+                    "description": "Add Celerity rating to initiative",
+                    "rouse": False,
+                    "dice_pool": None,
+                    "duration": "passive",
                     "amalgam": None
                 }
             ],
@@ -497,7 +512,6 @@ DISCIPLINES = {
                 }
             ]
         },
-        "powers": {}  # Populated in Phase 5
     },
     "Dominate": {
         "type": "standard",
@@ -586,7 +600,6 @@ DISCIPLINES = {
                 }
             ]
         },
-        "powers": {}  # Populated in Phase 5
     },
     "Fortitude": {
         "type": "standard",
@@ -667,7 +680,6 @@ DISCIPLINES = {
                 }
             ]
         },
-        "powers": {}  # Populated in Phase 5
     },
     "Obfuscate": {
         "type": "standard",
@@ -748,7 +760,6 @@ DISCIPLINES = {
                 }
             ]
         },
-        "powers": {}  # Populated in Phase 5
     },
     "Oblivion": {
         "type": "standard",
@@ -855,7 +866,6 @@ DISCIPLINES = {
                 }
             ]
         },
-        "powers": {}  # Populated in Phase 5
     },
     "Potence": {
         "type": "standard",
@@ -928,7 +938,6 @@ DISCIPLINES = {
                 }
             ]
         },
-        "powers": {}  # Populated in Phase 5
     },
     "Presence": {
         "type": "standard",
@@ -1017,7 +1026,6 @@ DISCIPLINES = {
                 }
             ]
         },
-        "powers": {}  # Populated in Phase 5
     },
     "Protean": {
         "type": "standard",
@@ -1211,13 +1219,7 @@ DISCIPLINES = {
                 }
             ]
         },
-        "powers": {}  # Populated in Phase 5
     },
-    "Thin-Blood Alchemy": {
-        "type": "thin-blood",
-        "description": "Thin-blood formula crafting",
-        "powers": {}  # Populated in Phase 9
-    }
 }
 
 # ============================================================================
@@ -1303,11 +1305,13 @@ PREDATOR_TYPES = {
 
 BACKGROUNDS = {
     "Allies": {
+        "instanced": True,
         "description": "Mortal or supernatural allies who can provide aid",
         "benefit": "Can call for help. +[dots] to Social rolls when relevant",
         "uses_per_session": "dots"
     },
     "Contacts": {
+        "instanced": True,
         "description": "Information sources in various areas",
         "benefit": "+[dots] to Investigation when using contacts for information",
         "uses_per_session": "dots * 2"
@@ -1328,6 +1332,7 @@ BACKGROUNDS = {
         "uses_per_session": "1 per week"
     },
     "Influence": {
+        "instanced": True,
         "description": "Sway over mortal institutions",
         "benefit": "+[dots] to Leadership/Politics in domain. Can requisition resources",
         "uses_per_session": "dots"
@@ -1343,14 +1348,22 @@ BACKGROUNDS = {
         "uses_per_session": "dots"
     },
     "Retainers": {
+        "instanced": True,
         "description": "Loyal servants (ghouls, etc.)",
         "benefit": "[dots] loyal servants who can perform tasks",
         "uses_per_session": "unlimited"
     },
     "Status": {
+        "instanced": True,
         "description": "Standing in vampire society",
         "benefit": "+[dots] to Social rolls with Kindred. Access to Elysium",
         "uses_per_session": "unlimited"
+    },
+    "Mawla": {
+        "instanced": True,
+        "description": "A Kindred mentor or patron who advises and protects you",
+        "benefit": "Advice, protection and introductions from an elder",
+        "uses_per_session": "dots"
     }
 }
 
@@ -1450,109 +1463,106 @@ BLOOD_POTENCY = {
 }
 
 # ============================================================================
-# CHARACTER CREATION RULES
+# MERITS & FLAWS
 # ============================================================================
+# Core-book merits and flaws (V5 core rulebook, "Advantages" chapter), plus
+# the flaws attached to Backgrounds. "dots" lists the ratings a character may
+# take. OWNER SIGN-OFF PENDING: these names and dot ratings follow the core
+# book but have not been checked line by line against the owner's copy.
 
-CHARGEN_RULES = {
-    "attributes": {
-        "starting_value": 1,  # All attributes start at 1
-        "priority_pools": {
-            "primary": 7,    # 7 dots to primary category
-            "secondary": 5,  # 5 dots to secondary category
-            "tertiary": 3    # 3 dots to tertiary category
-        },
-        "max_at_creation": 5  # Can't start higher than 5
-    },
-    "skills": {
-        "starting_value": 0,  # Skills start at 0
-        "priority_pools": {
-            "primary": 13,   # 13 dots to primary category
-            "secondary": 9,  # 9 dots to secondary category
-            "tertiary": 5    # 5 dots to tertiary category
-        },
-        "max_at_creation": 5,  # Can't start higher than 5
-        "specialties": 1  # 1 free specialty
-    },
-    "disciplines": {
-        "in_clan_dots": 2,   # 2 dots in in-clan disciplines
-        "out_clan_dots": 1,  # 1 dot in any discipline
-        "max_at_creation": 3  # Can't start higher than 3
-    },
-    "backgrounds": {
-        "dots": 3,  # 3 dots in backgrounds
-        "max_per_background": 5
-    },
-    "starting_values": {
-        "humanity": 7,
-        "willpower": 0,  # Calculated: Composure + Resolve
-        "health": 0,     # Calculated: Stamina + 3
-        "hunger": 1,     # Start at Hunger 1
-        "generation": 13,  # Standard fledgling
-        "blood_potency": 0,  # Start at BP 0
-        "experience": 0
-    },
-    "advantages": {
-        "merits": 7,  # 7 dots in merits
-        "flaws": 2    # Up to 2 dots in flaws for bonus points
-    }
+MERITS = {
+    "Linguistics": {"category": "Linguistics", "dots": (1, 2, 3, 4, 5),
+                    "description": "One additional language per dot"},
+    "Beautiful": {"category": "Looks", "dots": (2,),
+                  "description": "+1 die to appropriate Social pools"},
+    "Stunning": {"category": "Looks", "dots": (4,),
+                 "description": "+2 dice to appropriate Social pools"},
+    "Bloodhound": {"category": "Feeding", "dots": (1,),
+                   "description": "Smell the Resonance of mortal blood"},
+    "Iron Gullet": {"category": "Feeding", "dots": (3,),
+                    "description": "Feed on rancid, cold or otherwise spoiled blood"},
+    "Anarch Comrades": {"category": "Thin-blood", "dots": (1,),
+                        "description": "An Anarch group treats you as a mascot (Mawla 1)"},
+    "Camarilla Contact": {"category": "Thin-blood", "dots": (1,),
+                          "description": "A Camarilla Kindred contact (Mawla 1)"},
+    "Catenating Blood": {"category": "Thin-blood", "dots": (1,),
+                         "description": "Your blood can create blood bonds and ghouls"},
+    "Day Drinker": {"category": "Thin-blood", "dots": (1,),
+                    "description": "Sunlight only causes Superficial damage, halved"},
+    "Discipline Affinity": {"category": "Thin-blood", "dots": (1,),
+                            "description": "Learn one Discipline as in-clan"},
+    "Lifelike": {"category": "Thin-blood", "dots": (1,),
+                 "description": "Your body works like a mortal's"},
+    "Thin-Blood Alchemist": {"category": "Thin-blood", "dots": (1,),
+                             "description": "One dot of Thin-Blood Alchemy and a formula"},
+    "Vampiric Resilience": {"category": "Thin-blood", "dots": (1,),
+                            "description": "Suffer Superficial damage as a full vampire"},
 }
 
-# ============================================================================
-# EXPERIENCE COSTS
-# ============================================================================
-
-XP_COSTS = {
-    "attribute": {
-        "formula": "current * 5",
-        "description": "Current rating × 5"
-    },
-    "skill": {
-        "formula": "current * 3",
-        "description": "Current rating × 3"
-    },
-    "specialty": {
-        "cost": 3,
-        "description": "Flat 3 XP"
-    },
-    "discipline": {
-        "in_clan": {
-            "formula": "current * 5",
-            "description": "Current rating × 5 (in-clan)"
-        },
-        "out_clan": {
-            "formula": "current * 7",
-            "description": "Current rating × 7 (out of clan)"
-        }
-    },
-    "ritual": {
-        "cost": 3,
-        "description": "Flat 3 XP per ritual level"
-    },
-    "thin_blood_formula": {
-        "cost": 3,
-        "description": "Flat 3 XP"
-    },
-    "background": {
-        "formula": "current * 3",
-        "description": "Current rating × 3"
-    },
-    "humanity": {
-        "formula": "current * 10",
-        "description": "Current rating × 10"
-    },
-    "willpower": {
-        "cost": 8,
-        "description": "Flat 8 XP per permanent dot"
-    }
+FLAWS = {
+    "Illiterate": {"category": "Linguistics", "dots": (2,),
+                   "description": "You cannot read or write"},
+    "Ugly": {"category": "Looks", "dots": (1,),
+             "description": "-1 die to appropriate Social pools"},
+    "Repulsive": {"category": "Looks", "dots": (2,),
+                  "description": "-2 dice to appropriate Social pools"},
+    "Addiction": {"category": "Substance Use", "dots": (1,),
+                  "description": "-1 die unless you fed on the drug this scene"},
+    "Hopeless Addiction": {"category": "Substance Use", "dots": (2,),
+                           "description": "-2 dice unless you fed on the drug this scene"},
+    "Prey Exclusion": {"category": "Feeding", "dots": (1,),
+                       "description": "You refuse to feed from one kind of prey"},
+    "Methuselah's Thirst": {"category": "Feeding", "dots": (1,),
+                            "description": "Only supernatural blood fully slakes your Hunger"},
+    "Farmer": {"category": "Feeding", "dots": (2,),
+               "description": "You feed only from animals"},
+    "Organovore": {"category": "Feeding", "dots": (2,),
+                   "description": "You must eat flesh and organs to slake Hunger"},
+    "Baby Teeth": {"category": "Thin-blood", "dots": (1,),
+                   "description": "Your fangs never grew in"},
+    "Bestial Temper": {"category": "Thin-blood", "dots": (1,),
+                       "description": "You frenzy like a full vampire"},
+    "Branded by the Camarilla": {"category": "Thin-blood", "dots": (1,),
+                                 "description": "The Camarilla has marked you"},
+    "Clan Curse": {"category": "Thin-blood", "dots": (1,),
+                   "description": "You carry a clan's Bane at severity 1"},
+    "Dead Flesh": {"category": "Thin-blood", "dots": (1,),
+                   "description": "Your flesh is visibly dead"},
+    "Mortal Frailty": {"category": "Thin-blood", "dots": (1,),
+                       "description": "You cannot Rouse to mend damage"},
+    "Shunned by the Anarchs": {"category": "Thin-blood", "dots": (1,),
+                               "description": "The Anarchs want nothing to do with you"},
+    "Vitae Dependency": {"category": "Thin-blood", "dots": (1,),
+                         "description": "You must drink vampire vitae weekly or lose Disciplines"},
+    "Enemy": {"category": "Allies", "dots": (1, 2, 3, 4, 5),
+              "description": "Mortals who want to harm you"},
+    "Infamy": {"category": "Fame", "dots": (1, 2, 3, 4, 5),
+               "description": "You are known for something terrible"},
+    "Dark Secret": {"category": "Fame", "dots": (1, 2),
+                    "description": "A secret that would ruin you if revealed"},
+    "No Haven": {"category": "Haven", "dots": (1,),
+                 "description": "You have no fixed haven"},
+    "Compromised Haven": {"category": "Haven", "dots": (2,),
+                          "description": "Your haven has been raided or exposed"},
+    "Disliked": {"category": "Influence", "dots": (1,),
+                 "description": "-1 die to Social tests with mortal groups"},
+    "Despised": {"category": "Influence", "dots": (2,),
+                 "description": "A group works against you"},
+    "Known Corpse": {"category": "Mask", "dots": (1,),
+                     "description": "Others know you are dead"},
+    "Known Blankbody": {"category": "Mask", "dots": (2,),
+                        "description": "Your identity is flagged in government databases"},
+    "Adversary": {"category": "Mawla", "dots": (1, 2, 3, 4, 5),
+                  "description": "A Kindred who wants to harm you"},
+    "Destitute": {"category": "Resources", "dots": (1,),
+                  "description": "You have no money and no home"},
+    "Stalkers": {"category": "Retainers", "dots": (1,),
+                 "description": "Someone keeps attaching themselves to you"},
+    "Suspect": {"category": "Status", "dots": (1,),
+                "description": "You have broken the rules and are watched"},
+    "Shunned": {"category": "Status", "dots": (2,),
+                "description": "A sect despises you"},
 }
-
-# ============================================================================
-# MERITS & FLAWS (SKELETON)
-# ============================================================================
-
-# Full merit/flaw lists populated in Phase 8
-MERITS = {}
-FLAWS = {}
 
 # ============================================================================
 # RESONANCES (for Blood Potency/Feeding)
@@ -1587,8 +1597,11 @@ RESONANCES = {
 }
 
 # ============================================================================
-# STATS TEMPLATE (for character.db.stats compatibility)
+# STATS TEMPLATE (legacy flat shape)
 # ============================================================================
+# Legacy: only traits/utils.py (web chargen) still uses this; it goes when
+# web chargen writes through the Character accessors. The character schema
+# is the nested one in typeclasses/characters.py.
 
 def _get_default_stats_template():
     """
@@ -1639,6 +1652,9 @@ STATS = _get_default_stats_template()
 
 def get_trait_category(trait_name):
     """
+    Legacy lookup used only by traits/utils.py (web chargen). It treats every
+    unknown name as a background; game code uses resolve_trait() instead.
+
     Get the category (attributes, skills, disciplines) for a given trait name.
     
     Args:
@@ -1668,7 +1684,136 @@ def get_trait_category(trait_name):
 
 
 # ============================================================================
-# FRENZY TRIGGERS (Phase 11: Humanity/Touchstones)
+# DISCIPLINE POWER INDEX
+# ============================================================================
+
+
+def _build_discipline_powers():
+    """Flat index of every power in DISCIPLINES, keyed by power name.
+
+    Each value is the power's own dict plus "discipline" and "level". It is a
+    view of DISCIPLINES, not a second copy of the data.
+    """
+    index = {}
+    for discipline, data in DISCIPLINES.items():
+        for level, powers in data.get("powers", {}).items():
+            for power in powers:
+                if power["name"] in index:
+                    raise ValueError(f"Duplicate discipline power name: {power['name']}")
+                index[power["name"]] = dict(power, discipline=discipline, level=level)
+    return index
+
+
+DISCIPLINE_POWERS = _build_discipline_powers()
+_POWERS_BY_LOWER_NAME = {name.lower(): name for name in DISCIPLINE_POWERS}
+
+
+def find_power(power_name):
+    """Return the DISCIPLINE_POWERS entry for a power name (any case), or None."""
+    name = _POWERS_BY_LOWER_NAME.get(str(power_name).strip().lower())
+    return DISCIPLINE_POWERS[name] if name else None
+
+
+# ============================================================================
+# TRAIT REGISTRY
+# ============================================================================
+# Maps every rated trait a character can have to where Character stores it:
+#   attributes  -> db.stats["attributes"][group][key]
+#   skills      -> db.stats["skills"][group][key]
+#   disciplines -> db.stats["disciplines"][key]["level"]
+#   backgrounds -> db.advantages["backgrounds"][key]
+# Storage keys are lower_snake_case ("animal_ken", "blood_sorcery").
+
+
+class UnknownTrait(LookupError):  # noqa: N818 - public API name used by callers
+    """The name is not an attribute, skill, discipline or background."""
+
+
+class WrongCategory(ValueError):  # noqa: N818 - public API name used by callers
+    """The trait exists, but not in the category the caller asked for."""
+
+
+class TraitRef(NamedTuple):
+    category: str  # "attributes", "skills", "disciplines" or "backgrounds"
+    group: object  # "physical"/"social"/"mental" for attributes and skills, else None
+    key: str  # storage key
+    name: str  # display name
+
+
+# Allowed ratings per category.
+TRAIT_RANGES = {
+    "attributes": (1, 5),
+    "skills": (0, 5),
+    "disciplines": (0, 5),
+    "backgrounds": (0, 5),
+}
+
+_CATEGORY_ALIASES = {
+    "attribute": "attributes",
+    "attributes": "attributes",
+    "skill": "skills",
+    "skills": "skills",
+    "discipline": "disciplines",
+    "disciplines": "disciplines",
+    "background": "backgrounds",
+    "backgrounds": "backgrounds",
+}
+
+
+def normalize_trait_name(name):
+    """'Animal Ken' / 'animal-ken' / ' ANIMAL_KEN ' -> 'animal_ken'."""
+    return re.sub(r"[\s\-]+", "_", str(name).strip().lower())
+
+
+def normalize_category(category):
+    """Map 'skill'/'Skills' etc. to a TRAIT_RANGES key; raise WrongCategory if unknown."""
+    try:
+        return _CATEGORY_ALIASES[str(category).strip().lower()]
+    except KeyError:
+        raise WrongCategory(f"Unknown trait category: {category}") from None
+
+
+def _build_trait_registry():
+    registry = {}
+
+    def add(category, group, display):
+        key = normalize_trait_name(display)
+        if key in registry:
+            raise ValueError(f"Trait name collision: {display!r} and {registry[key].name!r}")
+        registry[key] = TraitRef(category, group, key, display)
+
+    for group, names in ATTRIBUTES.items():
+        for name in names:
+            add("attributes", group.lower(), name)
+    for group, names in SKILLS.items():
+        for name in names:
+            add("skills", group.lower(), name)
+    for name in DISCIPLINES:
+        add("disciplines", None, name)
+    for name in BACKGROUNDS:
+        add("backgrounds", None, name)
+    return registry
+
+
+TRAIT_REGISTRY = _build_trait_registry()
+
+
+def resolve_trait(name, category=None):
+    """Resolve a trait name (any case or spacing) to its TraitRef.
+
+    Raises UnknownTrait if the name is not a known trait, and WrongCategory if
+    `category` is given and the trait belongs to a different one.
+    """
+    ref = TRAIT_REGISTRY.get(normalize_trait_name(name))
+    if ref is None:
+        raise UnknownTrait(f"Unknown trait: {name}")
+    if category is not None and normalize_category(category) != ref.category:
+        raise WrongCategory(f"{ref.name} is not one of the {normalize_category(category)}")
+    return ref
+
+
+# ============================================================================
+# FRENZY TRIGGERS
 # ============================================================================
 
 FRENZY_TRIGGERS = {

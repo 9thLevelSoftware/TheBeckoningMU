@@ -198,7 +198,5 @@ class CmdHungerTestCase(BloodCommandTestBase):
         self.assertNotIn("Blood Surge Active", self.hunger_output(2))
 
     def test_hunger_expired_resonance_not_shown(self):
-        blood_utils.set_resonance(self.char, "Phlegmatic", intensity=1)
-        resonance = self.char.db.resonance
-        resonance["expires"] = time.time() - 1
+        blood_utils.set_resonance(self.char, "Phlegmatic", intensity=1, duration=-1)
         self.assertNotIn("Phlegmatic", self.hunger_output(2))

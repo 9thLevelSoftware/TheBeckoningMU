@@ -1,13 +1,13 @@
 """
 Rouse Check System for V5 Dice Integration
 
-Handles Rouse checks and Blood Potency reroll mechanics, integrating with
-the character trait system to track and update Hunger levels.
+Handles Rouse checks and Blood Potency reroll mechanics. Hunger and Blood
+Potency are read and written through the Character accessors
+(`character.hunger`, `character.blood_potency`).
 """
 
 from typing import Dict, Any, Optional
 from .dice_roller import roll_rouse_check as base_rouse_check
-from traits.utils import get_character_trait_value
 
 
 def perform_rouse_check(character, reason: str = '', power_level: int = 1) -> Dict[str, Any]:
@@ -50,8 +50,7 @@ def perform_rouse_check(character, reason: str = '', power_level: int = 1) -> Di
         >>>     print(f"Failed. Hunger increased to {result['hunger_after']}")
     """
     # Get current Hunger
-    hunger_before = getattr(character.db, 'hunger', 1)
-    hunger_before = max(0, min(5, hunger_before))  # Clamp to 0-5
+    hunger_before = character.hunger
 
     # Check if Hunger is already at maximum
     if hunger_before >= 5:
@@ -90,7 +89,7 @@ def perform_rouse_check(character, reason: str = '', power_level: int = 1) -> Di
     hunger_after = min(5, hunger_before + hunger_change)
 
     # Save updated Hunger to character
-    character.db.hunger = hunger_after
+    character.hunger = hunger_after
 
     return {
         'roll': roll_value,
@@ -139,7 +138,7 @@ def can_reroll_rouse(character, power_level: int) -> bool:
         False
     """
     # Get character's Blood Potency
-    blood_potency = get_character_trait_value(character, 'Blood Potency')
+    blood_potency = character.blood_potency
 
     # Determine maximum power level eligible for reroll
     if blood_potency == 0:
@@ -172,8 +171,7 @@ def get_hunger_level(character) -> int:
     Returns:
         int: Hunger level (0-5), defaults to 1 if not set
     """
-    hunger = getattr(character.db, 'hunger', 1)
-    return max(0, min(5, hunger))  # Clamp to valid range
+    return character.hunger
 
 
 def set_hunger_level(character, hunger: int) -> int:
@@ -187,9 +185,8 @@ def set_hunger_level(character, hunger: int) -> int:
     Returns:
         int: Actual Hunger level set (after clamping)
     """
-    clamped_hunger = max(0, min(5, hunger))
-    character.db.hunger = clamped_hunger
-    return clamped_hunger
+    character.hunger = hunger
+    return character.hunger
 
 
 def _format_rouse_message(

@@ -48,10 +48,6 @@ class CmdDisciplines(Command):
         """Execute the command."""
         caller = self.caller
 
-        # Ensure character has disciplines attribute
-        if not hasattr(caller.db, 'disciplines') or caller.db.disciplines is None:
-            caller.db.disciplines = {}
-
         # If no argument, show all disciplines
         if not self.args.strip():
             output = self._format_header("Your Disciplines")
@@ -75,7 +71,7 @@ class CmdDisciplines(Command):
             return
 
         # Check if character has this discipline
-        char_level = caller.db.disciplines.get(matched_disc, 0)
+        char_level = caller.get_trait(matched_disc)
         if char_level == 0:
             caller.msg(f"{SHADOW_GREY}You do not know {matched_disc}.{RESET}")
             return
@@ -143,10 +139,6 @@ class CmdActivatePower(Command):
     def func(self):
         """Execute the command."""
         caller = self.caller
-
-        # Ensure character has disciplines attribute
-        if not hasattr(caller.db, 'disciplines') or caller.db.disciplines is None:
-            caller.db.disciplines = {}
 
         if not self.args.strip():
             caller.msg(f"{BLOOD_RED}Usage:{RESET} +power <discipline>/<power name>")

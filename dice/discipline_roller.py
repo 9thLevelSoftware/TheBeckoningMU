@@ -1,16 +1,24 @@
 """
 Discipline Power Rolling System for V5 Integration
 
-Handles rolling discipline powers by integrating with the traits database,
-calculating dice pools from character traits, applying Blood Potency bonuses,
-and performing Rouse checks.
+Handles rolling discipline powers: looks powers up in
+world.v5_data.DISCIPLINE_POWERS, calculates dice pools from the character's
+traits (Character.get_trait), applies Blood Potency bonuses and performs
+Rouse checks.
 """
 
 from typing import Dict, Any, List, Optional, Tuple
 from .dice_roller import roll_v5_pool
 from .rouse_checker import perform_rouse_check, get_hunger_level
-from traits.models import DisciplinePower
-from traits.utils import get_character_trait_value
+from world.v5_data import UnknownTrait, find_power
+
+
+def _trait_value(character, trait_name: str) -> int:
+    """A trait rating via Character.get_trait; a name that isn't a trait counts 0."""
+    try:
+        return character.get_trait(trait_name)
+    except UnknownTrait:
+        return 0
 
 
 def roll_discipline_power(
@@ -23,7 +31,7 @@ def roll_discipline_power(
     Roll a discipline power for a character.
 
     This function:
-    1. Looks up the discipline power in the database
+    1. Looks up the discipline power in world.v5_data.DISCIPLINE_POWERS
     2. Parses the power's dice pool string (e.g., "Strength + Brawl")
     3. Calculates the total dice pool from character traits
     4. Applies Blood Potency bonuses
@@ -39,7 +47,7 @@ def roll_discipline_power(
 
     Returns:
         dict: {
-            'power': DisciplinePower object,
+            'power': dict (the DISCIPLINE_POWERS entry),
             'power_name': str,
             'dice_pool': int (total pool size),
             'dice_pool_breakdown': dict (trait contributions),
@@ -53,7 +61,7 @@ def roll_discipline_power(
         }
 
     Raises:
-        ValueError: If power not found or character doesn't know the power
+        ValueError: If the power is not found or has no dice pool
 
     Examples:
         >>> result = roll_discipline_power(character, "Corrosive Vitae", difficulty=2)
@@ -61,43 +69,42 @@ def roll_discipline_power(
         >>>     print(f"Success with {result['roll_result'].total_successes} successes!")
     """
     # Look up the discipline power
-    try:
-        power = DisciplinePower.objects.get(name__iexact=power_name)
-    except DisciplinePower.DoesNotExist:
-        raise ValueError(f"Discipline power '{power_name}' not found in database")
+    power = find_power(power_name)
+    if power is None:
+        raise ValueError(f"Discipline power '{power_name}' not found")
 
     # Get character's current Hunger
     hunger_before = get_hunger_level(character)
 
     # Perform Rouse check if required
     rouse_result = None
-    if with_rouse and power.cost and power.cost.lower() != 'free':
+    if with_rouse and power.get('rouse'):
         rouse_result = perform_rouse_check(
             character,
-            reason=f"Activating {power.name}",
-            power_level=power.level
+            reason=f"Activating {power['name']}",
+            power_level=power['level']
         )
 
     # Get updated Hunger after Rouse check
     hunger_after = get_hunger_level(character)
 
     # Parse dice pool from power
-    if not power.dice_pool:
-        raise ValueError(f"Power '{power.name}' has no dice pool defined")
+    if not power.get('dice_pool'):
+        raise ValueError(f"Power '{power['name']}' has no dice pool defined")
 
-    trait_names = parse_dice_pool(power.dice_pool)
+    trait_names = parse_dice_pool(power['dice_pool'])
 
     # Calculate dice pool from traits
     pool_breakdown = {}
     base_pool = 0
 
     for trait_name in trait_names:
-        trait_value = get_character_trait_value(character, trait_name)
+        trait_value = _trait_value(character, trait_name)
         pool_breakdown[trait_name] = trait_value
         base_pool += trait_value
 
     # Apply Blood Potency bonus
-    bp_bonus = get_blood_potency_bonus(character, power.discipline.name)
+    bp_bonus = get_blood_potency_bonus(character, power['discipline'])
     pool_breakdown['Blood Potency Bonus'] = bp_bonus
     total_pool = base_pool + bp_bonus
 
@@ -124,7 +131,7 @@ def roll_discipline_power(
 
     return {
         'power': power,
-        'power_name': power.name,
+        'power_name': power['name'],
         'dice_pool': total_pool,
         'dice_pool_breakdown': pool_breakdown,
         'blood_potency_bonus': bp_bonus,
@@ -148,7 +155,7 @@ def parse_dice_pool(pool_string: str) -> List[str]:
     - "Strength / Manipulation + Brawl" → ['Strength', 'Brawl'] (takes first alternative)
 
     Args:
-        pool_string: Dice pool string from DisciplinePower.dice_pool
+        pool_string: Dice pool string from a DISCIPLINE_POWERS entry
 
     Returns:
         List of trait names to sum
@@ -197,7 +204,7 @@ def calculate_pool_from_traits(character, trait_names: List[str]) -> Tuple[int, 
     breakdown = {}
 
     for trait_name in trait_names:
-        value = get_character_trait_value(character, trait_name)
+        value = _trait_value(character, trait_name)
         breakdown[trait_name] = value
         total += value
 
@@ -227,7 +234,7 @@ def get_blood_potency_bonus(character, discipline_name: str) -> int:
         >>> get_blood_potency_bonus(character, "Auspex")
         2  # Character has BP 4
     """
-    blood_potency = get_character_trait_value(character, 'Blood Potency')
+    blood_potency = character.blood_potency
 
     # Calculate bonus based on BP level
     if blood_potency >= 10:
@@ -249,7 +256,7 @@ def can_use_power(character, power_name: str) -> Tuple[bool, str]:
     Check if a character can use a specific discipline power.
 
     Checks:
-    1. Character knows the power (has CharacterPower entry)
+    1. Character knows the power (Character.known_powers)
     2. Character has required discipline rating
     3. Character has required amalgam discipline (if applicable)
     4. Character is not at Hunger 5 (optional warning)
@@ -267,29 +274,25 @@ def can_use_power(character, power_name: str) -> Tuple[bool, str]:
         >>>     print(f"Cannot use power: {reason}")
     """
     # Look up the power
-    try:
-        power = DisciplinePower.objects.get(name__iexact=power_name)
-    except DisciplinePower.DoesNotExist:
+    power = find_power(power_name)
+    if power is None:
         return False, f"Power '{power_name}' not found"
 
     # Check if character knows the power
-    from traits.models import CharacterPower
-    if not CharacterPower.objects.filter(character=character, power=power).exists():
-        return False, f"You don't know the power '{power.name}'"
+    if power['name'] not in character.known_powers:
+        return False, f"You don't know the power '{power['name']}'"
 
     # Check discipline rating
-    discipline_rating = get_character_trait_value(character, power.discipline.name)
-    if discipline_rating < power.level:
-        return False, f"Requires {power.discipline.name} {power.level} (you have {discipline_rating})"
+    discipline_rating = character.get_trait(power['discipline'])
+    if discipline_rating < power['level']:
+        return False, f"Requires {power['discipline']} {power['level']} (you have {discipline_rating})"
 
-    # Check amalgam requirement
-    if power.amalgam_discipline:
-        amalgam_rating = get_character_trait_value(character, power.amalgam_discipline.name)
-        if amalgam_rating < power.amalgam_level:
-            return False, (
-                f"Requires {power.amalgam_discipline.name} {power.amalgam_level} "
-                f"(you have {amalgam_rating})"
-            )
+    # Check amalgam requirement (stored as e.g. "Obfuscate 2")
+    if power.get('amalgam'):
+        amalgam_name, _, amalgam_level = power['amalgam'].rpartition(' ')
+        amalgam_rating = character.get_trait(amalgam_name)
+        if amalgam_rating < int(amalgam_level):
+            return False, f"Requires {power['amalgam']} (you have {amalgam_rating})"
 
     # Warn if at maximum Hunger (not a blocker, just a warning)
     hunger = get_hunger_level(character)
@@ -309,12 +312,12 @@ def get_character_discipline_powers(character, discipline_name: Optional[str] = 
 
     Returns:
         List of dicts containing power info:
-            - power: DisciplinePower object
+            - power: dict (the DISCIPLINE_POWERS entry)
             - name: str
             - discipline: str
             - level: int
             - dice_pool: str
-            - cost: str
+            - rouse: bool
             - can_use: bool
             - reason: str (if can't use)
 
@@ -323,28 +326,22 @@ def get_character_discipline_powers(character, discipline_name: Optional[str] = 
         >>> for power_info in powers:
         >>>     print(f"{power_info['name']} (Level {power_info['level']})")
     """
-    from traits.models import CharacterPower
-
-    # Get all powers the character knows
-    char_powers = CharacterPower.objects.filter(character=character).select_related('power__discipline')
-
-    # Filter by discipline if specified
-    if discipline_name:
-        char_powers = char_powers.filter(power__discipline__name__iexact=discipline_name)
-
-    # Build result list
     results = []
-    for char_power in char_powers:
-        power = char_power.power
-        can_use, reason = can_use_power(character, power.name)
+    for name in character.known_powers:
+        power = find_power(name)
+        if power is None:
+            continue
+        if discipline_name and power['discipline'].lower() != discipline_name.lower():
+            continue
+        can_use, reason = can_use_power(character, power['name'])
 
         results.append({
             'power': power,
-            'name': power.name,
-            'discipline': power.discipline.name,
-            'level': power.level,
-            'dice_pool': power.dice_pool,
-            'cost': power.cost,
+            'name': power['name'],
+            'discipline': power['discipline'],
+            'level': power['level'],
+            'dice_pool': power.get('dice_pool'),
+            'rouse': bool(power.get('rouse')),
             'can_use': can_use,
             'reason': reason
         })
@@ -353,7 +350,7 @@ def get_character_discipline_powers(character, discipline_name: Optional[str] = 
 
 
 def _format_discipline_roll_message(
-    power: DisciplinePower,
+    power: dict[str, Any],
     pool_breakdown: Dict[str, int],
     total_pool: int,
     rouse_result: Optional[Dict[str, Any]],
@@ -364,7 +361,7 @@ def _format_discipline_roll_message(
     Format a discipline power roll result for display.
 
     Args:
-        power: DisciplinePower object
+        power: DISCIPLINE_POWERS entry
         pool_breakdown: Dict of trait contributions
         total_pool: Total dice pool size
         rouse_result: Rouse check result dict (or None)
@@ -377,12 +374,12 @@ def _format_discipline_roll_message(
     lines = []
 
     # Power header
-    lines.append(f"|c=== {power.name} ===|n")
-    lines.append(f"|w{power.discipline.name} Level {power.level}|n")
+    lines.append(f"|c=== {power['name']} ===|n")
+    lines.append(f"|w{power['discipline']} Level {power['level']}|n")
 
-    if power.description:
+    if power.get('description'):
         # Show first line of description
-        desc_first_line = power.description.split('\n')[0][:80]
+        desc_first_line = power['description'].splitlines()[0][:80]
         lines.append(f"|x{desc_first_line}|n")
 
     lines.append("")

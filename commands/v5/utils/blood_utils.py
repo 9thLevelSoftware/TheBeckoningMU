@@ -27,33 +27,15 @@ RESONANCE_INTENSITY = {
 
 def get_hunger_level(character) -> int:
     """
-    Get character's current Hunger level.
-
-    Supports both new vampire data structure (character.db.vampire['hunger'])
-    and legacy structure (character.db.hunger).
+    Get character's current Hunger level (0-5), via Character.hunger.
 
     Args:
         character: Character object
 
     Returns:
-        int: Hunger level (0-5), defaults to 1 if not set
+        int: Hunger level (0-5)
     """
-    try:
-        # Try new vampire data structure first
-        vampire_data = getattr(character.db, 'vampire', None)
-        if vampire_data and isinstance(vampire_data, dict):
-            hunger = vampire_data.get('hunger', 1)
-        else:
-            # Fall back to legacy structure
-            hunger = getattr(character.db, 'hunger', 1)
-    except (AttributeError, TypeError):
-        hunger = 1
-
-    # Handle None case
-    if hunger is None:
-        hunger = 1
-
-    return max(0, min(5, hunger))
+    return character.hunger
 
 
 def get_hunger(character) -> int:
@@ -71,10 +53,7 @@ def get_hunger(character) -> int:
 
 def set_hunger_level(character, hunger: int) -> int:
     """
-    Set character's Hunger level.
-
-    Supports both new vampire data structure (character.db.vampire['hunger'])
-    and legacy structure (character.db.hunger).
+    Set character's Hunger level via Character.hunger (clamped to 0-5).
 
     Args:
         character: Character object
@@ -83,22 +62,8 @@ def set_hunger_level(character, hunger: int) -> int:
     Returns:
         int: Actual Hunger level set (after clamping)
     """
-    clamped_hunger = max(0, min(5, hunger))
-
-    try:
-        # Try new vampire data structure first
-        vampire_data = getattr(character.db, 'vampire', None)
-        if vampire_data and isinstance(vampire_data, dict):
-            vampire_data['hunger'] = clamped_hunger
-            character.db.vampire = vampire_data  # Ensure change persists
-        else:
-            # Fall back to legacy structure
-            character.db.hunger = clamped_hunger
-    except (AttributeError, TypeError):
-        # If all else fails, set legacy
-        character.db.hunger = clamped_hunger
-
-    return clamped_hunger
+    character.hunger = hunger
+    return character.hunger
 
 
 def reduce_hunger(character, amount: int = 1) -> int:
@@ -196,9 +161,7 @@ def format_hunger_display(character) -> str:
 
 def get_resonance(character) -> Optional[Dict[str, Any]]:
     """
-    Get character's current blood resonance.
-
-    Supports both new vampire data structure and legacy structure.
+    Get character's current blood resonance, via Character.resonance.
 
     Args:
         character: Character object
@@ -206,27 +169,7 @@ def get_resonance(character) -> Optional[Dict[str, Any]]:
     Returns:
         dict or None: {'type': str, 'intensity': int, 'expires': float} or None
     """
-    try:
-        # Try new vampire data structure first
-        vampire_data = getattr(character.db, 'vampire', None)
-        if vampire_data and isinstance(vampire_data, dict):
-            resonance_type = vampire_data.get('current_resonance')
-            intensity = vampire_data.get('resonance_intensity', 0)
-            if resonance_type and intensity > 0:
-                # Convert to unified format with expiration
-                expires = vampire_data.get('resonance_expires', time.time() + 3600)
-                return {
-                    'type': resonance_type,
-                    'intensity': intensity,
-                    'expires': expires
-                }
-        else:
-            # Fall back to legacy structure
-            return getattr(character.db, 'resonance', None)
-    except (AttributeError, TypeError):
-        return None
-
-    return None
+    return character.resonance
 
 
 def set_resonance(character, resonance_type: str, intensity: int = 1, duration: int = 3600) -> Dict[str, Any]:
@@ -235,8 +178,6 @@ def set_resonance(character, resonance_type: str, intensity: int = 1, duration: 
 
     Resonance types: Choleric, Melancholic, Phlegmatic, Sanguine
     Intensity: 1 (Fleeting), 2 (Intense), 3 (Dyscrasia)
-
-    Supports both new vampire data structure and legacy structure.
 
     Args:
         character: Character object
@@ -251,54 +192,22 @@ def set_resonance(character, resonance_type: str, intensity: int = 1, duration: 
         >>> set_resonance(character, 'Choleric', intensity=2)
         {'type': 'Choleric', 'intensity': 2, 'expires': 1234567890.0}
     """
-    clamped_intensity = max(1, min(3, intensity))
-    expires = time.time() + duration
-
-    resonance = {
+    character.resonance = {
         'type': resonance_type,
-        'intensity': clamped_intensity,
-        'expires': expires
+        'intensity': max(1, min(3, intensity)),
+        'expires': time.time() + duration,
     }
-
-    try:
-        # Try new vampire data structure first
-        vampire_data = getattr(character.db, 'vampire', None)
-        if vampire_data and isinstance(vampire_data, dict):
-            vampire_data['current_resonance'] = resonance_type
-            vampire_data['resonance_intensity'] = clamped_intensity
-            vampire_data['resonance_expires'] = expires
-            character.db.vampire = vampire_data
-        else:
-            # Fall back to legacy structure
-            character.db.resonance = resonance
-    except (AttributeError, TypeError):
-        character.db.resonance = resonance
-
-    return resonance
+    return character.resonance
 
 
 def clear_resonance(character):
     """
     Clear character's blood resonance.
 
-    Supports both new vampire data structure and legacy structure.
-
     Args:
         character: Character object
     """
-    try:
-        # Try new vampire data structure first
-        vampire_data = getattr(character.db, 'vampire', None)
-        if vampire_data and isinstance(vampire_data, dict):
-            vampire_data['current_resonance'] = None
-            vampire_data['resonance_intensity'] = 0
-            vampire_data['resonance_expires'] = None
-            character.db.vampire = vampire_data
-        else:
-            # Fall back to legacy structure
-            character.db.resonance = None
-    except (AttributeError, TypeError):
-        character.db.resonance = None
+    character.resonance = None
 
 
 def get_resonance_bonus(character, discipline_name: str) -> int:
@@ -336,7 +245,7 @@ def get_resonance_bonus(character, discipline_name: str) -> int:
         return 0
 
     # Check if expired
-    if resonance.get('expires', 0) < time.time():
+    if resonance.get('expires') is not None and resonance['expires'] < time.time():
         clear_resonance(character)
         return 0
 
@@ -377,7 +286,7 @@ def format_resonance_display(character) -> Optional[str]:
         return None
 
     # Check if expired
-    if resonance.get('expires', 0) < time.time():
+    if resonance.get('expires') is not None and resonance['expires'] < time.time():
         clear_resonance(character)
         return None
 
@@ -415,8 +324,7 @@ def get_blood_potency(character) -> int:
     Returns:
         int: Blood Potency level (0-10)
     """
-    from .trait_utils import get_trait_value
-    return get_trait_value(character, 'Blood Potency')
+    return character.blood_potency
 
 
 def get_blood_potency_bonus(character) -> int:
@@ -586,81 +494,3 @@ def format_blood_surge_display(character) -> Optional[str]:
         time_str = "less than 1 minute"
 
     return f"|wBlood Surge:|n |g+{bonus}|n to |y{trait}|n (expires in {time_str})"
-
-
-def mend_damage(character, damage_type: str = 'superficial', amount: int = 1) -> Dict[str, Any]:
-    """
-    Mend damage by spending blood (vampire healing).
-
-    Vampires can mend damage by spending blood. Superficial damage heals automatically,
-    but Aggravated damage requires a Rouse check per point healed.
-
-    Args:
-        character: Character object
-        damage_type: Type of damage ('superficial' or 'aggravated')
-        amount: Amount of damage to heal
-
-    Returns:
-        dict: {
-            'success': bool,
-            'healed': int (amount actually healed),
-            'damage_type': str,
-            'hunger_increased': bool,
-            'rouse_checks': int (number of Rouse checks made),
-            'message': str
-        }
-
-    Examples:
-        >>> mend_damage(character, 'superficial', 2)
-        {'success': True, 'healed': 2, 'hunger_increased': False, ...}
-    """
-    from dice.dice_roller import roll_rouse_check
-
-    # Get current damage
-    current_superficial = getattr(character.db, 'superficial_damage', 0)
-    current_aggravated = getattr(character.db, 'aggravated_damage', 0)
-
-    healed = 0
-    hunger_increased = False
-    rouse_checks = 0
-
-    if damage_type.lower() == 'superficial':
-        # Superficial damage heals automatically (no Rouse check needed per V5)
-        healed = min(amount, current_superficial)
-        character.db.superficial_damage = current_superficial - healed
-        message = f"Healed {healed} superficial damage."
-
-    elif damage_type.lower() == 'aggravated':
-        # Aggravated damage requires Rouse check per point
-        for i in range(min(amount, current_aggravated)):
-            rouse_result = roll_rouse_check(character, reason=f"Mending aggravated damage")
-            rouse_checks += 1
-
-            if rouse_result.get('hunger_increased', False):
-                hunger_increased = True
-
-            healed += 1
-
-        character.db.aggravated_damage = current_aggravated - healed
-        message = f"Healed {healed} aggravated damage with {rouse_checks} Rouse check(s)."
-        if hunger_increased:
-            message += " Hunger increased from failed Rouse check(s)."
-
-    else:
-        return {
-            'success': False,
-            'healed': 0,
-            'damage_type': damage_type,
-            'hunger_increased': False,
-            'rouse_checks': 0,
-            'message': f"Invalid damage type: {damage_type}. Use 'superficial' or 'aggravated'."
-        }
-
-    return {
-        'success': True,
-        'healed': healed,
-        'damage_type': damage_type,
-        'hunger_increased': hunger_increased,
-        'rouse_checks': rouse_checks,
-        'message': message
-    }

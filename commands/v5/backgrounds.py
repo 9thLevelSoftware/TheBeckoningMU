@@ -168,7 +168,7 @@ class CmdBackground(default_cmds.MuxCommand):
 
         if result["success"]:
             caller.msg(f"{GOLD}{result['message']}{RESET}")
-            caller.msg(f"{PALE_IVORY}New Hunger: {caller.db.vampire.get('hunger', 1)}{RESET}")
+            caller.msg(f"{PALE_IVORY}New Hunger: {caller.hunger}{RESET}")
         else:
             caller.msg(f"{BLOOD_RED}{result['message']}{RESET}")
 

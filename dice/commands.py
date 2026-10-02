@@ -199,7 +199,7 @@ class CmdRoll(default_cmds.MuxCommand):
 
     def _get_willpower(self):
         """Get character's current Willpower."""
-        return getattr(self.caller.db, 'willpower', None)
+        return getattr(self.caller, "current_willpower", None)
 
 
 class CmdRollPower(default_cmds.MuxCommand):
@@ -312,7 +312,7 @@ class CmdRollPower(default_cmds.MuxCommand):
 
     def _get_willpower(self):
         """Get character's current Willpower."""
-        return getattr(self.caller.db, 'willpower', None)
+        return getattr(self.caller, "current_willpower", None)
 
 
 class CmdRouse(Command):
