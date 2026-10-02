@@ -622,6 +622,43 @@ class ApplyChargenFactsTests(EvenniaTest):
         self.assertEqual(char.touchstones[0]["name"], "Teo Marquez")
         self.assertEqual(char.touchstones[0]["conviction_index"], 0)
 
+    def test_chargen_ritual_and_formula_are_the_ones_the_game_reads(self):
+        """PR 8 R-17: chargen writes the same per-discipline store that
+        known_rituals/known_formulas, distillation and +spend read."""
+        from commands.v5.utils.thin_blood_utils import craft_formula
+        from commands.v5.utils.xp_utils import award_xp
+
+        payload = legal_payload(clan="Tremere", predator_type="Bagger", rituals=["Blood Walk"])
+        payload["disciplines"] = {"Auspex": 2, "Dominate": 1, "Blood Sorcery": 1}
+        payload["discipline_powers"] = ["Heightened Senses", "Premonition", "Cloud Memory", "A Taste for Blood"]
+        payload["specialties"][0] = {"skill": "larceny", "name": "Lock Picking"}
+        sub = parse_submission(payload)
+        self.assertEqual(validate_v5_creation(sub), [])
+        tremere = create.create_object("typeclasses.characters.Character", key="Warlock")
+        apply_chargen(tremere, sub)
+        self.assertEqual(tremere.known_rituals, ["Blood Walk"])
+        self.assertEqual(tremere.rituals, tremere.known_rituals)
+        self.assertNotIn("rituals", tremere.db.stats)
+        award_xp(tremere, 50, "test")
+        with self.assertRaisesRegex(ValueError, "already know Blood Walk"):
+            tremere.spend_xp("Blood Walk", "ritual")
+
+        payload = thin_blood_payload(disciplines={"Thin-Blood Alchemy": 1}, formulas=["Haze"])
+        payload["advantages"].append({"name": "Thin-blood Alchemist", "dots": 1})
+        payload["flaws"].append({"name": "Clan Curse", "dots": 1, "note": "toreador"})
+        sub = parse_submission(payload)
+        self.assertEqual(validate_v5_creation(sub), [])
+        alchemist = create.create_object("typeclasses.characters.Character", key="Brewer")
+        apply_chargen(alchemist, sub)
+        self.assertEqual(alchemist.known_formulas, ["Haze"])
+        self.assertEqual(alchemist.formulas, alchemist.known_formulas)
+        self.assertNotIn("formulas", alchemist.db.stats)
+        result = craft_formula(alchemist, "Haze")
+        self.assertIsNotNone(result["method"], result["message"])  # rolled, not refused
+        award_xp(alchemist, 50, "test")
+        with self.assertRaisesRegex(ValueError, "already know Haze"):
+            alchemist.spend_xp("Haze", "formula")
+
     def test_formula_and_clan_curse_note(self):
         payload = thin_blood_payload(disciplines={"Thin-Blood Alchemy": 1}, formulas=["Haze"])
         payload["advantages"].append({"name": "Thin-blood Alchemist", "dots": 1})
