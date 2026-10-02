@@ -7,12 +7,36 @@ Characters are created on the game website, not in the game.
   1. Log in to the website with your game account.
   2. Open the character creation form at |y/character-creation/|n
      (linked from the website's front page).
-  3. Build your character and submit it.
+  3. Build your character and submit it. The website checks it
+     against the V5 creation rules below and tells you what to fix.
   4. Staff review the submission. You are notified in game when it
      is approved, or when it needs changes and can be resubmitted.
 
-Once your character is approved, connect to the game, and use
-|yic <name>|n to start playing.
+A character can't be played, roll or spend XP until it is approved.
+Once it is, connect to the game and use |yic <name>|n to start playing.
+Until then you can delete it with |ychardelete <name>|n.
+
+|wThe V5 creation rules the website checks|n
+  Age: Childer (12th-13th generation, or thin-bloods of the 14th-16th),
+       Neonate (12th-13th, 15 XP) or Ancilla (10th-11th, 35 XP,
+       +2 advantage and +2 flaw dots, Humanity -1).
+  Attributes: one at 4, three at 3, four at 2, one at 1.
+  Skills: one distribution, every other Skill 0:
+       Jack-of-all-Trades 3/2x8/1x10, Balanced 3x3/2x5/1x7,
+       Specialist 4/3x3/2x3/1x3.
+  Specialties: one free in each of Academics, Craft, Performance and
+       Science you have dots in, one more, and your predator type's;
+       only on Skills with dots.
+  Disciplines: 2 dots in one in-clan Discipline and 1 in another
+       (Caitiff: any two; thin-bloods: none), plus 1 from your predator
+       type. One power per dot, at or below the Discipline's rating.
+  Predator type: everyone except thin-bloods and Childer. Its
+       specialty, Discipline dot and backgrounds/merits/flaws are free.
+  Advantages and flaws: up to 7 dots of backgrounds and merits and
+       exactly 2 of flaws. Thin-bloods add 1-3 free thin-blood merits
+       and as many thin-blood flaws.
+  Clans: the V5 core clans, Caitiff and thin-bloods.
 
 For the setting and the V5 rules behind the choices on the form, see
-|yhelp clans|n, |yhelp disciplines|n and |yhelp v5|n.
+|yhelp clans|n, |yhelp disciplines|n, |yhelp backgrounds|n and |yhelp v5|n.
+The full policy is in |y+news chargen_policy|n.
