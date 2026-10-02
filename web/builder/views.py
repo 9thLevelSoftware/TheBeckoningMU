@@ -16,7 +16,7 @@ from .sandbox_bridge import create_sandbox_from_project
 from .trigger_actions import ACTION_REGISTRY, list_actions
 from .trigger_engine import validate_trigger
 from .v5_conditions import list_condition_types
-from .validators import live_rooms, validate_connection, validate_project
+from .validators import live_rooms, validate_build_map, validate_connection, validate_project
 
 # V5 Room Template Presets
 V5_ROOM_TEMPLATES = {
@@ -216,8 +216,13 @@ class SaveProjectView(BuilderRequiredMixin, View):
         name = data.get("name", "Untitled Project")
         map_data = data.get("map_data", {})
 
-        # Validate project data
+        # Validate project data. A draft may be saved while invalid; the
+        # build rules (validate_build_map) are enforced at submit.
         is_valid, errors, warnings = validate_project(map_data)
+        for error in validate_build_map(map_data):
+            if error not in errors:
+                errors.append(error)
+        is_valid = not errors
 
         if project_id:
             # Update existing
@@ -409,6 +414,15 @@ class SubmitProjectView(BuilderRequiredMixin, View):
         if not isinstance(data, dict):
             return JsonResponse(
                 {"status": "error", "error": "Expected a JSON object"}, status=400
+            )
+
+        # Only a map the sandbox build accepts can go to review: once it is
+        # submitted the map is locked, so a bad one would be stuck.
+        map_errors = validate_build_map(project.map_data)
+        if map_errors:
+            return JsonResponse(
+                {"status": "error", "error": "; ".join(map_errors[:5]), "errors": map_errors},
+                status=400,
             )
 
         # The live attachment point is part of what gets reviewed.
