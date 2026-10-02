@@ -43,3 +43,21 @@ class ActivateDisciplinePowerTests(EvenniaTest):
         result = discipline_utils.activate_discipline_power(self.char, "Animalism", "Sense the Beast")
         self.assertTrue(result["success"])
         self.assertEqual(self.char.hunger, 2)
+
+
+class TurnDurationPowerTests(EvenniaTest):
+    """A power whose duration token is "turn" is tracked for one turn."""
+
+    def test_turn_power_activates_and_tracks_one_turn(self):
+        char = self.char1
+        char.db.stats["disciplines"]["celerity"] = {"level": 3, "powers": ["Blink"]}
+        char.hunger = 1
+        passed = {"hunger_increased": False, "die": 8}
+        with patch("commands.v5.utils.discipline_utils.roll_rouse_check", return_value=passed):
+            result = discipline_utils.activate_discipline_power(char, "Celerity", "Blink")
+        self.assertTrue(result["success"])
+        effects = [e for e in char.db.active_effects if e["power"] == "Blink"]
+        self.assertEqual(len(effects), 1)
+        self.assertEqual(effects[0]["duration"], "turn")
+        self.assertEqual(effects[0]["turns_remaining"], 1)
+        self.assertEqual(char.hunger, 1)

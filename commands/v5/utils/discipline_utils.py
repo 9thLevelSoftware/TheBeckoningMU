@@ -203,7 +203,9 @@ def activate_discipline_power(character, discipline_name, power_name):
 
     if duration and duration != 'instant':
         # Apply generic effect
-        applied_effect = apply_effect(character, power_copy, duration)
+        # A "turn" power lasts one turn unless an effect handler says otherwise.
+        parameters = {"turns": 1} if duration == "turn" else {}
+        applied_effect = apply_effect(character, power_copy, duration, parameters)
         effect_applied = True
 
         # Apply discipline-specific effects

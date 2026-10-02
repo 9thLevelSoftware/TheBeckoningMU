@@ -24,6 +24,8 @@ def apply_effect(character, power_dict: Dict[str, Any], duration: str,
     Returns:
         Dict containing the created effect
     """
+    parameters = parameters or {}
+
     # Initialize active_effects if needed
     if character.db.active_effects is None:
         character.db.active_effects = []
@@ -38,9 +40,9 @@ def apply_effect(character, power_dict: Dict[str, Any], duration: str,
         'power': power_dict.get('name', 'Unknown Power'),
         'discipline': power_dict.get('discipline', 'Unknown'),
         'duration': duration,
-        'turns_remaining': parameters.get('turns', 0) if duration == 'turn' else None,
+        'turns_remaining': parameters.get('turns', 1) if duration == 'turn' else None,
         'applied': datetime.now(),
-        'parameters': parameters or {}
+        'parameters': parameters
     }
 
     # Add effect to character
