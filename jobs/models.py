@@ -43,6 +43,10 @@ class Bucket(models.Model):
         default=False,
         help_text="Archived buckets are hidden from normal views"
     )
+    player_submit = models.BooleanField(
+        default=False,
+        help_text="Players may file jobs here with job/submit, and see it in 'buckets'"
+    )
     created_by = models.ForeignKey(
         AccountDB,
         on_delete=models.SET_NULL,

@@ -94,6 +94,12 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         self.add(CmdHeal)
         self.add(CmdHealth)
 
+        # Staff: torpor and NPCs
+        from commands.v5.staff import CmdNPC, CmdTorpor
+
+        self.add(CmdTorpor)
+        self.add(CmdNPC)
+
         # Add V5 Thin-Blood commands
         from commands.v5.thinblood import CmdAlchemy, CmdDaylight
 
@@ -153,11 +159,6 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
 
         self.add(BBSCmdSet)
 
-        # Add Jobs commands
-        from jobs.cmdset import JobsCmdSet
-
-        self.add(JobsCmdSet)
-
         # Add V5 blood system (feeding, Blood Surge, Hunger tracking)
         from commands.v5.blood_cmdset import BloodCmdSet
 
@@ -200,6 +201,13 @@ class AccountCmdSet(default_cmds.AccountCmdSet):
         from commands.news import CmdNews
 
         self.add(CmdNews)
+
+        # Jobs are on the account too: an applicant follows their Approval
+        # job before they can puppet, and staff review jobs out of character.
+        # Players still see only their own jobs; staff commands keep their locks.
+        from jobs.cmdset import JobsCmdSet
+
+        self.add(JobsCmdSet)
 
 
 class UnloggedinCmdSet(default_cmds.UnloggedinCmdSet):
