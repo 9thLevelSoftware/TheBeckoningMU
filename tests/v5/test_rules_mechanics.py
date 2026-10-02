@@ -1016,3 +1016,81 @@ class RemorseOncePerSessionTests(EvenniaCommandTest):
         with all_dice(8):
             self.call(CmdRemorse(), "Char2", caller=self.char1)
         self.assertEqual(char.stains, 0)
+
+
+class BuilderLockdownTests(EvenniaCommandTest):
+    """R-23: exactly Builder permission (not only Developer) passes the staff gate."""
+
+    def setUp(self):
+        super().setUp()
+        self.builder = create.create_object(Character, key="Buildy", home=self.room1)
+        self.builder.location = self.room1  # placed directly: no arrival look
+        self.builder.permissions.add("Builder")
+        self.player = self.char2
+
+    def test_builder_can_damage_heal_and_stain_others(self):
+        self.call(CmdDamage(), "Char2=4", caller=self.builder)
+        self.assertEqual(self.player.damage["health"]["superficial"], 2)
+        self.call(CmdHeal(), "Char2=1", caller=self.builder)
+        self.assertEqual(self.player.damage["health"]["superficial"], 1)
+        self.call(CmdStain(), "Char2=1", caller=self.builder)
+        self.assertEqual(self.player.stains, 1)
+
+
+class HuntResonanceTests(EvenniaCommandTest):
+    def test_a_hunt_that_slakes_nothing_keeps_the_old_resonance(self):
+        """R-24: BP 6 at Hunger 4 slakes 2 - 2 = 0 from a drink; the resonance stays."""
+        from commands.v5.utils import blood_utils, hunting_utils
+
+        char = self.char2
+        char.predator_type = "Alleycat"
+        char.set_trait("Strength", 3)
+        char.set_trait("Brawl", 2)
+        char.blood_potency = 6
+        char.hunger = 4
+        blood_utils.set_resonance(char, "Choleric", 2)
+        with all_dice(8):
+            result = hunting_utils.hunt(char, "slum")
+        self.assertTrue(result["success"])
+        self.assertEqual(char.hunger, 4)
+        self.assertIsNone(result["resonance"])
+        self.assertEqual((char.resonance["type"], char.resonance["intensity"]), ("Choleric", 2))
+
+
+class DegenerationPoolTests(EvenniaCommandTest):
+    """R-25: Degeneration's -2 dice reach power and +hunt pools too."""
+
+    def setUp(self):
+        super().setUp()
+        self.char = self.char2
+        humanity_utils.set_humanity(self.char, 9)
+        humanity_utils.add_stain(self.char, 1)  # tracker full
+        self.assertTrue(self.char.degenerating)
+
+    def test_power_pool_loses_two(self):
+        self.char.set_trait("Presence", 3)
+        self.char.set_trait("Charisma", 3)
+        self.char.learn_power("Dread Gaze")
+        self.char.blood_potency = 0
+        with all_dice(8):
+            result = discipline_roller.roll_discipline_power(self.char, "Dread Gaze")
+        self.assertEqual(result["dice_pool"], 4)  # Charisma 3 + Presence 3 - 2
+
+    def test_hunt_pool_loses_two(self):
+        self.char.predator_type = "Alleycat"
+        self.char.set_trait("Strength", 3)
+        self.char.set_trait("Brawl", 2)
+        self.char.hunger = 4
+        with (
+            patch("commands.v5.utils.hunting_utils.roll_v5_pool", wraps=dice_roller.roll_v5_pool) as roll,
+            all_dice(8),
+        ):
+            self.call(CmdHunt(), "downtown", caller=self.char)
+        self.assertEqual(roll.call_args.args[0], 3)
+
+    def test_attack_pool_loses_two(self):
+        self.char.set_trait("Strength", 3)
+        self.char.set_trait("Brawl", 2)
+        with all_dice(8):
+            result = combat_utils.calculate_attack(self.char, self.char1)
+        self.assertEqual(result["attack"]["pool"], 3)
