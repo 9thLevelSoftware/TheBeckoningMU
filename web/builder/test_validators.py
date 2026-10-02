@@ -198,13 +198,63 @@ class MxpMarkupTests(TestCase):
         msg.assert_not_called()
 
     def test_build_strips_mxp_from_an_old_snapshot(self):
+        from evennia.utils.text2html import parse_html
+
         from web.builder import sandbox_builder
 
         room = sandbox_builder._create_room(1, "r1", {"name": "|lclook|ltHall|le"})
-        self.assertEqual(room.key, "Hall")
-        self.assertEqual(
-            sandbox_builder._room_attributes({"description": MXP_PAYLOAD})[0][1], "A cold crypt. the old door"
+        self.assertEqual(room.key, "lookHall")
+        desc = sandbox_builder._room_attributes({"description": MXP_PAYLOAD + " ||lcx|ltpart"})[0][1]
+        self.assertEqual(desc, "A cold crypt. perm *mallory = Adminthe old door xpart")
+        self.assertNotIn("<a", parse_html(desc))
+        exit_obj = sandbox_builder._create_exit(
+            1, "e1", {"source": "r1", "target": "r1", "name": "door|le", "aliases": ["|lu"]}, {"r1": room}
         )
+        self.assertEqual((exit_obj.key, exit_obj.aliases.all()), ("door", []))
+
+    def test_link_split_across_fields_is_refused(self):
+        """Evennia parses links over the whole message, so a link split across
+        fields shown together must be caught token by token."""
+        from evennia.utils.text2html import parse_html
+
+        # The attack the per-field complete-link check missed: shown together,
+        # this renders as a clickable command link.
+        desc, name = "A crypt. |lcperm *mallory = Admin|ltthe old", "door|le"
+        self.assertIn("perm *mallory = Admin", parse_html(f"{desc}\nExits: {name}"))
+        self.assertIn("<a", parse_html(f"{desc}\nExits: {name}"))
+
+        cases = {
+            "desc + exit name": [
+                (["rooms", "r1", "description"], desc),
+                (["exits", "e1", "name"], name),
+            ],
+            "room name + desc": [
+                (["rooms", "r1", "name"], "Hall |lclook"),
+                (["rooms", "r1", "description"], "|ltclick|le"),
+            ],
+            "two exit names": [
+                (["exits", "e1", "name"], "|lcperm *m = Admin|lteast"),
+                (["exits", "e2", "name"], "west|le"),
+            ],
+            "escaped pipe": [(["rooms", "r1", "description"], "||lcperm *m = Admin||ltx||le")],
+            "url token": [(["rooms", "r2", "description"], "see |luhttp://evil.example")],
+            "lone end token in alias": [(["exits", "e1", "aliases"], ["e|le"])],
+            "trigger message": [
+                (["rooms", "r2", "triggers"], [_trigger(parameters={"message": "the old door|le"})]),
+            ],
+        }
+        for label, edits in cases.items():
+            data = copy.deepcopy(GOOD_MAP)
+            data["exits"]["e2"] = {"source": "r2", "target": "r1", "name": "west"}
+            for path, value in edits:
+                node = data
+                for key in path[:-1]:
+                    node = node[key]
+                node[path[-1]] = value
+            errors = validate_build_map(data)
+            self.assertTrue(any("link markup" in e for e in errors), (label, errors))
+        # Ordinary text and colour codes still pass.
+        self.assertEqual(validate_build_map(_with(["rooms", "r1", "description"], "A |rred|n door. |/Lit.")), [])
 
 
 class TriggerCapTests(TestCase):

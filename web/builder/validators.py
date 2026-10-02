@@ -37,9 +37,7 @@ def validate_project(map_data):
             errors.append(f"Room '{room_id}' is missing a name")
         # Position validation (rooms should have grid coordinates)
         if "x" not in room and "gridX" not in room:
-            warnings.append(
-                f"Room '{room.get('name', room_id)}' has no grid position"
-            )
+            warnings.append(f"Room '{room.get('name', room_id)}' has no grid position")
         valid_room_ids.add(room_id)
 
     # ------------------------------------------------------------------
@@ -94,10 +92,7 @@ def validate_project(map_data):
             warnings.append(f"Room '{room.get('name', room_id)}' has no description")
 
     # Check for duplicate room names
-    names = [
-        rooms[rid].get("name", "")
-        for rid in valid_room_ids
-    ]
+    names = [rooms[rid].get("name", "") for rid in valid_room_ids]
     duplicates = {n for n in names if names.count(n) > 1 and n}
     for name in duplicates:
         warnings.append(f"Multiple rooms named '{name}'")
@@ -112,9 +107,7 @@ CONNECTION_DIRECTIONS = ("n", "s", "e", "w", "ne", "nw", "se", "sw", "u", "d")
 
 def is_live_room(obj):
     """A Room (or Room subclass) that isn't part of a sandbox build."""
-    return obj.is_typeclass("typeclasses.rooms.Room", exact=False) and not (
-        obj.tags.has("sandbox")
-    )
+    return obj.is_typeclass("typeclasses.rooms.Room", exact=False) and not (obj.tags.has("sandbox"))
 
 
 def live_rooms():
@@ -148,10 +141,7 @@ def validate_connection(connection_room_id, connection_direction):
 
     direction = connection_direction.lower() if isinstance(connection_direction, str) else ""
     if direction not in CONNECTION_DIRECTIONS:
-        errors.append(
-            "connection_direction is required and must be one of: "
-            + ", ".join(CONNECTION_DIRECTIONS)
-        )
+        errors.append("connection_direction is required and must be one of: " + ", ".join(CONNECTION_DIRECTIONS))
 
     if room_id is not None:
         room = ObjectDB.objects.filter(pk=room_id).first()
@@ -272,10 +262,7 @@ def validate_lock_string(lockstring):
         seen.add(access_type)
         tokens = _lock_tokens(expr.strip())
         if not tokens or not _lock_expr_ok(tokens):
-            return (
-                f"lock '{part}': use all(), perm(<Perm>) or tag(<tag>[, <category>]) "
-                "joined with and/or/not"
-            )
+            return f"lock '{part}': use all(), perm(<Perm>) or tag(<tag>[, <category>]) joined with and/or/not"
     return None
 
 
@@ -434,14 +421,13 @@ def validate_build_map(map_data):
         if (
             not _is_list(aliases)
             or len(aliases) > MAX_ALIASES
-            or not all(
-                isinstance(a, str) and 0 < len(a) <= MAX_ALIAS_LENGTH and not contains_mxp(a) for a in aliases
-            )
+            or not all(isinstance(a, str) and 0 < len(a) <= MAX_ALIAS_LENGTH for a in aliases)
         ):
             errors.append(
-                f"{label}: aliases must be a list of at most {MAX_ALIASES} names "
-                f"of 1-{MAX_ALIAS_LENGTH} characters"
+                f"{label}: aliases must be a list of at most {MAX_ALIASES} names of 1-{MAX_ALIAS_LENGTH} characters"
             )
+        elif any(contains_mxp(a) for a in aliases):
+            errors.append(f"{label}: aliases {MXP_ERROR}")
         locks = exit_data.get("locks")
         if locks:
             error = validate_lock_string(locks)

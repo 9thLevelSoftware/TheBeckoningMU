@@ -30,9 +30,9 @@ import logging
 from typing import Any
 
 from django.utils import timezone
-from evennia.utils.ansi import strip_mxp
 from evennia.utils.create import create_object
 
+from .markup import remove_mxp
 from .trigger_scripts import start_timed_trigger
 from .validators import entry_room_key, validate_build_map
 
@@ -114,7 +114,7 @@ def _bulk_tag_and_set(objects, tag_keys):
 
 
 def _room_attributes(room_data):
-    attributes = [("desc", strip_mxp(room_data.get("description") or ""))]
+    attributes = [("desc", remove_mxp(room_data.get("description") or ""))]
     v5 = room_data.get("v5") or {}
     for key in V5_ROOM_ATTRIBUTES:
         if v5.get(key):
@@ -136,7 +136,7 @@ def _create_room(project_id, web_id, room_data):
     """Create one sandbox room (tags and Attributes are added in bulk later)."""
     room = create_object(
         typeclass=ROOM_TYPECLASS,
-        key=strip_mxp(room_data["name"]),
+        key=remove_mxp(room_data["name"]),
         location=None,
         nohome=True,
     )
@@ -146,7 +146,7 @@ def _create_room(project_id, web_id, room_data):
 
 
 def _exit_attributes(exit_data):
-    return [("desc", strip_mxp(exit_data["description"]))] if exit_data.get("description") else []
+    return [("desc", remove_mxp(exit_data["description"]))] if exit_data.get("description") else []
 
 
 def _create_exit(project_id, exit_id, exit_data, rooms):
@@ -154,8 +154,8 @@ def _create_exit(project_id, exit_id, exit_data, rooms):
     source = rooms[exit_data["source"]]
     exit_obj = create_object(
         typeclass=EXIT_TYPECLASS,
-        key=strip_mxp(exit_data["name"]),
-        aliases=[strip_mxp(alias) for alias in exit_data.get("aliases") or []],
+        key=remove_mxp(exit_data["name"]),
+        aliases=[remove_mxp(alias) for alias in exit_data.get("aliases") or []],
         location=source,
         destination=rooms[exit_data["target"]],
         home=source,
