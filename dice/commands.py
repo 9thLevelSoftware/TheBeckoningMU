@@ -19,6 +19,22 @@ LAST_ROLL_WINDOW = 300
 WILLPOWER_USAGE = "Usage: roll/willpower <die> [<die> <die>]  (the values shown on your regular dice)"
 
 
+def roll_owed_frenzy_tests(caller, reason=None) -> list:
+    """Roll any hunger frenzy test the caller now owes (core p.211: immediately).
+
+    A Rouse failure past Hunger 5 records the test (rouse_checker.flag_hunger_frenzy);
+    this rolls it, clears the record and shows the result. Returns the results.
+    """
+    from commands.v5.utils import humanity_utils
+
+    results = humanity_utils.roll_pending_frenzy_tests(caller)
+    if results:
+        caller.msg("\n".join(humanity_utils.format_frenzy_tests(results, reason)))
+        if caller.location and not results[-1]["success"]:
+            caller.location.msg_contents(f"|r{caller.name}'s Beast breaks loose: hunger frenzy!|n", exclude=[caller])
+    return results
+
+
 def _is_staff(caller) -> bool:
     """True if the caller (or the account puppeting it) has Builder permission."""
     return caller.locks.check_lockstring(caller, "staff:perm(Builder)")
@@ -128,7 +144,7 @@ class CmdRoll(default_cmds.MuxCommand):
         elif hunger_arg is not None:
             hunger = hunger_arg
         else:
-            hunger = caller.hunger
+            hunger = caller.dice_hunger  # 0 for a mortal or ghoul (Character.splat)
 
         from commands.v5.utils import blood_utils
 
@@ -462,6 +478,8 @@ class CmdPower(default_cmds.MuxCommand):
         if result.get("effect_applied"):
             caller.msg(f"|xEffect active ({result['duration']}). Use +effects to view.|n")
 
+        roll_owed_frenzy_tests(caller, power["name"])
+
         if roll and roll["defense"] is not None:
             self._tell_target(roll)
 
@@ -509,23 +527,28 @@ class CmdPower(default_cmds.MuxCommand):
         return "\n".join(lines)
 
 
-class CmdRouse(Command):
+class CmdRouse(default_cmds.MuxCommand):
     """
     Perform a Rouse check.
 
     Usage:
       rouse [<reason>]
+      rouse/wake
 
     Examples:
       rouse
       rouse Blush of Life
+      rouse/wake
 
     Roll one die: on 6-10 nothing happens, on 1-5 your Hunger rises by 1.
-    Rouse when the Storyteller asks (Blush of Life, rising for the night and
-    so on). Discipline powers make their own Rouse checks through `power`,
-    with the Blood Potency re-roll; a manual check gets no re-roll.
+    Rouse when the Storyteller asks (Blush of Life and so on). Discipline
+    powers make their own Rouse checks through `power`, with the Blood
+    Potency re-roll; a manual check gets no re-roll.
 
-    At Hunger 5 you can't Rouse the Blood.
+    At Hunger 5 you can't Rouse the Blood. The exception is a Rouse you
+    can't refuse, such as rising for the night (`rouse/wake`): at Hunger 5
+    nothing is rolled and you make an immediate hunger frenzy test at
+    Difficulty 4 instead (core p.211). Hunger stays at 5.
     """
 
     key = "rouse"
@@ -536,6 +559,12 @@ class CmdRouse(Command):
         """Execute the rouse command."""
         if not inherits_from(self.caller, "typeclasses.characters.Character"):
             self.caller.msg("|rYou must be in character to perform Rouse checks.|n")
+            return
+
+        if "wake" in self.switches:
+            result = rouse_checker.perform_forced_rouse(self.caller, reason="Rising for the night")
+            self.caller.msg(result.message)
+            roll_owed_frenzy_tests(self.caller, "rising for the night at Hunger 5")
             return
 
         if self.caller.hunger >= rouse_checker.MAX_HUNGER:

@@ -4,17 +4,37 @@ V5 Humanity System Commands
 Commands for managing Humanity, Convictions, Touchstones, Stains, Remorse, and Frenzy.
 """
 
-from evennia.commands.command import Command
 from evennia import default_cmds
-from commands.v5.utils.humanity_utils import (
-    get_humanity_status, add_stain, add_conviction, add_touchstone,
-    remove_conviction, remove_touchstone, remorse_roll, check_frenzy_risk,
-    resist_frenzy, get_stains, get_humanity
-)
+from evennia.commands.command import Command
+
 from commands.v5.utils.display_utils import (
-    BLOOD_RED, VAMPIRE_GOLD, RESET, SHADOW_GREY,
-    BOX_H, BOX_V, BOX_TL, BOX_TR, BOX_BL, BOX_BR
+    BLOOD_RED,
+    BOX_BL,
+    BOX_BR,
+    BOX_H,
+    BOX_TL,
+    BOX_TR,
+    BOX_V,
+    RESET,
+    SHADOW_GREY,
+    VAMPIRE_GOLD,
 )
+from commands.v5.utils.humanity_utils import (
+    add_conviction,
+    add_stain,
+    add_touchstone,
+    frenzy_pool,
+    frenzy_provocations,
+    get_humanity_status,
+    get_stains,
+    pending_frenzy_test,
+    remorse_roll,
+    remove_conviction,
+    remove_touchstone,
+    resist_frenzy,
+)
+from dice.commands import _is_staff
+from dice.dice_roller import MAX_DIFFICULTY
 
 
 class CmdHumanity(default_cmds.MuxCommand):
@@ -30,7 +50,7 @@ class CmdHumanity(default_cmds.MuxCommand):
 
     Switches:
         /conviction - Add a new Conviction (max 3)
-        /touchstone - Add a new Touchstone (max = Humanity ÷ 2)
+        /touchstone - Add a new Touchstone, tied to a Conviction
         /conviction/remove - Remove a Conviction by number
         /touchstone/remove - Remove a Touchstone by number
 
@@ -55,7 +75,7 @@ class CmdHumanity(default_cmds.MuxCommand):
         caller = self.caller
 
         # Check if character is a vampire
-        if not hasattr(caller.db, 'vampire') or not caller.db.vampire:
+        if not caller.attributes.has("vampire"):
             caller.msg("This command is only available to vampires.")
             return
 
@@ -126,12 +146,12 @@ class CmdHumanity(default_cmds.MuxCommand):
         # Stains
         stains = status['stains']
         if stains > 0:
-            stain_dots = "✗" * stains + "○" * (10 - stains)
-            lines.append(f"  {BLOOD_RED}Stains:{RESET}   {stain_dots} ({stains}/10)")
-            if stains >= 5:
-                lines.append(f"  {BLOOD_RED}>>> You should perform a Remorse roll soon! (+remorse){RESET}")
+            room = 10 - humanity
+            stain_dots = "✗" * stains + "○" * max(0, room - stains)
+            lines.append(f"  {BLOOD_RED}Stains:{RESET}   {stain_dots} ({stains}/{room})")
+            lines.append(f"  {BLOOD_RED}>>> Make a Remorse test at the end of the session (+remorse).{RESET}")
         else:
-            lines.append(f"  {SHADOW_GREY}Stains:   ○○○○○○○○○○ (0/10){RESET}")
+            lines.append(f"  {SHADOW_GREY}Stains:   none ({10 - humanity} unmarked boxes){RESET}")
 
         # Convictions
         lines.append(f"\n  {VAMPIRE_GOLD}Convictions:{RESET} (max 3)")
@@ -143,8 +163,7 @@ class CmdHumanity(default_cmds.MuxCommand):
             lines.append(f"    {SHADOW_GREY}None set. Use +humanity/conviction to add one.{RESET}")
 
         # Touchstones
-        max_touchstones = status['max_touchstones']
-        lines.append(f"\n  {VAMPIRE_GOLD}Touchstones:{RESET} (max {max_touchstones})")
+        lines.append(f"\n  {VAMPIRE_GOLD}Touchstones:{RESET}")
         touchstones = status['touchstones']
         if touchstones:
             for i, ts in enumerate(touchstones, 1):
@@ -159,27 +178,25 @@ class CmdHumanity(default_cmds.MuxCommand):
         character.msg("\n".join(lines))
 
 
-class CmdStain(Command):
+class CmdStain(default_cmds.MuxCommand):
     """
-    Add Stains to yourself or others.
+    Mark Stains on yourself, or (staff) on another character.
 
     Usage:
         +stain [<count>]
-        +stain <target>=<count>
+        +stain <target>=<count>     (staff only)
 
     Examples:
         +stain              (add 1 Stain to yourself)
         +stain 2            (add 2 Stains to yourself)
-        +stain Vampire=3    (add 3 Stains to target - ST only)
+        +stain Vampire=3    (staff: add 3 Stains to a character)
 
-    Stains represent moral transgressions and Humanity degradation.
-    When you accumulate Stains, you must eventually perform a Remorse
-    roll (+remorse) to determine if you lose Humanity.
+    Stains come from breaking Chronicle Tenets and your Convictions (QR p.3).
+    They fill the unmarked boxes of your Humanity tracker (10 - Humanity).
+    A Stain that would overfill the tracker becomes one Aggravated Willpower
+    damage instead. At the end of the session make a Remorse test (+remorse).
 
-    Common sources of Stains:
-    - Violating Chronicle Tenets (1-3 Stains depending on severity)
-    - Violating personal Convictions (1-2 Stains)
-    - Messy Criticals during feeding or violence (1 Stain)
+    Only staff can mark Stains on someone else.
     """
 
     key = "+stain"
@@ -190,38 +207,36 @@ class CmdStain(Command):
     def func(self):
         caller = self.caller
 
-        # Check if character is a vampire
-        if not hasattr(caller.db, 'vampire') or not caller.db.vampire:
+        if not caller.attributes.has("vampire"):
             caller.msg("This command is only available to vampires.")
             return
 
-        # Parse arguments
-        if "=" in self.args:
-            # Targeting someone else (ST command)
-            target_name, count_str = self.args.split("=", 1)
-            target = caller.search(target_name.strip())
+        if self.rhs is not None:
+            if not _is_staff(caller):
+                caller.msg("|rOnly staff can mark Stains on another character.|n")
+                return
+            target = caller.search(self.lhs.strip())
             if not target:
                 return
-            # Could add permission check here for ST-only
+            if not target.attributes.has("vampire"):
+                caller.msg(f"{target.key} has no Humanity tracker.")
+                return
+            count_str = self.rhs.strip() or "1"
         else:
-            # Targeting self
             target = caller
-            count_str = self.args.strip() if self.args.strip() else "1"
+            count_str = self.args.strip() or "1"
 
-        # Parse count
         try:
             count = int(count_str)
-            if count < 1:
-                caller.msg("Stain count must be at least 1.")
-                return
         except ValueError:
             caller.msg(f"Invalid stain count: {count_str}")
             return
+        if count < 1:
+            caller.msg("Stain count must be at least 1.")
+            return
 
-        # Add stains
         result = add_stain(target, count)
 
-        # Message to caller
         if target == caller:
             caller.msg(f"{BLOOD_RED}{result['message']}{RESET}")
         else:
@@ -231,27 +246,19 @@ class CmdStain(Command):
 
 class CmdRemorse(Command):
     """
-    Perform a Remorse roll to resist Humanity loss.
+    Make your end-of-session Remorse test.
 
     Usage:
         +remorse
 
-    Mechanics:
-    - Roll a dice pool equal to your current Humanity rating
-    - If you get more successes than your current Stains, you keep your Humanity
-    - If you get equal or fewer successes, you lose 1 Humanity
-    - Either way, all Stains are cleared after the roll
-
-    This roll is typically performed at the end of a game session when you
-    have accumulated Stains from moral transgressions during play.
+    Roll one die for each unmarked box on your Humanity tracker: 10 minus
+    your Humanity minus your Stains, with a minimum of one die (QR p.3).
+    Any success keeps your Humanity; no successes loses 1 Humanity. Either
+    way all your Stains are cleared. Remorse uses no Hunger dice.
 
     Example:
-        You have Humanity 6 and 4 Stains.
-        You roll 6 dice and get 5 successes.
-        Since 5 > 4, you maintain Humanity and clear all Stains.
-
-        If you had rolled only 3 successes (3 < 4), you would lose 1 Humanity
-        (dropping to 5) and still clear all Stains.
+        Humanity 7 with 2 Stains: 10 - 7 - 2 = 1 die. A 6 or higher keeps
+        your Humanity at 7.
     """
 
     key = "+remorse"
@@ -262,48 +269,45 @@ class CmdRemorse(Command):
     def func(self):
         caller = self.caller
 
-        # Check if character is a vampire
-        if not hasattr(caller.db, 'vampire') or not caller.db.vampire:
+        if not caller.attributes.has("vampire"):
             caller.msg("This command is only available to vampires.")
             return
 
-        # Check if character has Stains
         stains = get_stains(caller)
         if stains == 0:
             caller.msg("You have no Stains. No Remorse roll is needed.")
             return
 
-        # Perform remorse roll
         from dice.commands import forget_roll
 
         forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
         result = remorse_roll(caller)
 
-        # Display roll result
         lines = []
         lines.append(f"{VAMPIRE_GOLD}{BOX_H * 78}{RESET}")
         lines.append(f"{VAMPIRE_GOLD}  REMORSE ROLL{RESET}")
         lines.append(f"{VAMPIRE_GOLD}{BOX_H * 78}{RESET}\n")
 
         humanity = result['old_humanity']
-        lines.append(f"  You have {VAMPIRE_GOLD}Humanity {humanity}{RESET} and {BLOOD_RED}{result['stains_cleared']} Stains{RESET}.")
-        lines.append(f"  Rolling {humanity} dice... You need more than {result['stains_cleared']} successes to keep your Humanity.\n")
-
+        pool = result['pool']
+        lines.append(
+            f"  You have {VAMPIRE_GOLD}Humanity {humanity}{RESET} and "
+            f"{BLOOD_RED}{result['stains_cleared']} Stains{RESET}."
+        )
+        lines.append(
+            f"  Rolling {pool} {'die' if pool == 1 else 'dice'} (your unmarked Humanity boxes): "
+            "any success keeps your Humanity.\n"
+        )
         if result['roll_result']:
-            # Format dice results
-            dice_display = result['roll_result'].format_result(show_details=True)
-            lines.append(dice_display)
+            lines.append(result['roll_result'].format_result(show_details=True))
             lines.append("")
 
-        # Outcome
         if result['humanity_lost']:
             lines.append(f"  {BLOOD_RED}FAILURE:{RESET} You lose 1 Humanity (now {result['new_humanity']}).")
-            lines.append(f"  {BLOOD_RED}The Beast grows stronger...{RESET}")
         else:
-            lines.append(f"  {VAMPIRE_GOLD}SUCCESS:{RESET} You maintain your Humanity at {result['new_humanity']}.")
-            lines.append(f"  {VAMPIRE_GOLD}Your conscience remains intact.{RESET}")
+            lines.append(f"  {VAMPIRE_GOLD}SUCCESS:{RESET} You keep your Humanity at {result['new_humanity']}.")
 
-        lines.append(f"\n  All Stains have been cleared.")
+        lines.append("\n  All Stains have been cleared.")
         lines.append(f"\n{VAMPIRE_GOLD}{BOX_H * 78}{RESET}")
 
         caller.msg("\n".join(lines))
@@ -311,30 +315,39 @@ class CmdRemorse(Command):
 
 class CmdFrenzy(default_cmds.MuxCommand):
     """
-    Check frenzy status or attempt to resist frenzy.
+    Test to resist frenzy, or see what provokes it.
 
     Usage:
         +frenzy
-        +frenzy/resist <difficulty>
+        +frenzy/resist <difficulty> [<type>]
         +frenzy/check <type>
+        +frenzy/pending
 
     Switches:
-        /resist - Roll to resist frenzy (Willpower + Composure vs Difficulty)
-        /check  - Check frenzy risk for a trigger type (hunger, fury, terror)
+        /resist  - Roll to resist frenzy at the Storyteller's difficulty.
+                   <type> is fury, hunger or terror (it matters for clan banes).
+        /check   - List the book's provocations and difficulties for a type.
+        /pending - Roll a hunger frenzy test you owe (see below).
 
     Examples:
-        +frenzy
-        +frenzy/resist 4
-        +frenzy/check hunger
-        +frenzy/check fury
+        +frenzy/resist 3 fury
+        +frenzy/check terror
+        +frenzy/pending
 
-    Frenzy Types:
-        Hunger - Triggered by blood scent, Hunger 5, failed Rouse checks
-        Fury   - Triggered by provocation, humiliation, attacks
-        Terror - Triggered by fire, sunlight, True Faith
+    The frenzy test (QR p.4) rolls your current Willpower + Humanity / 3
+    (rounded down) against the provocation's difficulty (2-4; QR p.13). It
+    is a Willpower test, so it uses no Hunger dice. Brujah subtract their
+    Bane Severity in dice from tests to resist fury frenzy.
 
-    When you fail to resist frenzy, the Beast takes over and you lose control.
-    Brujah have +2 difficulty to resist fury frenzy due to their clan bane.
+    When a Rouse check would take your Hunger past 5 (a power with several
+    Rouse checks, or rising for the night at Hunger 5), you owe an immediate
+    hunger frenzy test at Difficulty 4 for each check past 5. The command
+    that caused it rolls the test at once; +frenzy/pending rolls one that is
+    still owed.
+
+    Fail and the Storyteller runs your frenzy: fury destroys the source of
+    the provocation, hunger seeks fresh human blood, terror flees. You may
+    choose not to resist and ride the wave instead.
     """
 
     key = "+frenzy"
@@ -345,102 +358,98 @@ class CmdFrenzy(default_cmds.MuxCommand):
     def func(self):
         caller = self.caller
 
-        # Check if character is a vampire
-        if not hasattr(caller.db, 'vampire') or not caller.db.vampire:
+        if not caller.attributes.has("vampire"):
             caller.msg("This command is only available to vampires.")
             return
 
-        # Handle /resist switch
-        if "resist" in self.switches:
-            if not self.args.strip():
-                caller.msg("Usage: +frenzy/resist <difficulty>")
-                caller.msg("Example: +frenzy/resist 3")
-                return
+        if "pending" in self.switches:
+            self._roll_pending()
+        elif "resist" in self.switches:
+            self._resist()
+        elif "check" in self.switches:
+            self._check()
+        else:
+            self._status()
 
-            try:
-                difficulty = int(self.args.strip())
-            except ValueError:
-                caller.msg(f"Invalid difficulty: {self.args.strip()}")
-                return
+    def _roll_pending(self):
+        from dice.commands import forget_roll, roll_owed_frenzy_tests
 
-            # Perform resistance roll
-            from dice.commands import forget_roll
+        caller = self.caller
+        pending = pending_frenzy_test(caller)
+        if not pending:
+            caller.msg("You don't owe a hunger frenzy test.")
+            return
+        forget_roll(caller)
+        roll_owed_frenzy_tests(caller, pending.get("reason"))
 
-            forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
-            result = resist_frenzy(caller, difficulty)
-
-            # Display result
-            lines = []
-            lines.append(f"{BLOOD_RED}{BOX_H * 78}{RESET}")
-            lines.append(f"{BLOOD_RED}  FRENZY RESISTANCE{RESET}")
-            lines.append(f"{BLOOD_RED}{BOX_H * 78}{RESET}\n")
-
-            # Show dice results
-            if result['roll_result']:
-                dice_display = result['roll_result'].format_result(show_details=True)
-                lines.append(dice_display)
-                lines.append("")
-
-            # Outcome
-            if result['success']:
-                lines.append(f"  {VAMPIRE_GOLD}SUCCESS:{RESET} You resist the frenzy!")
-                if result['roll_result'] and result['roll_result'].is_messy_critical:
-                    lines.append(f"  {BLOOD_RED}(Messy Critical - you may have revealed your vampiric nature){RESET}")
-            else:
-                lines.append(f"  {BLOOD_RED}FAILURE:{RESET} The Beast takes over!")
-                if result['roll_result'] and result['roll_result'].is_bestial_failure:
-                    lines.append(f"  {BLOOD_RED}(Bestial Failure - your frenzy is particularly savage!){RESET}")
-
-            lines.append(f"\n{BLOOD_RED}{BOX_H * 78}{RESET}")
-            caller.msg("\n".join(lines))
+    def _resist(self):
+        caller = self.caller
+        parts = self.args.split()
+        if not parts:
+            caller.msg("Usage: +frenzy/resist <difficulty> [fury|hunger|terror]")
+            return
+        try:
+            difficulty = int(parts[0])
+        except ValueError:
+            caller.msg(f"Invalid difficulty: {parts[0]}")
+            return
+        if not 1 <= difficulty <= MAX_DIFFICULTY:
+            caller.msg(f"Difficulty must be between 1 and {MAX_DIFFICULTY}.")
+            return
+        frenzy_type = parts[1].lower() if len(parts) > 1 else None
+        if frenzy_type and frenzy_provocations(frenzy_type) is None:
+            caller.msg("The frenzy type must be fury, hunger or terror.")
             return
 
-        # Handle /check switch
-        if "check" in self.switches:
-            if not self.args.strip():
-                caller.msg("Usage: +frenzy/check <type>")
-                caller.msg("Types: hunger, fury, terror")
-                return
+        from dice.commands import forget_roll
 
-            trigger_type = self.args.strip().lower()
-            if trigger_type not in ['hunger', 'fury', 'terror']:
-                caller.msg(f"Unknown trigger type: {trigger_type}")
-                caller.msg("Valid types: hunger, fury, terror")
-                return
+        forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
+        result = resist_frenzy(caller, difficulty, frenzy_type)
 
-            # Check frenzy risk
-            risk = check_frenzy_risk(caller, trigger_type)
+        lines = [f"{BLOOD_RED}{BOX_H * 78}{RESET}", f"{BLOOD_RED}  FRENZY TEST{RESET}", f"{BLOOD_RED}{BOX_H * 78}{RESET}\n"]
+        lines.append(result['roll_result'].format_result(show_details=True))
+        lines.append("")
+        lines.append(f"  {result['message']}")
+        lines.append(f"\n{BLOOD_RED}{BOX_H * 78}{RESET}")
+        caller.msg("\n".join(lines))
+        if caller.location and not result['success']:
+            caller.location.msg_contents(f"|r{caller.name}'s Beast breaks loose!|n", exclude=[caller])
 
-            # Display risk assessment
-            lines = []
-            lines.append(f"{BLOOD_RED}{BOX_H * 78}{RESET}")
-            lines.append(f"{BLOOD_RED}  FRENZY RISK: {trigger_type.upper()}{RESET}")
-            lines.append(f"{BLOOD_RED}{BOX_H * 78}{RESET}\n")
-            lines.append(f"  {risk['message']}")
-            lines.append(f"\n  {VAMPIRE_GOLD}Difficulty to resist:{RESET} {risk['difficulty']}")
-            lines.append(f"    Base difficulty: {risk['base_difficulty']}")
-            lines.append(f"    Hunger modifier: +{risk['hunger_modifier']}")
-            lines.append(f"\n  Use {VAMPIRE_GOLD}+frenzy/resist {risk['difficulty']}{RESET} to attempt resistance.")
-            lines.append(f"\n{BLOOD_RED}{BOX_H * 78}{RESET}")
-            caller.msg("\n".join(lines))
+    def _check(self):
+        caller = self.caller
+        frenzy_type = self.args.strip().lower()
+        data = frenzy_provocations(frenzy_type)
+        if data is None:
+            caller.msg("Usage: +frenzy/check <fury|hunger|terror>")
             return
+        pool, breakdown = frenzy_pool(caller, frenzy_type)
+        lines = [f"{BLOOD_RED}{BOX_H * 78}{RESET}", f"{BLOOD_RED}  FRENZY: {frenzy_type.upper()}{RESET}", f"{BLOOD_RED}{BOX_H * 78}{RESET}\n"]
+        lines.append(f"  {VAMPIRE_GOLD}In frenzy you:{RESET} {data['goal']}")
+        lines.append(f"\n  {VAMPIRE_GOLD}Provocation{RESET}{' ' * 60}{VAMPIRE_GOLD}Difficulty{RESET}")
+        for provocation, difficulty in data['provocations'].items():
+            lines.append(f"  {provocation:<70} {difficulty}")
+        lines.append(f"\n  Your test: {pool} dice ({breakdown}).")
+        lines.append(f"  Use {VAMPIRE_GOLD}+frenzy/resist <difficulty> {frenzy_type}{RESET} when the Storyteller calls for it.")
+        lines.append(f"\n{BLOOD_RED}{BOX_H * 78}{RESET}")
+        caller.msg("\n".join(lines))
 
-        # No switches - show frenzy status
-        from commands.v5.utils.blood_utils import get_hunger
-        humanity = get_humanity(caller)
-        hunger = get_hunger(caller)
-
-        lines = []
-        lines.append(f"{BLOOD_RED}{BOX_H * 78}{RESET}")
-        lines.append(f"{BLOOD_RED}  FRENZY STATUS{RESET}")
-        lines.append(f"{BLOOD_RED}{BOX_H * 78}{RESET}\n")
-        lines.append(f"  {VAMPIRE_GOLD}Humanity:{RESET} {humanity}")
+    def _status(self):
+        caller = self.caller
+        pool, breakdown = frenzy_pool(caller)
+        hunger = caller.hunger
+        lines = [f"{BLOOD_RED}{BOX_H * 78}{RESET}", f"{BLOOD_RED}  FRENZY STATUS{RESET}", f"{BLOOD_RED}{BOX_H * 78}{RESET}\n"]
+        lines.append(f"  {VAMPIRE_GOLD}Humanity:{RESET} {caller.humanity}")
         lines.append(f"  {BLOOD_RED}Hunger:{RESET} {hunger}")
-
+        lines.append(f"  Frenzy test: {pool} dice ({breakdown}).")
         if hunger >= 4:
-            lines.append(f"\n  {BLOOD_RED}WARNING:{RESET} High Hunger increases frenzy risk!")
-
-        lines.append(f"\n  Use {VAMPIRE_GOLD}+frenzy/check <type>{RESET} to assess frenzy risk.")
-        lines.append(f"  Use {VAMPIRE_GOLD}+frenzy/resist <difficulty>{RESET} to resist frenzy.")
+            lines.append(f"\n  {BLOOD_RED}At Hunger 4+ you are prone to hunger frenzy (QR p.4).{RESET}")
+        pending = pending_frenzy_test(caller)
+        if pending:
+            lines.append(
+                f"\n  {BLOOD_RED}You owe a hunger frenzy test (Difficulty {pending.get('difficulty', 4)}):"
+                f"{RESET} +frenzy/pending"
+            )
+        lines.append(f"\n  Use {VAMPIRE_GOLD}+frenzy/check <type>{RESET} to see the provocations.")
+        lines.append(f"  Use {VAMPIRE_GOLD}+frenzy/resist <difficulty> [type]{RESET} to resist frenzy.")
         lines.append(f"\n{BLOOD_RED}{BOX_H * 78}{RESET}")
         caller.msg("\n".join(lines))

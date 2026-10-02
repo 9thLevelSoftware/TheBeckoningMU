@@ -185,13 +185,20 @@ def _format_bio_section(character):
 
 
 def _format_vitals_section(character):
-    """Hunger, Blood Potency, Humanity and the derived Health/Willpower tracks."""
-    return (
+    """Hunger, Blood Potency, Humanity and the derived Health/Willpower tracks,
+    plus a hunger frenzy test still owed (db.pending_frenzy_test)."""
+    vitals = (
         f"\n\n Hunger: {character.hunger}  Blood Potency: {character.blood_potency}"
         f"  Humanity: {character.humanity}"
         f"  Health: {character.current_health}/{character.health_max}"
         f"  Willpower: {character.current_willpower}/{character.willpower_max}"
     )
+    pending = character.db.pending_frenzy_test
+    if pending:
+        vitals += (
+            f"\n |rOwes a hunger frenzy test (Difficulty {pending.get('difficulty', 4)}): +frenzy/pending|n"
+        )
+    return vitals
 
 
 def _format_attributes_section(character):
