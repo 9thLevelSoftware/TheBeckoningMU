@@ -14,7 +14,7 @@ from .utils.discipline_utils import (
     can_use_power
 )
 from world.ansi_theme import (
-    BLOOD_RED, DARK_RED, PALE_IVORY, SHADOW_GREY, GOLD, RESET,
+    BLOOD_RED, PALE_IVORY, SHADOW_GREY, RESET,
     BOX_H, BOX_V, BOX_TL, BOX_TR, BOX_BL, BOX_BR
 )
 from world.v5_data import DISCIPLINES

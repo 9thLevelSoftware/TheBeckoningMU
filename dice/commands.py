@@ -10,18 +10,16 @@ from evennia.utils.utils import inherits_from
 
 from . import dice_roller, rouse_checker
 
-# The last roll a character made with `roll` or `power`, for a Willpower
-# re-roll: {"result": RollResult, "label": str, "secret": bool, "rerolled": bool}.
-LAST_ROLL = "last_roll"
-
-
 def _is_staff(caller) -> bool:
     """True if the caller (or the account puppeting it) has Builder permission."""
     return caller.locks.check_lockstring(caller, "staff:perm(Builder)")
 
 
 def remember_roll(caller, result, label: str, secret: bool = False) -> None:
-    """Store a roll on caller.ndb so `roll/willpower` can re-roll its dice."""
+    """Store a roll on caller.ndb.last_roll so `roll/willpower` can re-roll its dice.
+
+    Shape: {"result": RollResult, "label": str, "secret": bool, "rerolled": bool}.
+    """
     caller.ndb.last_roll = {"result": result, "label": label, "secret": secret, "rerolled": False}
 
 

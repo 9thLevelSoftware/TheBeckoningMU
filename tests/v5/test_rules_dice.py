@@ -257,6 +257,15 @@ class PowerCommandTests(EvenniaCommandTest):
             self.call(CmdPower(), "Bond Famulus", caller=self.char)
         self.assertEqual(self.char.hunger, 4)
 
+    def test_rouse_checks_stop_at_hunger_5(self):
+        """A failed check that reaches Hunger 5 leaves the rest of the power's checks unrolled."""
+        self.char.hunger = 4
+        # Bond Famulus: 1 die, then up to 3 Rouse dice; only one Rouse die is rolled.
+        with dice(3, 3):
+            output = self.call(CmdPower(), "Bond Famulus", caller=self.char)
+        self.assertEqual(self.char.hunger, 5)
+        self.assertIn("not rolled", output)
+
     def test_roll_uses_pre_rouse_hunger(self):
         """The pool is rolled with the Hunger from before the power's Rouse (QR p.4)."""
         # Dread Gaze: Charisma 1 + Presence 3 = 4 dice, 1 Hunger die; then 1 Rouse.
