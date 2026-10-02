@@ -1,12 +1,41 @@
 """
-Thin-Blood Utility Functions
+Thin-Blood utility functions: Thin-Blood Alchemy and daylight.
 
-Helper functions for Thin-Blood mechanics and Alchemy.
+Thin-Blood Alchemy (V5 core p.282-288; world.v5_data.DISCIPLINES
+["Thin-Blood Alchemy"]["formulas"]) works in two steps, kept apart from
+Discipline powers:
+
+1. Distil a formula you know (learned with +spend formula, or the one the
+   Thin-blood Alchemist merit gives). Distilling costs 1 Rouse check and
+   rolls a method pool with your Hunger dice (Athanor Corporis: Stamina +
+   Alchemy; Calcinatio: Manipulation + Alchemy; Fixatio: Intelligence +
+   Alchemy). A success gives one dose.
+2. Use a dose: pay the formula's own activation cost (its "rouse" Rouse
+   checks) and, if it has a dice pool, roll it.
+
+Rolls go through dice.dice_roller.roll_v5_pool and Rouse checks through
+dice.rouse_checker.perform_rouse_check; the Hunger they cost is added after
+the roll (core pp.211-212).
 """
 
-from world.v5_data import DISCIPLINES
-from dice.dice_roller import roll_v5_pool
 import random
+
+from dice.dice_roller import MAX_POOL, roll_v5_pool
+from dice.discipline_roller import calculate_pool_from_traits, parse_dice_pool
+from dice.rouse_checker import HUNGER_5_REFUSAL, MAX_HUNGER, perform_rouse_check
+from world.v5_data import DISCIPLINES
+
+ALCHEMY = "Thin-Blood Alchemy"
+
+# Distillation methods and their pools (core p.283; v5_data comment).
+DISTILLATION_METHODS = {
+    "athanor": ("Athanor Corporis", "Stamina + Thin-Blood Alchemy"),
+    "calcinatio": ("Calcinatio", "Manipulation + Thin-Blood Alchemy"),
+    "fixatio": ("Fixatio", "Intelligence + Thin-Blood Alchemy"),
+}
+# UNVERIFIED: the difficulty of a distillation roll. The book's text wasn't
+# available; the Storyteller may set another with "vs <difficulty>".
+DEFAULT_DISTILL_DIFFICULTY = 3
 
 
 def is_thin_blood(character):
@@ -21,228 +50,127 @@ def get_blood_potency(character):
     return character.blood_potency
 
 
-def has_ingredients(character, formula):
-    """Check if character has ingredients for a formula.
-
-    Args:
-        character: The character object
-        formula: The formula dict from DISCIPLINES data
-
-    Returns:
-        tuple: (bool success, str message)
-    """
-    if "ingredients" not in formula:
-        return True, "No ingredients required"
-
-    # Check if character has ingredient tracking
-    if character.db.alchemy_ingredients is None:
-        character.db.alchemy_ingredients = {}
-
-    ingredients = formula.get("ingredients", [])
-    missing = []
-
-    for ingredient in ingredients:
-        count = character.db.alchemy_ingredients.get(ingredient, 0)
-        if count < 1:
-            missing.append(ingredient)
-
-    if missing:
-        return False, f"Missing ingredients: {', '.join(missing)}"
-
-    return True, "All ingredients available"
+def all_formulas():
+    """Every formula in v5_data, each a copy with its "level"."""
+    formulas = []
+    for level, entries in DISCIPLINES[ALCHEMY].get("formulas", {}).items():
+        for formula in entries:
+            formulas.append(dict(formula, level=level))
+    return formulas
 
 
-def craft_formula(character, formula_name):
-    """Attempt to craft an alchemical formula.
-
-    Args:
-        character: The character object
-        formula_name: Name of the formula to craft
-
-    Returns:
-        dict: {"success": bool, "message": str, "formula": dict}
-    """
-    # Get Thin-Blood Alchemy level
-    alchemy_level = character.get_trait("Thin-Blood Alchemy")
-
-    if alchemy_level == 0:
-        return {
-            "success": False,
-            "message": "You don't know Thin-Blood Alchemy",
-            "formula": None
-        }
-
-    # Find the formula
-    formula = get_formula_by_name(formula_name, alchemy_level)
-    if not formula:
-        return {
-            "success": False,
-            "message": f"Unknown formula or level too low: {formula_name}",
-            "formula": None
-        }
-
-    # Check ingredients
-    has_ing, ing_msg = has_ingredients(character, formula)
-    if not has_ing:
-        return {
-            "success": False,
-            "message": ing_msg,
-            "formula": formula
-        }
-
-    # Craft roll: Intelligence + Thin-Blood Alchemy vs difficulty
-    difficulty = formula.get("craft_difficulty", 3)
-
-    pool = character.get_trait("intelligence") + alchemy_level
-
-    # Thin-Bloods don't use Hunger dice for Alchemy (Blood Potency 0)
-    result = roll_v5_pool(max(1, pool), 0, difficulty)
-
-    if result.is_success:
-        # Consume ingredients
-        for ingredient in formula.get("ingredients", []):
-            character.db.alchemy_ingredients[ingredient] -= 1
-
-        # Add formula to crafted formulae
-        if character.db.crafted_formulae is None:
-            character.db.crafted_formulae = []
-
-        character.db.crafted_formulae.append({
-            "name": formula_name,
-            "level": formula.get("level", 1),
-            "uses_remaining": 1
-        })
-
-        return {
-            "success": True,
-            "message": f"Successfully crafted {formula_name}!",
-            "formula": formula,
-            "roll_result": result
-        }
-    else:
-        # Consume ingredients even on failure
-        for ingredient in formula.get("ingredients", []):
-            character.db.alchemy_ingredients[ingredient] -= 1
-
-        return {
-            "success": False,
-            "message": f"Failed to craft {formula_name}. Ingredients consumed.",
-            "formula": formula,
-            "roll_result": result
-        }
-
-
-def use_alchemy(character, formula_name):
-    """Activate a crafted alchemical formula.
-
-    Args:
-        character: The character object
-        formula_name: Name of the formula to use
-
-    Returns:
-        dict: {"success": bool, "message": str, "effect": dict}
-    """
-    if character.db.crafted_formulae is None:
-        character.db.crafted_formulae = []
-
-    # Find the crafted formula
-    crafted = None
-    for idx, f in enumerate(character.db.crafted_formulae):
-        if f["name"].lower() == formula_name.lower():
-            crafted = (idx, f)
-            break
-
-    if not crafted:
-        return {
-            "success": False,
-            "message": f"You don't have a crafted {formula_name} formula",
-            "effect": None
-        }
-
-    idx, formula_data = crafted
-
-    # Get formula details
-    formula = get_formula_by_name(formula_name, formula_data["level"])
-
-    # Remove from crafted (single use)
-    character.db.crafted_formulae.pop(idx)
-
-    # Apply effect (simplified - full implementation would use discipline_effects)
-    effect = {
-        "name": formula["name"],
-        "description": formula["description"],
-        "duration": formula["duration"],
-        "dice_pool": formula["dice_pool"]
-    }
-
-    # Add effect to character
-    if character.db.active_effects is None:
-        character.db.active_effects = []
-
-    character.db.active_effects.append({
-        "type": "alchemy",
-        "name": formula["name"],
-        "duration": formula["duration"],
-        "description": formula["description"]
-    })
-
-    return {
-        "success": True,
-        "message": f"Activated {formula_name}!",
-        "effect": effect
-    }
+def get_formula_by_name(formula_name, max_level=5):
+    """The formula (with "level") named ``formula_name`` at or below ``max_level``, or None."""
+    wanted = str(formula_name or "").strip().lower()
+    for formula in all_formulas():
+        if formula["name"].lower() == wanted and formula["level"] <= max_level:
+            return formula
+    return None
 
 
 def get_thin_blood_powers(character):
-    """Get all Thin-Blood Alchemy formulae available to character.
+    """The formulas the character knows (Character.known_formulas), each with its level."""
+    known = {name.lower() for name in character.known_formulas}
+    return [formula for formula in all_formulas() if formula["name"].lower() in known]
 
-    Args:
-        character: The character object
+
+def _pool(character, pool_text):
+    size, breakdown = calculate_pool_from_traits(character, parse_dice_pool(pool_text))
+    return max(1, min(MAX_POOL, size)), breakdown
+
+
+def craft_formula(character, formula_name, method="athanor", difficulty=DEFAULT_DISTILL_DIFFICULTY):
+    """
+    Distil one dose of a known formula.
+
+    Refused (nothing rolled or charged) without Thin-Blood Alchemy, for a
+    formula the character doesn't know or whose level is above their
+    Alchemy rating, for an unknown method, or at Hunger 5 (the Rouse can't
+    be made). Otherwise rolls the method pool with the character's Hunger
+    dice, then makes the Rouse check.
 
     Returns:
-        list: List of formula dicts
+        dict: {"success", "message", "formula", "roll_result", "rouse_result", "method"}
     """
-    alchemy_level = character.get_trait("Thin-Blood Alchemy")
+    def refused(message, formula=None):
+        return {"success": False, "message": message, "formula": formula, "roll_result": None,
+                "rouse_result": None, "method": None}
 
+    alchemy_level = character.get_trait(ALCHEMY)
     if alchemy_level == 0:
-        return []
+        return refused("You don't know Thin-Blood Alchemy.")
+    formula = get_formula_by_name(formula_name)
+    if formula is None or formula["name"] not in character.known_formulas:
+        return refused(f"You don't know a formula called {formula_name}. Learn one with +spend formula <name>.")
+    if formula["level"] > alchemy_level:
+        return refused(f"{formula['name']} is a level {formula['level']} formula; your Alchemy is {alchemy_level}.",
+                       formula)
+    if method not in DISTILLATION_METHODS:
+        return refused(f"Unknown method. Choose from: {', '.join(DISTILLATION_METHODS)}.", formula)
+    if character.hunger >= MAX_HUNGER:
+        return refused(HUNGER_5_REFUSAL, formula)
 
-    formulae = []
-    disc_data = DISCIPLINES.get("Thin-Blood Alchemy", {})
-    powers = disc_data.get("formulas", {})
+    method_name, pool_text = DISTILLATION_METHODS[method]
+    pool, _breakdown = _pool(character, pool_text)
+    result = roll_v5_pool(pool, character.dice_hunger, difficulty)
+    rouse = perform_rouse_check(character, reason=f"Distilling {formula['name']}")
 
-    for level in range(1, alchemy_level + 1):
-        if level in powers:
-            for power in powers[level]:
-                power_copy = power.copy()
-                power_copy["level"] = level
-                formulae.append(power_copy)
+    if result.is_success:
+        crafted = list(character.db.crafted_formulae or [])
+        crafted.append({"name": formula["name"], "level": formula["level"], "method": method_name,
+                        "successes": result.total_successes})
+        character.db.crafted_formulae = crafted
+        message = f"You distil a dose of {formula['name']} ({method_name}, {pool_text})."
+    else:
+        message = f"Your distillation of {formula['name']} fails ({method_name}, {pool_text})."
+    return {"success": result.is_success, "message": message, "formula": formula, "roll_result": result,
+            "rouse_result": rouse, "method": method_name}
 
-    return formulae
 
+def use_alchemy(character, formula_name):
+    """
+    Use a distilled dose: pay the formula's activation Rouse checks and roll
+    its dice pool, if it has one (with the character's Hunger dice).
 
-def get_formula_by_name(formula_name, max_level):
-    """Get a formula by name up to max level.
-
-    Args:
-        formula_name: Name of the formula
-        max_level: Maximum level to search
+    Refused, keeping the dose, at Hunger 5 if the formula costs a Rouse.
 
     Returns:
-        dict: Formula data or None
+        dict: {"success", "message", "effect", "roll_result", "rouse_result"}
     """
-    disc_data = DISCIPLINES.get("Thin-Blood Alchemy", {})
-    powers = disc_data.get("formulas", {})
+    crafted = list(character.db.crafted_formulae or [])
+    index = next((i for i, dose in enumerate(crafted) if dose["name"].lower() == str(formula_name).strip().lower()),
+                 None)
+    if index is None:
+        return {"success": False, "message": f"You have no distilled dose of {formula_name}.", "effect": None,
+                "roll_result": None, "rouse_result": None}
+    formula = get_formula_by_name(crafted[index]["name"])
+    if formula is None:
+        return {"success": False, "message": f"{crafted[index]['name']} is no longer a formula.", "effect": None,
+                "roll_result": None, "rouse_result": None}
+    if formula.get("rouse", 0) and character.hunger >= MAX_HUNGER:
+        return {"success": False, "message": HUNGER_5_REFUSAL, "effect": None, "roll_result": None,
+                "rouse_result": None}
 
-    for level in range(1, max_level + 1):
-        if level in powers:
-            for power in powers[level]:
-                if power["name"].lower() == formula_name.lower():
-                    result = power.copy()
-                    result["level"] = level
-                    return result
+    crafted.pop(index)
+    character.db.crafted_formulae = crafted
 
-    return None
+    roll_result = None
+    if formula.get("dice_pool"):
+        pool, _breakdown = _pool(character, formula["dice_pool"])
+        roll_result = roll_v5_pool(pool, character.dice_hunger, 0)
+    rouse = None
+    if formula.get("rouse", 0):
+        rouse = perform_rouse_check(character, reason=formula["name"], count=formula["rouse"])
+
+    effect = {"name": formula["name"], "description": formula["description"],
+              "duration": formula.get("duration_text", formula.get("duration")),
+              "dice_pool": formula.get("dice_pool"), "opposed_by": formula.get("opposed_by")}
+    effects = list(character.db.active_effects or [])
+    effects.append({"type": "alchemy", "name": formula["name"], "duration": formula.get("duration"),
+                    "description": formula["description"]})
+    character.db.active_effects = effects
+    return {"success": True, "message": f"You use {formula['name']}.", "effect": effect,
+            "roll_result": roll_result, "rouse_result": rouse}
 
 
 def check_daylight_damage(character):
@@ -296,18 +224,3 @@ def can_pass_as_mortal(character):
         return True
 
     return False
-
-
-def add_ingredient(character, ingredient_name, quantity=1):
-    """Add alchemy ingredients to character's inventory.
-
-    Args:
-        character: The character object
-        ingredient_name: Name of the ingredient
-        quantity: Amount to add (default 1)
-    """
-    if character.db.alchemy_ingredients is None:
-        character.db.alchemy_ingredients = {}
-
-    current = character.db.alchemy_ingredients.get(ingredient_name, 0)
-    character.db.alchemy_ingredients[ingredient_name] = current + quantity
