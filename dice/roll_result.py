@@ -48,96 +48,64 @@ class RollResult:
         self.all_dice = regular_dice + hunger_dice
         self.difficulty = difficulty
 
-        # Core calculations
-        self.total_successes = self._count_successes()
-        self.is_success = self.total_successes >= difficulty if difficulty > 0 else self.total_successes > 0
+        # Analyze outcomes in one pass over the two dice groups.
+        (
+            self.total_successes,
+            self.is_success,
+            self.is_critical,
+            self.is_messy_critical,
+            self.is_bestial_failure,
+        ) = self._analyze_dice()
         self.margin = self.total_successes - difficulty
-
-        # Special results
-        self.is_critical = self._check_critical()
-        self.is_messy_critical = self._check_messy_critical()
-        self.is_bestial_failure = self._check_bestial_failure()
 
         # Result interpretation
         self.result_type = self._interpret_result()
-
-    def _count_successes(self) -> int:
-        """
-        Count total successes according to V5 rules.
-
-        Rules:
-        - 6-9 on a die = 1 success
-        - 10 on a die = 2 successes (critical)
-        - 1-5 on a die = 0 successes (failure)
-
-        Returns:
-            Total number of successes
-        """
+    def _analyze_dice(self) -> tuple[int, bool, bool, bool, bool]:
+        """Compute successes and V5 special-result flags in one pass."""
         successes = 0
-        for die in self.all_dice:
+        tens = 0
+        hunger_tens = 0
+        regular_ones = 0
+        hunger_ones = 0
+
+        for die in self.regular_dice:
             if die >= 6:
                 successes += 2 if die == 10 else 1
-        return successes
+            if die == 10:
+                tens += 1
+            elif die == 1:
+                regular_ones += 1
+
+        for die in self.hunger_dice:
+            if die >= 6:
+                successes += 2 if die == 10 else 1
+            if die == 10:
+                tens += 1
+                hunger_tens += 1
+            elif die == 1:
+                hunger_ones += 1
+
+        is_success = successes >= self.difficulty if self.difficulty > 0 else successes > 0
+        is_critical = tens >= 2
+        is_messy_critical = is_critical and hunger_tens >= 1
+        is_bestial_failure = not is_success and hunger_ones > 0 and regular_ones == 0
+        return successes, is_success, is_critical, is_messy_critical, is_bestial_failure
+
+    def _count_successes(self) -> int:
+        """Count total successes according to V5 rules."""
+        return self._analyze_dice()[0]
 
     def _check_critical(self) -> bool:
-        """
-        Check for critical win (pair of 10s).
-
-        A critical occurs when at least two dice show 10.
-        Each pair of 10s adds 2 additional successes (4 total from the pair).
-
-        Returns:
-            True if at least two 10s were rolled
-        """
-        tens = sum(1 for die in self.all_dice if die == 10)
-        return tens >= 2
+        """Check whether at least two dice show 10."""
+        return self._analyze_dice()[2]
 
     def _check_messy_critical(self) -> bool:
-        """
-        Check if critical includes a Hunger die showing 10.
-
-        A Messy Critical occurs when you achieve a critical win
-        but at least one of the 10s is on a Hunger die. This means
-        you succeed dramatically but your Beast influences the outcome.
-
-        Returns:
-            True if critical and at least one Hunger die shows 10
-        """
-        if not self.is_critical:
-            return False
-        hunger_tens = sum(1 for die in self.hunger_dice if die == 10)
-        return hunger_tens >= 1
+        """Check whether a critical includes a Hunger 10."""
+        return self._analyze_dice()[3]
 
     def _check_bestial_failure(self) -> bool:
-        """
-        Check if failure includes only Hunger dice showing 1s.
-
-        A Bestial Failure occurs when:
-        1. The roll fails (doesn't meet difficulty or has zero successes)
-        2. At least one Hunger die shows a 1
-        3. NO regular dice show 1s
-
-        This represents the Beast taking control during a failure.
-
-        Returns:
-            True if failed roll with only Hunger 1s present
-        """
-        # Must be a failure
-        if self.is_success:
-            return False
-
-        # Must have Hunger dice
-        if not self.hunger_dice:
-            return False
-
-        # Check for 1s on Hunger dice
-        hunger_ones = sum(1 for die in self.hunger_dice if die == 1)
-        if hunger_ones == 0:
-            return False
-
-        # Check that NO regular dice show 1s
-        regular_ones = sum(1 for die in self.regular_dice if die == 1)
-        return regular_ones == 0
+        """Check whether the failed roll has only Hunger dice showing 1."""
+        return self._analyze_dice()[4]
 
     def _interpret_result(self) -> str:
         """
