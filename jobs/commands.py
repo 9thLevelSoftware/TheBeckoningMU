@@ -330,8 +330,9 @@ class CmdJobSubmit(COMMAND_DEFAULT_CLASS):
       job/submit <bucket_name> <title> = <description>
 
     Players may submit to the buckets 'buckets' lists (Requests and Bugs
-    by default); staff may submit to any bucket. The bucket name is one
-    word; the rest before = is the title.
+    by default); staff may submit to any bucket. A bucket name may have
+    spaces (job/submit Hunt Scenes Friday hunt = ...); the rest before =
+    is the title.
 
     Examples:
       job/submit Bugs Character sheet not saving = My character sheet keeps resetting
@@ -350,11 +351,10 @@ class CmdJobSubmit(COMMAND_DEFAULT_CLASS):
         
         try:
             bucket_and_title, description = self.args.split("=", 1)
-            parts = bucket_and_title.strip().split(" ", 1)
-            if len(parts) < 2:
+            bucket_name, title = utils.split_bucket_and_title(bucket_and_title)
+            if not title:
                 self.caller.msg("Usage: job/submit <bucket_name> <title> = <description>")
                 return
-            bucket_name, title = parts
         except ValueError:
             self.caller.msg("Usage: job/submit <bucket_name> <title> = <description>")
             return
@@ -408,21 +408,16 @@ class CmdJobCreate(COMMAND_DEFAULT_CLASS):
         
         try:
             bucket_and_title, description = self.args.split("=", 1)
-            parts = bucket_and_title.strip().split(" ", 1)
-            if len(parts) < 2:
+            bucket_name, title = utils.split_bucket_and_title(bucket_and_title)
+            if not title:
                 self.caller.msg("Usage: job/create <bucket_name> <title> = <description>")
                 return
-            bucket_name, title = parts
         except ValueError:
             self.caller.msg("Usage: job/create <bucket_name> <title> = <description>")
             return
         
         bucket = utils.get_bucket(self.caller, bucket_name.strip())
         if not bucket:
-            return
-        if not bucket.player_submit and not utils.is_staff(self.caller):
-            names = ", ".join(b.name for b in utils.player_buckets()) or "none yet"
-            self.caller.msg(f"You can't file jobs in '{bucket.name}'. Player buckets: {names}.")
             return
         
         # Create the job

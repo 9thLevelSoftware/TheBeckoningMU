@@ -79,6 +79,19 @@ class PlayerBucketTests(EvenniaCommandTest):
         self.call(CmdJobSubmit(), "Builds Staff note = fine", caller=self.char1)
         self.assertTrue(Job.objects.filter(bucket__name="Builds").exists())
 
+    def test_multi_word_bucket_names(self):
+        """R-26: the longest bucket name the text starts with is the bucket."""
+        Bucket.objects.create(name="Plot Requests", description="plots", player_submit=True)
+        self.call(CmdJobSubmit(), "Plot Requests Big idea = a war", caller=self.player)
+        job = Job.objects.get(title="Big idea")
+        self.assertEqual(job.bucket.name, "Plot Requests")
+        self.call(CmdJobSubmit(), "hunt scenes Friday hunt = staff only", caller=self.char1)
+        self.assertEqual(Job.objects.get(title="Friday hunt").bucket.name, "Hunt Scenes")
+        self.call(CmdJobSubmit(), "Requests Plot Requests mixup = text", caller=self.player)
+        self.assertEqual(Job.objects.get(title="Plot Requests mixup").bucket.name, "Requests")
+        out = self.call(CmdJobSubmit(), "Hunt Scenes = no title", caller=self.char1)
+        self.assertIn("Usage:", out)
+
     def test_jobs_work_out_of_character(self):
         """Jobs are on the account cmdset; an Account caller files and reads its own job."""
         keys = AccountCmdSet()

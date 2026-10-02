@@ -109,6 +109,29 @@ def player_buckets():
     return Bucket.objects.filter(player_submit=True, is_archived=False).order_by("name")
 
 
+def split_bucket_and_title(text):
+    """
+    Split "<bucket> <title>" where the bucket name may contain spaces
+    ("Hunt Scenes Need a scene"): the longest existing bucket name the text
+    starts with wins; otherwise the first word is the bucket.
+
+    Returns:
+        (bucket_name, title), with title "" when there is none.
+    """
+    text = text.strip()
+    lowered = text.lower()
+    best = None
+    for name in Bucket.objects.values_list("name", flat=True):
+        candidate = name.lower()
+        fits = lowered == candidate or lowered.startswith(candidate + " ")
+        if fits and (best is None or len(name) > len(best)):
+            best = name
+    if best is not None:
+        return text[: len(best)], text[len(best) :].strip()
+    first, _, rest = text.partition(" ")
+    return first, rest.strip()
+
+
 def get_bucket(caller, bucket_name):
     """
     Fetches a Bucket by name with error handling.
