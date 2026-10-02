@@ -29,18 +29,11 @@ reading of all your character's capabilities.
 |yst|n
   Display abbreviated character stats.
 
-Shows vital statistics in a compact one-line format:
-  - Name
-  - Hunger level
-  - Health status
-  - Willpower status
-  - Humanity rating
-
-Perfect for quick status checks during play without scrolling
-through the full sheet.
+Shows your vitals on one line: name, clan and generation, Hunger,
+current/maximum Health and current/maximum Willpower.
 
 |yExample Output:|n
-  John | Hunger: 2 | Health: OOOOO | Willpower: 4/5 | Humanity: 7
+  John (Brujah Gen 13) Hunger: ●●○○○ Health: 6/7 Willpower: 4/5
 
 |WOTHER USEFUL COMMANDS:|n
 
@@ -48,7 +41,7 @@ through the full sheet.
   View detailed health status (see help combat_commands)
 
 |y+humanity|n
-  View humanity, stains, convictions (see help humanity)
+  View humanity, stains, convictions (see help humanity-guide)
 
 |yhunger|n
   View hunger and blood status (see help blood_commands)
@@ -63,13 +56,13 @@ through the full sheet.
   View backgrounds (see help background_commands)
 
 |y+boon|n
-  View boon ledger (see help boons)
+  View boon ledger (see help boons-guide)
 
 |y+status|n
-  View political status (see help status)
+  View your Status in Kindred society (see help status-guide)
 
 |WRELATED TOPICS:|n
 
-|ySee also:|n help chargen, help roll, help combat, help v5
+|ySee also:|n help chargen, help roll-guide, help combat, help v5-rules-guide
 
 |[r+===================================================================+|n

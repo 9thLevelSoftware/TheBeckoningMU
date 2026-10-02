@@ -21,18 +21,19 @@ rules for a MUSH-style roleplay-focused experience.
 |WGETTING STARTED:|n
 
 |whelp commands|n        - List of all available commands
-|whelp v5|n              - V5 game mechanics overview
-|whelp hunger|n          - Understanding the Hunger system
-|whelp disciplines|n     - Vampire supernatural powers
-|whelp status|n          - The Status and Boons political system
-|whelp chargen|n         - Character creation guide
+|whelp v5-rules-guide|n  - The V5 rules in one place
+|whelp hunger-guide|n    - Understanding the Hunger system
+|whelp disciplines-guide|n - Vampire supernatural powers
+|whelp status-guide|n    - Status in Kindred society
+|whelp boons-guide|n     - Boons, the currency of favors
+|whelp chargen|n         - Character creation (on the website)
 
 |WIMPORTANT MUSH ETIQUETTE:|n
 
-- This is a |yrolep lay-focused|n game - commands provide mechanical support
+- This is a |yroleplay-focused|n game - commands provide mechanical support
 - |yDescribe your actions|n - commands calculate results, you narrate outcomes
 - |yRespect the Masquerade|n - keep vampire nature hidden from mortals
-- |yCoordinate with others|n - use +roll for contested actions
+- |yCoordinate with others|n - use roll for contested actions
 - |yAsk staff for help|n - we're here to support great stories
 
 |[r+================================================================+|n

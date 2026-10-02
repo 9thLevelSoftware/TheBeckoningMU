@@ -36,7 +36,7 @@ p.5, p.11.)
 
 |WTHIN-BLOOD ALCHEMY:|n
 
-See |yhelp alchemy|n for the formulas.
+See |yhelp alchemy-guide|n for the formulas and |y+alchemy|n.
 
 |WSOCIAL STANDING:|n
 
@@ -49,6 +49,8 @@ Thin-bloods are |rpariahs|n in vampire society:
 
 |yCommands:|n
   |w+alchemy|n          - View and use Thin-Blood Alchemy
+  |w+daylight|n         - Show what sunlight does to you (it marks no damage;
+                       the Storyteller does that with +damage)
   |w+sheet|n            - View character (shows Thin-Blood status)
 
-|ySee also:|n help alchemy, help chargen, help clans
+|ySee also:|n help alchemy-guide, help chargen, help clans

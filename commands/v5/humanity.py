@@ -172,7 +172,7 @@ class CmdHumanity(default_cmds.MuxCommand):
             lines.append(f"    {SHADOW_GREY}None set. Use +humanity/touchstone to add one.{RESET}")
 
         lines.append(f"\n{VAMPIRE_GOLD}{BOX_H * 78}{RESET}")
-        lines.append(f"  Use {VAMPIRE_GOLD}+help humanity{RESET} for more information.")
+        lines.append(f"  Use {VAMPIRE_GOLD}help humanity-guide{RESET} for more information.")
         lines.append(f"{VAMPIRE_GOLD}{BOX_H * 78}{RESET}")
 
         character.msg("\n".join(lines))

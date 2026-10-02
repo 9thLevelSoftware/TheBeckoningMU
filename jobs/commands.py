@@ -331,7 +331,7 @@ class CmdJobSubmit(COMMAND_DEFAULT_CLASS):
 
     Examples:
       job/submit Bugs Character sheet not saving = My character sheet keeps resetting
-      job/submit Features Add new command = Would like a +time command
+      job/submit Features Add new command = Would like a command that shows the game time
     """
 
     key = "job/submit"

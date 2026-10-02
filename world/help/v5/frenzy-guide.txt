@@ -82,6 +82,6 @@ its end.
   Severity, each -1 to an Attribute, lasting one more night (only one if
   you ride the wave).
 
-|ySee also:|n help humanity, help hunger, help clans
+|ySee also:|n help humanity-guide, help hunger-guide, help clans, help v5-rules-guide
 
 |[R+===================================================================+|n

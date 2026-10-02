@@ -74,4 +74,4 @@ wrong; on a messy critical or bestial failure, play out the Beast.
 
 |[r+===================================================================+|n
 
-|ySee also:|n help dice_commands, help hunger, help disciplines
+|ySee also:|n help dice_commands, help hunger-guide, help disciplines-guide, help v5-rules-guide

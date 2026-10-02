@@ -125,7 +125,7 @@ class CmdBloodSurge(Command):
       bloodsurge strength
       bloodsurge brawl
 
-    Your next roll whose pool includes an Attribute (a `roll`, or a `power`
+    Your next roll whose pool includes an Attribute (a 'roll', or a 'power'
     roll) gets the Blood Surge dice from the Blood Potency table (BP 0: +1,
     BP 1-2: +2, BP 3-4: +3, and so on), then the surge is used up. Its one
     Rouse check is made with that roll: the roll uses the Hunger you had

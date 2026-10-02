@@ -3,7 +3,7 @@
 |[R+===================================================================+|n
 
 Commands for viewing and managing Status in Kindred society.
-See |yhelp status|n for conceptual overview of the Status system.
+See |yhelp status-guide|n for a conceptual overview of the Status system.
 
 |WVIEWING STATUS:|n
 
@@ -106,15 +106,15 @@ Shows:
 
 |WSTATUS OVERVIEW:|n
 
-|yTotal Status|n = Earned Status + Position Status
+|yTotal Status|n = Earned + Position + Temporary Status (0-5)
 
-|yEarned Status (0-3):|n
+|yEarned Status (0-5):|n
   Gained through actions and recognition.
   Can be modified through +statusreq.
 
-|yPosition Status (0-5):|n
-  Granted automatically by holding positions.
-  Prince = 5, Primogen = 3, Sheriff = 4, etc.
+|yPosition Status:|n
+  Granted automatically by holding positions (see +positions for
+  each position's grant). Total Status never goes above 5.
 
 |ySect Affiliation:|n
   Your vampire's political alignment.
@@ -131,6 +131,6 @@ Higher Status provides:
 
 |WRELATED TOPICS:|n
 
-|ySee also:|n help status, help boons, help positions, help social
+|ySee also:|n help status-guide, help boons-guide, help positions, help +social
 
 |[r+===================================================================+|n

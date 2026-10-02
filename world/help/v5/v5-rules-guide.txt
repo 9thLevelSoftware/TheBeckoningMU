@@ -1,0 +1,91 @@
+|[R+===================================================================+
+|W|                  THE V5 RULES IN ONE PLACE                       |
+|[R+===================================================================+|n
+
+TheBeckoningMU plays |yVampire: The Masquerade 5th Edition|n as the core
+book and its Quick Reference (QR) write it. This page is the summary; the
+other help files give the commands and the detail, and point back here.
+
+|WDICE|n (QR p.3-4; help roll-guide)
+
+  - A pool is usually |wAttribute + Skill|n d10s. Each 6-10 is a success.
+  - Each |wpair of 10s|n is worth 4 successes: one 10 = 1, two = 4,
+    three = 5, four = 8.
+  - You succeed if your successes reach the Difficulty (at Difficulty 0
+    you still need one). A |wcritical|n is a success with a pair of 10s.
+  - |wWillpower re-roll|n: mark 1 Superficial Willpower damage to re-roll
+    up to 3 regular dice of your last roll (|yroll/willpower|n).
+
+|WHUNGER|n (QR p.4; help hunger-guide)
+
+  - Hunger runs 0-5; a new vampire starts at 1. One die per point of
+    Hunger is a |[RHunger die|n, up to the whole pool.
+  - |wMessy critical|n: a critical where a Hunger die shows one of the
+    10s. You succeed; the Storyteller decides the complication.
+  - |wBestial failure|n: a failed roll with a Hunger die showing 1. You
+    fail and act out a Compulsion.
+  - |wRouse check|n: one die; 1-5 raises Hunger by 1. Powers, Blood Surge,
+    mending and rising each night Rouse the Blood. The Hunger it costs is
+    added after the action it fuels. At Hunger 5 you can't Rouse.
+  - A Rouse that would take Hunger past 5 leaves it at 5 and calls for a
+    hunger frenzy test (Difficulty 4) instead (help frenzy-guide).
+
+|WBLOOD POTENCY|n (QR p.15; help blood_commands)
+
+Blood Potency (0-10, capped by Generation) sets your Blood Surge dice, how
+much one Rouse mends, a bonus to discipline pools, which Rouse checks you
+may re-roll, your Bane Severity and how much each feeding slakes.
+
+|WFEEDING|n (QR p.12; help hunt-guide)
+
+|y+hunt <ground>|n rolls your Predator Type's hunting pool once every 24
+hours; a win slakes 2 Hunger from a human. Staff-run hunt scenes
+(|y+hunt/staffed|n) are the other way to feed. Only a kill takes Hunger
+below 1, and high Blood Potency slakes less.
+
+|WHUMANITY|n (QR p.3; help humanity-guide)
+
+  - Humanity runs 0-10; new characters start at 7.
+  - Breaking Chronicle Tenets or your Convictions marks |wStains|n.
+  - At the end of a session, a |y+remorse|n test rolls one die per
+    unmarked Humanity box (at least one). No success loses 1 Humanity;
+    either way the Stains clear.
+  - Each Conviction has a Touchstone. There is no other limit on
+    Touchstones.
+
+|WFRENZY|n (QR p.4, p.13; help frenzy-guide)
+
+Resist with current |wWillpower + Humanity / 3|n against the provocation's
+Difficulty (2-4). It is a Willpower test: no Hunger dice.
+
+|WHEALTH, WILLPOWER AND DAMAGE|n (QR p.3, p.13; help combat)
+
+  - Health = Stamina + 3; Willpower = Composure + Resolve.
+  - Damage is |wSuperficial|n or |wAggravated|n. Vampires halve mundane
+    Superficial damage (rounding up).
+  - A full track is |wImpaired|n: -2 dice (Health: Physical tests;
+    Willpower: Social and Mental tests).
+  - A vampire whose Health track is full of Aggravated damage falls into
+    torpor.
+  - Attacks are contested rolls; staff mark the damage.
+
+|WEXPERIENCE|n (QR p.1; help xp-guide)
+
+XP buys new dots with |y+spend|n at the book's costs. Willpower and
+Humanity can't be bought.
+
+|WTHE SETTING|n
+
+The Camarilla rules this city through the Prince and the Six Traditions
+(the Masquerade, the Domain, the Progeny, the Accounting, Hospitality and
+Destruction). Standing is |wStatus|n (help status-guide) and favors owed
+are |wBoons|n (help boons-guide). The Second Inquisition hunts the Kindred,
+and the Beckoning calls the elders away.
+
+|WWHERE NEXT|n
+
+|yhelp chargen|n           creating a character (on the website)
+|yhelp clans|n             the clans, their banes and compulsions
+|yhelp disciplines-guide|n powers and how to learn them
+|yhelp dice_commands|n     roll, power and rouse
+|ynews policy/rules|n      the game's rules of conduct

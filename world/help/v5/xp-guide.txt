@@ -54,4 +54,4 @@ To justify a new Discipline dot your character should feed on blood of the
 matching Resonance; a new out-of-clan Discipline needs a taste of the blood
 of someone who has it (QR p.1). Staff judge this.
 
-|ySee also:|n help disciplines, help backgrounds, help alchemy
+|ySee also:|n help disciplines-guide, help backgrounds-guide, help alchemy-guide, help v5-rules-guide

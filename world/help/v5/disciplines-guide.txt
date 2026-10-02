@@ -64,4 +64,4 @@ cost.
 
 |[r+===================================================================+|n
 
-|ySee also:|n help disciplines_powers, help rouse, help clans, help xp
+|ySee also:|n help disciplines_powers, help rouse, help clans, help xp-guide, help v5-rules-guide

@@ -231,8 +231,8 @@ class CmdDaylight(default_cmds.MuxCommand):
         +daylight
         +daylight/expose
 
-    Thin-Bloods take bashing damage from sunlight instead of
-    aggravated damage, allowing them to survive daylight hours.
+    Shows what sunlight would do to you. Neither form marks any damage:
+    the Storyteller marks sunlight damage with +damage.
 
     Examples:
         +daylight         - Check current sun exposure

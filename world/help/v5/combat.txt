@@ -63,4 +63,4 @@ Aggravated damage with X (QR p.3).
 may mark damage on themselves and mend their own Superficial damage with
 +heal. Only staff can damage, heal or stain another character.
 
-|ySee also:|n help combat_commands, help +attack, help +damage, help +heal, help roll
+|ySee also:|n help combat_commands, help +attack, help +damage, help +heal, help roll-guide, help v5-rules-guide

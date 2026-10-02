@@ -7,17 +7,19 @@ at gatherings, access to resources, and political influence.
 
 |WTYPES OF STATUS:|n
 
-|yPermanent Status|n - Long-term reputation and standing
-  - Earned through service, accomplishments, and position
-  - Granted by Prince or Primogen Council
+|yEarned Status|n - Long-term reputation and standing
+  - Earned through service and accomplishments
+  - Changed by staff, usually on a |y+statusreq|n request
   - Rarely stripped except for major infractions
-  - Determines base social rank
 
-|yFleeting (Temporary) Status|n - Short-term acknowledgment
-  - Given for immediate service or favor
-  - "Acknowledged" publicly at gatherings
-  - Can be stripped easily for minor slights
-  - More volatile, used as political tool
+|yPosition Status|n - Granted by an office you hold
+  - Set automatically when staff assign a position
+  - Lost with the position
+
+|yTemporary Status|n - Short-term modifiers recorded by staff
+  - Shown in the |y+status|n breakdown when not zero
+
+Your total Status is the sum of the three, from 0 to 5.
 
 |WSTATUS LEVELS:|n
 
@@ -76,16 +78,20 @@ at gatherings, access to resources, and political influence.
 
 |y+status|n - View your current Status
 |y+status <name>|n - View another's Status
-|y+status/give <name>=<amount>|n - Grant Fleeting Status (requires authority)
-|y+status/strip <name>=<amount>|n - Remove Fleeting Status (requires authority)
-|y+status/list|n - View Status rankings in domain
+|y+status/history|n - View your Status history
+|y+positions|n - View Camarilla positions and their holders
+|y+statusreq/status <+/-amount> = <reason>|n - Ask staff for a Status change
+|y+statusreq/position <position> = <reason>|n - Ask for an appointment
+
+Status changes are made by staff (|y+statusadmin|n); players request
+them. See |yhelp status_commands|n for the full syntax.
 
 |WHARPY'S ROLE:|n
 
 The |yHarpy|n is the social arbiter who tracks Status:
   - Records public acknowledgments
   - Announces Status changes at Elysium
-  - Maintains Status rankings
+  - Supports requests for Status changes
   - Acts as neutral observer of social combat
 
 |WSTATUS VS BOONS:|n
@@ -98,4 +104,4 @@ Low Status makes collecting boons harder.
 
 |[r+===================================================================+|n
 
-|ySee also:|n help boons, help positions, help elysium, help traditions
+|ySee also:|n help status_commands, help boons-guide, help positions, help v5-rules-guide

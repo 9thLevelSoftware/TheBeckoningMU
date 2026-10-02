@@ -3,7 +3,7 @@
 |[R+===================================================================+|n
 
 Commands for managing boons (political favors and debts) in
-Kindred society. See |yhelp boons|n for conceptual overview.
+Kindred society. See |yhelp boons-guide|n for the conceptual overview.
 
 |WVIEWING BOONS:|n
 
@@ -139,11 +139,12 @@ owed.
 
 |WBOON STATUS MEANINGS:|n
 
-|yPending|n - Offered but not yet accepted
-|yActive|n - Accepted and waiting to be called
-|yCalled|n - Creditor has requested the favor
+|yOffered|n - Offered but not yet accepted
+|yAccepted|n - Accepted and waiting to be called
+|yCalled In|n - Creditor has requested the favor
 |yFulfilled|n - Debt has been repaid
-|yCancelled|n - Boon was cancelled (rare)
+|yDeclined|n - The creditor declined the offer
+|yCanceled|n - Staff or a Harpy canceled it
 |yDisputed|n - A party disputes it; still owed until staff or a Harpy
   who is not a party upholds, fulfils or cancels it
 
@@ -151,12 +152,12 @@ owed.
 
 - Keep descriptions clear and specific
 - Harpy acknowledgment adds legitimacy to major boons
-- Trading boons requires both parties to agree
+- There is no transfer command; staff record any agreed transfer
 - Life Boons should be offered rarely and never refused
 - Use |y+boon/pending|n regularly to check obligations
 
 |WRELATED TOPICS:|n
 
-|ySee also:|n help boons, help status, help harpy, help social
+|ySee also:|n help boons-guide, help status-guide, help positions, help +social
 
 |[r+===================================================================+|n
