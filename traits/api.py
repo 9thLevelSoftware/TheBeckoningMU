@@ -36,7 +36,7 @@ from traits.utils import (
 from web.main_thread import call_in_main_thread
 from web.permissions import has_perm
 from world import v5_data
-from world.rules_chargen import SubmissionError, parse_submission, validate_v5_creation
+from world.rules_chargen import CONVICTION_RANGE, SubmissionError, parse_submission, validate_v5_creation
 
 REVIEW_ACTIONS = {"approve": "approved", "reject": "rejected", "revoke": "revoked"}
 
@@ -348,6 +348,16 @@ def chargen_rules():
         },
         "merits": advantage_table(v5_data.MERITS),
         "flaws": advantage_table(v5_data.FLAWS),
+        "rituals": [
+            {"name": r["name"], "level": r["level"], "description": r.get("description", "")}
+            for r in v5_data.DISCIPLINES["Blood Sorcery"].get("rituals", [])
+        ],
+        "formulas": [
+            {"name": f["name"], "level": level, "description": f.get("description", "")}
+            for level, formulas in sorted(v5_data.DISCIPLINES["Thin-Blood Alchemy"].get("formulas", {}).items())
+            for f in formulas
+        ],
+        "conviction_range": list(CONVICTION_RANGE),
     }
 
 

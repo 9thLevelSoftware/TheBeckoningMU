@@ -34,5 +34,10 @@
   "flaws": [
     {"name": "Addiction", "dots": 1, "note": "nicotine"},
     {"name": "Known Corpse", "dots": 1}
-  ]
+  ],
+  "convictions": [
+    {"conviction": "Never abandon a picket line", "touchstone": "Teo Marquez", "touchstone_description": "Her old shop steward"}
+  ],
+  "rituals": [],
+  "formulas": []
 }

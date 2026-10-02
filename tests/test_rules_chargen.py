@@ -3,6 +3,8 @@ world.rules_chargen: the submission schema, the V5 creation validator and the
 writer. Rules are the V5 core book's (QR p.2-3), read from world/v5_data.py.
 """
 
+from unittest import mock
+
 from django.test import SimpleTestCase
 from evennia.utils import create
 from evennia.utils.test_resources import EvenniaTest
@@ -120,7 +122,8 @@ class IdentityTests(SimpleTestCase):
         childer["disciplines"] = {"Potence": 2, "Presence": 1}
         childer["discipline_powers"] = ["Lethal Body", "Prowess", "Awe"]
         self.assertEqual(errors_for(childer), [])
-        assert_rejected(self, legal_payload(age="Childer"), "take no predator type")
+        # Owner decision: Childer may take a predator type, but needn't.
+        self.assertEqual(errors_for(legal_payload(age="Childer")), [])
 
     def test_other_clans_need_a_predator_type(self):
         assert_rejected(self, legal_payload(predator_type=None), "Predator type: choose one")
@@ -235,6 +238,8 @@ class DisciplineTests(SimpleTestCase):
         payload["clan"] = "Tremere"
         payload["disciplines"] = {"Auspex": 2, "Dominate": 1, "Blood Sorcery": 1}
         payload["discipline_powers"] = ["Heightened Senses", "Premonition", "Cloud Memory", "A Taste for Blood"]
+        assert_rejected(self, payload, "Rituals: Blood Sorcery gives one level-1 ritual")
+        payload["rituals"] = ["Blood Walk"]
         self.assertEqual(errors_for(payload), [])
 
     def test_caitiff_take_any_two(self):
@@ -248,6 +253,10 @@ class DisciplineTests(SimpleTestCase):
         payload = thin_blood_payload(disciplines={"Thin-Blood Alchemy": 1})
         payload["advantages"].append({"name": "Thin-blood Alchemist", "dots": 1})
         payload["flaws"].append({"name": "Bestial Temper", "dots": 1})
+        assert_rejected(self, payload, "Formulas: Thin-blood Alchemist gives one formula")
+        payload["formulas"] = ["Envelop"]
+        assert_rejected(self, payload, "of level 1 or lower")
+        payload["formulas"] = ["Far Reach"]
         self.assertEqual(errors_for(payload), [])
         assert_rejected(self, legal_payload(disciplines={"Thin-Blood Alchemy": 1}), "for thin-bloods only")
 
@@ -433,3 +442,194 @@ class CreationTableTests(SimpleTestCase):
         for skill in v5_data.CREATION_FREE_SPECIALTY_SKILLS:
             v5_data.resolve_trait(skill, "skills")
         self.assertEqual(sorted(v5_data.CREATION_DISCIPLINE_DOTS), [1, 2])
+
+
+class ReviewRoundOneRuleTests(SimpleTestCase):
+    """Rules added or pinned in review round 1 (R-7, R-9, R-10, R-17, R-22, R-23, owner decisions)."""
+
+    def test_caitiff_cannot_buy_status(self):
+        payload = legal_payload(clan="Caitiff")
+        payload["advantages"][3] = {"name": "Status", "dots": 1, "note": "Anarchs"}
+        assert_rejected(self, payload, "Caitiff can't take Status at creation")
+
+    def test_caitiff_cannot_take_thin_blood_merits(self):
+        payload = legal_payload(clan="Caitiff")
+        payload["advantages"].append({"name": "Lifelike", "dots": 1})
+        payload["flaws"].append({"name": "Baby Teeth", "dots": 1})
+        assert_rejected(self, payload, "Thin-blood merits and flaws are for thin-bloods only")
+
+    def test_ventrue_may_take_organovore_but_not_farmer(self):
+        payload = legal_payload(clan="Ventrue", predator_type="Siren")
+        payload["disciplines"] = {"Dominate": 2, "Presence": 1, "Fortitude": 1}
+        payload["discipline_powers"] = ["Cloud Memory", "Mesmerize", "Awe", "Resilience"]
+        payload["specialties"][0] = {"skill": "persuasion", "name": "Seduction"}
+        payload["flaws"] = [{"name": "Organovore", "dots": 2}]
+        self.assertEqual(errors_for(payload), [])
+        payload["flaws"] = [{"name": "Farmer", "dots": 2}]
+        assert_rejected(self, payload, "Ventrue can't take Farmer")
+
+    def test_nosferatu_siren_is_refused(self):
+        payload = legal_payload(clan="Nosferatu", predator_type="Siren")
+        assert_rejected(self, payload, "Nosferatu can't take Beautiful")
+
+    def test_convictions_one_to_three(self):
+        assert_rejected(self, legal_payload(convictions=[]), "Convictions: take 1-3")
+        four = [{"conviction": f"C{i}", "touchstone": f"T{i}"} for i in range(4)]
+        assert_rejected(self, legal_payload(convictions=four), "Convictions: take 1-3")
+        assert_rejected(self, legal_payload(convictions=[{"conviction": "x"}]), "touchstone is required")
+        assert_rejected(
+            self, legal_payload(convictions=[{"conviction": "x", "touchstone": "y", "z": 1}]), "unknown key"
+        )
+
+    def test_ambition_and_desire_are_required(self):
+        assert_rejected(self, legal_payload(ambition=""), "ambition: is required")
+        assert_rejected(self, legal_payload(desire="  "), "desire: is required")
+
+    def test_rituals_only_with_blood_sorcery(self):
+        assert_rejected(self, legal_payload(rituals=["Blood Walk"]), "only characters with Blood Sorcery")
+        assert_rejected(self, legal_payload(rituals=["Fireball Rite"]), "unknown ritual")
+
+    def test_formulas_only_with_the_merit(self):
+        assert_rejected(self, thin_blood_payload(formulas=["Far Reach"]), "Thin-blood Alchemist merit knows formulas")
+
+    def test_reserved_names(self):
+        for name in ("Me", "self", "Here", "Admin"):
+            assert_rejected(self, legal_payload(name=name), "is reserved")
+
+    # R-17: rules that had no test
+    def test_alchemy_without_the_merit(self):
+        assert_rejected(self, thin_blood_payload(disciplines={"Thin-Blood Alchemy": 1}), "Alchemist merit")
+
+    def test_unknown_flaw_and_illegal_flaw_rating(self):
+        payload = legal_payload()
+        payload["flaws"][0] = {"name": "Clumsy Hands", "dots": 1}
+        assert_rejected(self, payload, "unknown flaw 'Clumsy Hands'")
+        payload["flaws"][0] = {"name": "Known Corpse", "dots": 2}
+        assert_rejected(self, payload, "Known Corpse is taken at 1 dots, not 2")
+
+    def test_merged_totals_must_stay_legal(self):
+        siren = legal_payload(clan="Toreador", predator_type="Siren")
+        siren["disciplines"] = {"Auspex": 2, "Presence": 1, "Fortitude": 1}
+        siren["discipline_powers"] = ["Heightened Senses", "Premonition", "Awe", "Resilience"]
+        siren["specialties"][0] = {"skill": "persuasion", "name": "Seduction"}
+        siren["advantages"][3] = {"name": "Beautiful", "dots": 2}
+        siren["advantages"][0] = {"name": "Resources", "dots": 1}
+        assert_rejected(self, siren, "Beautiful would total 4 dots")
+
+        bagger = legal_payload(clan="Tremere", predator_type="Bagger", rituals=["Blood Walk"])
+        bagger["disciplines"] = {"Auspex": 2, "Dominate": 1, "Blood Sorcery": 1}
+        bagger["discipline_powers"] = ["Heightened Senses", "Premonition", "Cloud Memory", "A Taste for Blood"]
+        bagger["specialties"][0] = {"skill": "larceny", "name": "Lock Picking"}
+        bagger["flaws"] = [{"name": "Enemy", "dots": 2}]
+        assert_rejected(self, bagger, "Flaws: Enemy would total 4 dots")
+
+        cleaver = legal_payload(clan="Ventrue", predator_type="Cleaver")
+        cleaver["disciplines"] = {"Dominate": 3, "Presence": 1}
+        cleaver["discipline_powers"] = ["Cloud Memory", "Mesmerize", "The Forgetful Mind", "Awe"]
+        cleaver["specialties"][0] = {"skill": "subterfuge", "name": "Coverups"}
+        cleaver["advantages"] = [{"name": "Herd", "dots": 4}]
+        cleaver["flaws"] = [{"name": "Known Corpse", "dots": 1}]
+        assert_rejected(self, cleaver, "Herd would total 6 dots; the most is 5")
+
+    # R-23
+    def test_clan_curse_must_name_a_clan(self):
+        for note in ("", "Brujah clan", "Bruja", "Caitiff", "Thin-Blood"):
+            payload = thin_blood_payload()
+            payload["flaws"][2] = {"name": "Clan Curse", "dots": 1, "note": note}
+            assert_rejected(self, payload, "Clan Curse: name the clan whose Bane you carry")
+
+    # R-22: rules no current data reaches, pinned with patched tables
+    def test_looks_category_ban_without_a_clan_ban(self):
+        merit = {"category": "Looks", "dots": (1,), "description": "test"}
+        with mock.patch.dict(v5_data.MERITS, {"Striking": merit}):
+            payload = legal_payload(clan="Nosferatu", disciplines={"Potence": 2, "Obfuscate": 1, "Celerity": 1})
+            payload["discipline_powers"] = ["Lethal Body", "Prowess", "Cloak of Shadows", "Rapid Reflexes"]
+            payload["advantages"][3] = {"name": "Striking", "dots": 1}
+            assert_rejected(self, payload, "Nosferatu can't take Looks merits (Striking)")
+
+    def test_predator_blood_potency_limit(self):
+        ancilla = dict(v5_data.GENERATION_BY_AGE["Ancilla"])
+        ancilla["options"] = [{"generations": (10, 11), "blood_potency": 3, "thin_blood": False}]
+        with mock.patch.dict(v5_data.GENERATION_BY_AGE, {"Ancilla": ancilla}):
+            payload = ancilla_payload(clan="Gangrel", predator_type="Farmer")
+            assert_rejected(self, payload, "Farmer needs Blood Potency 2 or lower")
+
+
+class ShapeGuardTests(SimpleTestCase):
+    """R-18: every parse guard rejects (never coerces or drops) a wrong value."""
+
+    CASES = [
+        ({"name": 123}, "name: must be text"),
+        ({"concept": 5}, "concept: must be text"),
+        ({"attributes": []}, "attributes: must be an object"),
+        ({"skills": "x"}, "skills: must be an object"),
+        ({"advantages": {}}, "advantages: must be a list"),
+        ({"advantages": ["Resources"]}, "advantages[0]: must be an object"),
+        ({"advantages": [{"dots": 2}]}, "advantages[0]: needs a name"),
+        ({"advantages": [{"name": "Resources", "dots": "2"}]}, "dots must be a whole number"),
+        ({"advantages": [{"name": "Allies", "dots": 1, "note": "x" * 101}]}, "note must be text of at most 100"),
+        ({"advantages": [{"name": "Resources", "dots": 1, "source": "staff"}]}, 'source must be "predator"'),
+        ({"specialties": {}}, "specialties: must be a list"),
+        ({"specialties": ["Boxing"]}, "specialties[0]: must be an object"),
+        ({"specialties": [{"skill": "hacking", "name": "x"}]}, "unknown skill 'hacking'"),
+        ({"specialties": [{"skill": "brawl", "name": "x" * 51}]}, "needs a name of at most 50"),
+        ({"clan": 7}, "clan: is required"),
+        ({"age": 3}, "age: must be text"),
+        ({"predator_type": 3}, "predator_type: must be text or null"),
+        ({"disciplines": []}, "disciplines: must be an object"),
+        ({"disciplines": {"Potence": 6}}, "Potence must be a whole number from 0 to 5"),
+        ({"disciplines": {"Potence": 2, "potence": 1}}, "Potence is given twice"),
+        ({"discipline_powers": "Prowess"}, "discipline_powers: must be a list"),
+        ({"discipline_powers": ["Prowess", "prowess"]}, "Prowess is listed twice"),
+        ({"convictions": {}}, "convictions: must be a list"),
+        ({"rituals": "Blood Walk"}, "rituals: must be a list"),
+        ({"formulas": ["Far Reach", "far reach"]}, "Far Reach is listed twice"),
+    ]
+
+    def test_each_guard(self):
+        for change, fragment in self.CASES:
+            with self.subTest(change=change):
+                with self.assertRaises(SubmissionError) as caught:
+                    parse_submission(legal_payload(**change))
+                self.assertTrue(any(fragment in e for e in caught.exception.errors), caught.exception.errors)
+
+    def test_duplicate_rating_keys(self):
+        payload = legal_payload()
+        payload["attributes"]["Strength"] = 4
+        with self.assertRaises(SubmissionError) as caught:
+            parse_submission(payload)
+        self.assertIn("attributes: Strength is given twice", caught.exception.errors)
+
+
+class ApplyChargenFactsTests(EvenniaTest):
+    """R-24: notes, age and the free ritual/formula live on the character."""
+
+    def test_notes_age_convictions_and_ritual(self):
+        payload = legal_payload(clan="Tremere", predator_type="Bagger", rituals=["Blood Walk"])
+        payload["disciplines"] = {"Auspex": 2, "Dominate": 1, "Blood Sorcery": 1}
+        payload["discipline_powers"] = ["Heightened Senses", "Premonition", "Cloud Memory", "A Taste for Blood"]
+        payload["specialties"][0] = {"skill": "larceny", "name": "Lock Picking"}
+        payload["advantages"][3] = {"name": "Linguistics", "dots": 1, "note": "Portuguese"}
+        sub = parse_submission(payload)
+        self.assertEqual(validate_v5_creation(sub), [])
+        char = create.create_object("typeclasses.characters.Character", key="Facts")
+        apply_chargen(char, sub)
+        self.assertEqual(char.age_category, "Neonate")
+        self.assertEqual(char.advantage_note("merits", "Linguistics"), "Portuguese")
+        self.assertEqual(char.advantage_note("flaws", "Enemy"), "someone who thinks you owe them")
+        self.assertEqual(char.rituals, ["Blood Walk"])
+        self.assertEqual(char.convictions, ["Never abandon a picket line"])
+        self.assertEqual(char.touchstones[0]["name"], "Teo Marquez")
+        self.assertEqual(char.touchstones[0]["conviction_index"], 0)
+
+    def test_formula_and_clan_curse_note(self):
+        payload = thin_blood_payload(disciplines={"Thin-Blood Alchemy": 1}, formulas=["Haze"])
+        payload["advantages"].append({"name": "Thin-blood Alchemist", "dots": 1})
+        payload["flaws"].append({"name": "Clan Curse", "dots": 1, "note": "toreador"})
+        sub = parse_submission(payload)
+        self.assertEqual(validate_v5_creation(sub), [])
+        char = create.create_object("typeclasses.characters.Character", key="Alchemist")
+        apply_chargen(char, sub)
+        self.assertEqual(char.formulas, ["Haze"])
+        self.assertEqual(char.advantage_note("flaws", "Clan Curse"), "toreador")
+        self.assertEqual(char.age_category, "Childer")

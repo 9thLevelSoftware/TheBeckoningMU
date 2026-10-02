@@ -137,9 +137,12 @@ CLANS = {
         "compulsion": ("Arrogance: -2 dice to actions not related to leadership, until someone "
                        "obeys an order you gave without supernatural compulsion"),
     },
+    # Core p.107: "The character begins with the Flaw Suspect (•) and they may
+    # not purchase positive status during Character Creation."
     "Caitiff": {
         "disciplines": [],
         "required_flaws": [{"name": "Suspect", "dots": 1}],
+        "excluded_backgrounds": ["Status"],
         "bane": None,
         "compulsion": None,
     },
@@ -1406,11 +1409,14 @@ FLAWS = {
                             "description": "Your Hunger can't drop below 1 except on supernatural blood"},
     # "Farmer" is the errata'd core name; the QR (and older printings) call
     # it "Vegan".
+    # Ventrue ban: QR p.9 (PDF p.11), on "Vegan" (= Farmer): "(Ventrue may
+    # not take this flaw.)"
     "Farmer": {"category": "Feeding", "dots": (2,),
                "excluded_clans": ["Ventrue"],
                "description": "You feed only on animals; feeding on humans costs 2 Willpower; not for Ventrue"},
+    # No clan ban: QR p.9 puts "(Ventrue may not take this flaw)" on Vegan only,
+    # and vtm.paradoxwikis.com (core p.181) gives Organovore none.
     "Organovore": {"category": "Feeding", "dots": (2,),
-                   "excluded_clans": ["Ventrue"],
                    "description": "You must eat your victim's organs when you feed"},
     "Stake Bait": {"category": "Mythical", "dots": (2,),
                    "description": "A stake through the heart brings Final Death"},

@@ -39,6 +39,7 @@ s.disciplines = {Potence: 2, Presence: 1, Celerity: 1, Auspex: 0};
 s.powers = ['Lethal Body', 'Prowess', 'Awe', 'Rapid Reflexes'];
 s.advantages = fixture.advantages.map(a => Object.assign({note: '', source: null}, a)).concat([{name: '', dots: 1}]);
 s.flaws = fixture.flaws.map(f => Object.assign({note: '', source: null}, f));
+s.convictions = [{conviction: ' Never abandon a picket line ', touchstone: 'Teo Marquez', touchstone_description: 'Her old shop steward'}, {conviction: '', touchstone: ''}];
 const typed = core.buildPayload(s);
 
 // 2. The edit form: a stored submission back into state and out again.

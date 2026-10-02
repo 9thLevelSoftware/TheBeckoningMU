@@ -18,6 +18,7 @@ from world.v5_data import (
     CLANS,
     DISCIPLINES,
     FLAWS,
+    GENERATION_BY_AGE,
     MERITS,
     PREDATOR_TYPES,
     RESONANCES,
@@ -48,6 +49,18 @@ CHARACTER_LOCKS = (
     "delete:char_owner() or perm(Admin);"
     "edit:perm(Admin)"
 )
+GATED_ACCESS_TYPES = ("puppet", "delete", "edit")
+
+
+def gated_lockstring(storage):
+    """`storage` (a stored lockstring) with its puppet/delete/edit locks replaced
+    by CHARACTER_LOCKS. Used at creation and by the traits 0003 re-lock."""
+    kept = [
+        part
+        for part in str(storage or "").split(";")
+        if part.strip() and part.split(":", 1)[0].strip() not in GATED_ACCESS_TYPES
+    ]
+    return ";".join(kept + [CHARACTER_LOCKS])
 
 
 def _new_stats():
@@ -95,6 +108,8 @@ def _new_stats():
         },
         "specialties": {},  # {"skill_key": ["Specialty name", ...]}
         "disciplines": {},  # {"discipline_key": {"level": n, "powers": ["Power Name", ...]}}
+        "rituals": [],  # Blood Sorcery ritual names
+        "formulas": [],  # Thin-Blood Alchemy formula names
     }
 
 
@@ -107,6 +122,7 @@ def _new_vampire():
         "hunger": 1,  # 0-5
         "humanity": 7,  # 0-10
         "predator_type": None,  # a key of world.v5_data.PREDATOR_TYPES
+        "age_category": None,  # a key of world.v5_data.GENERATION_BY_AGE (set at creation)
         "current_resonance": None,  # a key of world.v5_data.RESONANCES
         "resonance_intensity": 0,
         "resonance_expires": None,
@@ -131,7 +147,8 @@ def _new_advantages():
     # backgrounds: {"key": dots} or, for instanced backgrounds,
     #              {"key": [{"dots": n, "note": "..."}, ...]}
     # merits/flaws: {"Canonical Name": dots}
-    return {"backgrounds": {}, "merits": {}, "flaws": {}}
+    # notes: {"merits"|"flaws": {"Canonical Name": "note"}}
+    return {"backgrounds": {}, "merits": {}, "flaws": {}, "notes": {"merits": {}, "flaws": {}}}
 
 
 def _as_int(value, label="value"):
@@ -190,9 +207,13 @@ class Character(ObjectParent, DefaultCharacter):
         return CHARACTER_LOCKS
 
     def basetype_setup(self):
-        """Install the gated locks on every new Character, however it is created."""
+        """Install the gated locks on every new Character, however it is created.
+
+        replace() rather than add(), so the stock puppet/delete/edit locks are
+        swapped out without "access type changed" warnings.
+        """
         super().basetype_setup()
-        self.locks.add(CHARACTER_LOCKS)
+        self.locks.replace(gated_lockstring(str(self.locks)))
 
     def at_object_creation(self):
         """Initialize every V5 store that is not already present."""
@@ -322,6 +343,15 @@ class Character(ObjectParent, DefaultCharacter):
         if not low <= value <= high:
             raise ValueError(f"Generation must be between {low} and {high}, got {value}")
         self._vampire_set("generation", value)
+
+    @property
+    def age_category(self):
+        """Sea of Time age category at creation (a GENERATION_BY_AGE key), or None."""
+        return self._vampire_get("age_category", None)
+
+    @age_category.setter
+    def age_category(self, value):
+        self._vampire_set("age_category", _canonical_name(value, GENERATION_BY_AGE, "age category"))
 
     @property
     def clan(self):
@@ -547,13 +577,15 @@ class Character(ObjectParent, DefaultCharacter):
         self._advantage_section("backgrounds")[ref.key] = instances
         return instances
 
-    def set_advantage(self, kind, name, dots):
+    def set_advantage(self, kind, name, dots, note=None):
         """Set a merit or flaw rating; 0 removes it.
 
         `kind` is "merits" or "flaws". The name resolves case-insensitively to
         its v5_data.MERITS/FLAWS key, which is the storage key, and dots must
-        be one of that entry's allowed ratings. Raises UnknownTrait or
-        ValueError.
+        be one of that entry's allowed ratings. `note` (e.g. the language a
+        Linguistics dot buys, the clan of a Clan Curse) is kept in
+        db.advantages["notes"][kind]; None leaves an existing note alone.
+        Raises UnknownTrait or ValueError.
         """
         if kind not in ADVANTAGE_TABLES:
             raise ValueError(f"Unknown advantage kind: {kind}")
@@ -562,15 +594,72 @@ class Character(ObjectParent, DefaultCharacter):
         if canonical is None:
             raise UnknownTrait(f"A {kind[:-1]} name is required")
         dots = _as_int(dots, canonical)
-        section = self._advantage_section(kind)
+        # Each store lookup can return its own copy of db.advantages, so write
+        # the rating and then fetch the notes afresh (never hold both at once).
         if dots == 0:
-            section.pop(canonical, None)
+            self._advantage_section(kind).pop(canonical, None)
+            self._advantage_notes(kind).pop(canonical, None)
             return 0
         if dots not in table[canonical]["dots"]:
             allowed = ", ".join(str(d) for d in table[canonical]["dots"])
             raise ValueError(f"{canonical} can be taken at {allowed} dots, not {dots}")
-        section[canonical] = dots
+        self._advantage_section(kind)[canonical] = dots
+        if note is not None:
+            note = str(note).strip()
+            if note:
+                self._advantage_notes(kind)[canonical] = note
+            else:
+                self._advantage_notes(kind).pop(canonical, None)
         return dots
+
+    def _advantage_notes(self, kind):
+        advantages = self._store("advantages", _new_advantages)
+        if not isinstance(advantages.get("notes"), Mapping):
+            advantages["notes"] = {"merits": {}, "flaws": {}}
+        if not isinstance(advantages["notes"].get(kind), Mapping):
+            advantages["notes"][kind] = {}
+        return advantages["notes"][kind]
+
+    def advantage_note(self, kind, name):
+        """The note on a merit or flaw ("" if none)."""
+        if kind not in ADVANTAGE_TABLES:
+            raise ValueError(f"Unknown advantage kind: {kind}")
+        canonical = _canonical_name(name, ADVANTAGE_TABLES[kind], kind[:-1])
+        return str(self._advantage_notes(kind).get(canonical, ""))
+
+    # Blood Sorcery rituals and Thin-Blood Alchemy formulas (v5_data
+    # DISCIPLINES[...]["rituals"/"formulas"]) are stored by name in
+    # db.stats["rituals"] / db.stats["formulas"].
+
+    @property
+    def rituals(self):
+        return self._learned_list("rituals")
+
+    @property
+    def formulas(self):
+        return self._learned_list("formulas")
+
+    def learn_ritual(self, name):
+        """Record a Blood Sorcery ritual (canonical name). Raises UnknownTrait."""
+        return self._learn_from("rituals", name, _all_rituals())
+
+    def learn_formula(self, name):
+        """Record a Thin-Blood Alchemy formula (canonical name). Raises UnknownTrait."""
+        return self._learn_from("formulas", name, _all_formulas())
+
+    def _learned_list(self, key):
+        stats = self.db.stats if isinstance(self.db.stats, Mapping) else {}
+        return [str(n) for n in deserialize(stats.get(key) or [])]
+
+    def _learn_from(self, key, name, table):
+        canonical = _canonical_name(name, table, key[:-1])
+        if canonical is None:
+            raise UnknownTrait(f"A {key[:-1]} name is required")
+        stats = self._store("stats", _new_stats)
+        learned = self._learned_list(key)
+        if canonical not in learned:
+            stats[key] = learned + [canonical]
+        return dict(table[canonical])
 
     @property
     def discipline_levels(self):
@@ -852,3 +941,15 @@ def _specialty_list(names):
     if isinstance(names, (list, tuple)):
         return [str(name) for name in names if name]
     return []
+
+
+def _all_rituals():
+    return {r["name"]: r for r in DISCIPLINES["Blood Sorcery"].get("rituals", [])}
+
+
+def _all_formulas():
+    return {
+        f["name"]: dict(f, level=level)
+        for level, formulas in DISCIPLINES["Thin-Blood Alchemy"].get("formulas", {}).items()
+        for f in formulas
+    }

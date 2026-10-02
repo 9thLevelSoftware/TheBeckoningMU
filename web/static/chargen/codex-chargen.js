@@ -29,7 +29,7 @@ const ChargenCore = (function () {
             name: '', concept: '', clan: '', age: '', generation: null, predator_type: null,
             sire: '', ambition: '', desire: '', background: '',
             attributes: {}, skills: {}, specialties: [], disciplines: {}, powers: [],
-            advantages: [], flaws: []
+            advantages: [], flaws: [], convictions: [], rituals: [], formulas: []
         };
         if (rules) {
             Object.values(rules.attributes).forEach(function (names) {
@@ -70,6 +70,17 @@ const ChargenCore = (function () {
         payload.discipline_powers = state.powers.slice();
         payload.advantages = state.advantages.filter(function (a) { return a.name; }).map(item);
         payload.flaws = state.flaws.filter(function (f) { return f.name; }).map(item);
+        payload.convictions = state.convictions
+            .filter(function (c) { return String(c.conviction || '').trim() || String(c.touchstone || '').trim(); })
+            .map(function (c) {
+                return {
+                    conviction: String(c.conviction || '').trim(),
+                    touchstone: String(c.touchstone || '').trim(),
+                    touchstone_description: String(c.touchstone_description || '').trim()
+                };
+            });
+        payload.rituals = state.rituals.slice();
+        payload.formulas = state.formulas.slice();
         return payload;
     }
 
@@ -88,6 +99,9 @@ const ChargenCore = (function () {
         state.powers = (sub.discipline_powers || []).slice();
         state.advantages = (sub.advantages || []).map(function (a) { return Object.assign({ note: '', source: null }, a); });
         state.flaws = (sub.flaws || []).map(function (f) { return Object.assign({ note: '', source: null }, f); });
+        state.convictions = (sub.convictions || []).map(function (c) { return Object.assign({ touchstone_description: '' }, c); });
+        state.rituals = (sub.rituals || []).slice();
+        state.formulas = (sub.formulas || []).slice();
         return state;
     }
 
@@ -117,8 +131,9 @@ const ChargenCore = (function () {
         return age.options.find(function (o) { return o.generations.indexOf(Number(state.generation)) !== -1; }) || null;
     }
 
+    // Thin-bloods take no predator type; for Childer it is optional.
     function takesPredator(state) {
-        return state.clan !== 'Thin-Blood' && state.age !== 'Childer';
+        return state.clan !== 'Thin-Blood';
     }
 
     function advantageKind(rules, name) {
@@ -289,13 +304,13 @@ if (typeof document !== 'undefined') {
             const predatorInfo = byId('predator-info');
             predatorInfo.replaceChildren();
             if (!C.takesPredator(state)) {
-                predatorBox.replaceChildren(el('p', { class: 'codex-hint', text: 'Thin-bloods and Childer take no predator type.' }));
+                predatorBox.replaceChildren(el('p', { class: 'codex-hint', text: 'Thin-bloods take no predator type.' }));
                 return;
             }
             predatorBox.replaceChildren(select(Object.keys(rules.predator_types), state.predator_type || '', function (v) {
                 state.predator_type = v || null;
                 renderAll();
-            }, 'Select a predator type...'));
+            }, state.age === 'Childer' ? 'None (optional for Childer)' : 'Select a predator type...'));
             const pred = rules.predator_types[state.predator_type];
             if (pred) {
                 predatorInfo.appendChild(el('p', { text: pred.description }));
@@ -314,6 +329,26 @@ if (typeof document !== 'undefined') {
                 if (pred.blood_potency) predatorInfo.appendChild(el('p', { text: 'Blood Potency +' + pred.blood_potency }));
                 if (pred.note) predatorInfo.appendChild(el('p', { text: pred.note }));
             }
+        }
+
+        function renderConvictions() {
+            const list = byId('convictions-list');
+            list.replaceChildren();
+            state.convictions.forEach(function (c, index) {
+                function input(key, placeholder, max) {
+                    const i = el('input', { type: 'text', class: 'codex-input', maxlength: String(max), placeholder: placeholder });
+                    i.value = c[key] || '';
+                    i.oninput = function () { c[key] = i.value; changed(); };
+                    return i;
+                }
+                const remove = el('button', { type: 'button', class: 'btn-codex-ghost', text: 'Remove' });
+                remove.addEventListener('click', function () { state.convictions.splice(index, 1); renderConvictions(); changed(); });
+                list.appendChild(el('div', { class: 'codex-trait-row' }, [
+                    input('conviction', 'Conviction', 200), input('touchstone', 'Touchstone (who)', 100),
+                    input('touchstone_description', 'Who they are to you', 500), remove
+                ]));
+            });
+            byId('add-conviction').disabled = state.convictions.length >= rules.conviction_range[1];
         }
 
         // ---------- Attributes and Skills ----------
@@ -414,7 +449,7 @@ if (typeof document !== 'undefined') {
                 ]);
                 if (dots > 0) {
                     const powers = powersFor(name, dots);
-                    if (!powers.length) block.appendChild(el('p', { class: 'codex-hint', text: 'No powers to pick (formulas are chosen with staff).' }));
+                    if (!powers.length) block.appendChild(el('p', { class: 'codex-hint', text: 'No powers to pick; choose your formula below.' }));
                     powers.forEach(function (power) {
                         const box = el('input', { type: 'checkbox' });
                         box.checked = state.powers.indexOf(power.name) !== -1;
@@ -429,6 +464,30 @@ if (typeof document !== 'undefined') {
                 }
                 container.appendChild(block);
             });
+            renderRitualAndFormula(container);
+        }
+
+        function renderRitualAndFormula(container) {
+            if ((state.disciplines['Blood Sorcery'] || 0) > 0) {
+                const firsts = rules.rituals.filter(function (r) { return r.level === 1; }).map(function (r) { return r.name; });
+                container.appendChild(el('div', { class: 'codex-trait-row' }, [
+                    el('label', { text: 'Free ritual (level 1)' }),
+                    select(firsts, state.rituals[0] || '', function (v) { state.rituals = v ? [v] : []; changed(); }, 'Choose a ritual...')
+                ]));
+            } else {
+                state.rituals = [];
+            }
+            const alchemist = state.advantages.some(function (a) { return a.name === 'Thin-blood Alchemist'; });
+            if (alchemist) {
+                const level = state.disciplines['Thin-Blood Alchemy'] || 1;
+                const names = rules.formulas.filter(function (f) { return f.level <= level; }).map(function (f) { return f.name; });
+                container.appendChild(el('div', { class: 'codex-trait-row' }, [
+                    el('label', { text: 'Free formula (Thin-blood Alchemist)' }),
+                    select(names, state.formulas[0] || '', function (v) { state.formulas = v ? [v] : []; changed(); }, 'Choose a formula...')
+                ]));
+            } else {
+                state.formulas = [];
+            }
         }
 
         function powersFor(discipline, dots) {
@@ -534,6 +593,7 @@ if (typeof document !== 'undefined') {
 
         function renderAll() {
             renderIdentity();
+            renderConvictions();
             renderAttributes();
             renderSkills();
             renderDisciplines();
@@ -622,6 +682,9 @@ if (typeof document !== 'undefined') {
                 const data = await response.json().catch(function () { return {}; });
                 if (!response.ok) {
                     toast('Cannot edit: ' + (data.error || response.status), 'danger');
+                } else if (data.mode === 'revoked') {
+                    revokedMode(data);
+                    return;
                 } else {
                     state = C.stateFromSubmission(rules, data.character_data || {});
                     if (data.rejection_notes) {
@@ -637,6 +700,11 @@ if (typeof document !== 'undefined') {
             document.querySelectorAll('.codex-tab').forEach(function (tab, i) { tab.addEventListener('click', function () { showTab(i); }); });
             byId('btn-prev').addEventListener('click', function () { showTab(currentTab - 1); });
             byId('btn-next').addEventListener('click', function () { showTab(currentTab + 1); });
+            byId('add-conviction').addEventListener('click', function () {
+                state.convictions.push({ conviction: '', touchstone: '', touchstone_description: '' });
+                renderConvictions();
+                changed();
+            });
             byId('add-specialty').addEventListener('click', function () { state.specialties.push({ skill: '', name: '' }); renderSpecialties(); changed(); });
             byId('add-advantage').addEventListener('click', function () { state.advantages.push({ name: '', dots: 1, note: '', source: null }); renderItems('advantages'); changed(); });
             byId('add-flaw').addEventListener('click', function () { state.flaws.push({ name: '', dots: 1, note: '', source: null }); renderItems('flaws'); changed(); });
@@ -644,6 +712,37 @@ if (typeof document !== 'undefined') {
             byId('character-form').addEventListener('submit', submit);
             renderAll();
             showTab(0);
+        }
+
+        // A revoked character keeps its played sheet: resubmitting only sends it
+        // back for review, with optional changes to the narrative.
+        function revokedMode(data) {
+            byId('page-title').textContent = 'Resubmit Character for Review';
+            byId('rejection-banner').style.display = 'block';
+            byId('rejection-notes').textContent = (data.rejection_notes || '')
+                + '\n\nYour current sheet (traits, XP and everything bought in play) is kept and sent back to staff as it stands.';
+            document.querySelectorAll('.codex-tab-panel, .codex-tabs, .codex-nav-arrows, .codex-tracker').forEach(function (n) { n.style.display = 'none'; });
+            const panel = document.querySelector('.codex-tab-panel[data-tab="0"]');
+            panel.style.display = 'block';
+            ['name', 'concept', 'sire', 'ambition', 'desire', 'background'].forEach(function (key) {
+                byId('field-' + key).value = (data.narrative || {})[key] || '';
+            });
+            byId('field-name').disabled = true;
+            ['clan-box', 'age-box', 'generation-box', 'predator-box', 'convictions-list', 'add-conviction'].forEach(function (id) {
+                const node = byId(id);
+                if (node) node.closest('.codex-field').style.display = 'none';
+            });
+            const button = el('button', { type: 'button', class: 'btn-codex', text: 'Resubmit for Review' });
+            button.addEventListener('click', async function () {
+                const body = {};
+                ['concept', 'sire', 'ambition', 'desire', 'background'].forEach(function (key) { body[key] = byId('field-' + key).value; });
+                const response = await postJSON('/api/traits/character/' + editCharacterId + '/resubmit/', body);
+                const result = await response.json().catch(function () { return {}; });
+                if (!response.ok) { toast('Not resubmitted: ' + (result.error || response.status), 'danger'); return; }
+                toast('Character resubmitted for review.', 'success');
+                setTimeout(function () { window.location.href = '/'; }, 2000);
+            });
+            panel.appendChild(button);
         }
 
         document.addEventListener('DOMContentLoaded', init);

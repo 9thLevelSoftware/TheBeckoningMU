@@ -4,8 +4,8 @@
 {% block title %}Character Creation{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'chargen/codex-base.css' %}?v=3">
-<link rel="stylesheet" href="{% static 'chargen/codex-chargen.css' %}?v=3">
+<link rel="stylesheet" href="{% static 'chargen/codex-base.css' %}?v=4">
+<link rel="stylesheet" href="{% static 'chargen/codex-chargen.css' %}?v=4">
 <style>
     .codex-trait-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
     .codex-trait-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
@@ -71,12 +71,18 @@
                             <input type="text" class="codex-input" id="field-sire" maxlength="100">
                         </div>
                         <div class="codex-field">
-                            <label class="codex-label" for="field-ambition">Ambition</label>
+                            <label class="codex-label" for="field-ambition">Ambition (required)</label>
                             <textarea class="codex-input" id="field-ambition" rows="2" maxlength="500"></textarea>
                         </div>
                         <div class="codex-field">
-                            <label class="codex-label" for="field-desire">Desire</label>
+                            <label class="codex-label" for="field-desire">Desire (required)</label>
                             <textarea class="codex-input" id="field-desire" rows="2" maxlength="500"></textarea>
+                        </div>
+                        <div class="codex-field">
+                            <label class="codex-label">Convictions &amp; Touchstones</label>
+                            <span class="codex-hint">One to three Convictions, each with a Touchstone: a mortal who embodies it (core p.172-173).</span>
+                            <div id="convictions-list"></div>
+                            <button type="button" class="btn-codex-ghost" id="add-conviction">Add conviction</button>
                         </div>
                         <div class="codex-field" style="margin-bottom: 0;">
                             <label class="codex-label" for="field-background">Background / Backstory</label>
@@ -195,5 +201,5 @@
     const CSRF_TOKEN = '{{ csrf_token }}';
     const editCharacterId = {{ edit_character_id|default:"null" }};
 </script>
-<script src="{% static 'chargen/codex-chargen.js' %}?v=3"></script>
+<script src="{% static 'chargen/codex-chargen.js' %}?v=4"></script>
 {% endblock %}

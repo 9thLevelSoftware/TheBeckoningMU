@@ -24,8 +24,16 @@ Submission keys (any other key, at any level, is rejected):
     specialties   [{"skill", "name"}]: every specialty, the predator one included
     disciplines   {discipline: dots}: every dot, the predator dot included
     discipline_powers  [power name]: one per discipline dot
+    rituals       [ritual name]: one level-1 Blood Sorcery ritual if the
+                  character has Blood Sorcery (core p.272), else none
+    formulas      [formula name]: one Thin-Blood Alchemy formula with the
+                  Thin-blood Alchemist merit (QR p.11; core p.282), else none
     advantages    [{"name", "dots", "note"?, "source"?}]: backgrounds and merits
     flaws         [{"name", "dots", "note"?, "source"?}]
+    convictions   [{"conviction", "touchstone", "touchstone_description"?}]:
+                  1-3 Convictions, each with its Touchstone (core p.172-173)
+
+    ambition and desire are required (core p.173); the other text is optional.
 
 `source: "predator"` marks the advantages and flaws the player picked for the
 predator type's choice grants (Osiris, Blood Leech, Scene Queen). The predator
@@ -77,6 +85,16 @@ TEXT_LIMITS = {
 }
 NOTE_LIMIT = 100
 SPECIALTY_LIMIT = 50
+CONVICTION_LIMIT = 200
+TOUCHSTONE_LIMIT = 100
+TOUCHSTONE_DESCRIPTION_LIMIT = 500
+CONVICTION_RANGE = (1, 3)  # core p.172: one to three Convictions, a Touchstone each
+REQUIRED_TEXT = ("ambition", "desire")
+
+# Names Evennia's search treats as keywords, plus staff-sounding names.
+RESERVED_NAMES = frozenset(
+    {"me", "self", "here", "all", "admin", "admins", "staff", "builder", "system", "limbo", "everyone", "nobody"}
+)
 
 REQUIRED_KEYS = (
     "name",
@@ -91,12 +109,23 @@ REQUIRED_KEYS = (
     "discipline_powers",
     "advantages",
     "flaws",
+    "convictions",
+    "rituals",
+    "formulas",
 )
 OPTIONAL_TEXT_KEYS = tuple(TEXT_LIMITS)
 ALLOWED_KEYS = frozenset(REQUIRED_KEYS + OPTIONAL_TEXT_KEYS)
 ITEM_KEYS = frozenset({"name", "dots", "note", "source"})
 SPECIALTY_KEYS = frozenset({"skill", "name"})
+CONVICTION_KEYS = frozenset({"conviction", "touchstone", "touchstone_description"})
 ITEM_SOURCES = (None, "predator")
+
+RITUALS = {r["name"]: r for r in DISCIPLINES["Blood Sorcery"].get("rituals", [])}
+FORMULAS = {
+    f["name"]: dict(f, level=level)
+    for level, formulas in DISCIPLINES[ALCHEMY].get("formulas", {}).items()
+    for f in formulas
+}
 
 # Display names keyed by storage key, in sheet order.
 ATTRIBUTE_NAMES = {normalize_trait_name(n): n for group in ATTRIBUTES.values() for n in group}
@@ -144,6 +173,9 @@ class Submission:
     discipline_powers: tuple  # canonical power names
     advantages: tuple  # Items: backgrounds and merits
     flaws: tuple  # Items
+    convictions: tuple = ()  # ((conviction, touchstone, touchstone description), ...)
+    rituals: tuple = ()  # canonical ritual names
+    formulas: tuple = ()  # canonical formula names
     concept: str = ""
     sire: str = ""
     ambition: str = ""
@@ -170,6 +202,11 @@ class Submission:
             "discipline_powers": list(self.discipline_powers),
             "advantages": [item.as_dict() for item in self.advantages],
             "flaws": [item.as_dict() for item in self.flaws],
+            "convictions": [
+                {"conviction": c, "touchstone": t, "touchstone_description": d} for c, t, d in self.convictions
+            ],
+            "rituals": list(self.rituals),
+            "formulas": list(self.formulas),
         }
 
 
@@ -184,6 +221,8 @@ class Sheet:
     background_instances: list = field(default_factory=list)  # [(name, note, dots)]
     merits: dict = field(default_factory=dict)  # {name: dots}
     flaws: dict = field(default_factory=dict)  # {name: dots}
+    merit_notes: dict = field(default_factory=dict)  # {name: "note; note"}
+    flaw_notes: dict = field(default_factory=dict)  # {name: "note; note"}
 
 
 # ----------------------------------------------------------------------------
@@ -326,7 +365,7 @@ def parse_submission(data):
         raise SubmissionError(errors)
 
     name = _text(data, "name", errors, required=True)
-    texts = {key: _text(data, key, errors, limit) for key, limit in TEXT_LIMITS.items()}
+    texts = {key: _text(data, key, errors, limit, required=key in REQUIRED_TEXT) for key, limit in TEXT_LIMITS.items()}
 
     clan = data["clan"]
     if not isinstance(clan, str) or not clan.strip():
@@ -383,6 +422,9 @@ def parse_submission(data):
 
     advantages = _items(data["advantages"], "advantages", errors)
     flaws = _items(data["flaws"], "flaws", errors)
+    convictions = _convictions(data["convictions"], errors)
+    rituals = _named_list(data["rituals"], "rituals", RITUALS, errors)
+    formulas = _named_list(data["formulas"], "formulas", FORMULAS, errors)
 
     if errors:
         raise SubmissionError(errors)
@@ -399,8 +441,67 @@ def parse_submission(data):
         discipline_powers=tuple(powers),
         advantages=advantages,
         flaws=flaws,
+        convictions=convictions,
+        rituals=rituals,
+        formulas=formulas,
         **texts,
     )
+
+
+def _convictions(value, errors):
+    if not isinstance(value, list):
+        errors.append("convictions: must be a list")
+        return ()
+    result = []
+    for index, raw in enumerate(value):
+        where = f"convictions[{index}]"
+        if not isinstance(raw, dict):
+            errors.append(f"{where}: must be an object")
+            continue
+        unknown = sorted(str(key) for key in raw if key not in CONVICTION_KEYS)
+        if unknown:
+            errors.append(f"{where}: unknown key(s) {', '.join(unknown)}")
+            continue
+        texts = []
+        for key, limit, required in (
+            ("conviction", CONVICTION_LIMIT, True),
+            ("touchstone", TOUCHSTONE_LIMIT, True),
+            ("touchstone_description", TOUCHSTONE_DESCRIPTION_LIMIT, False),
+        ):
+            text = raw.get(key, "")
+            if text is None:
+                text = ""
+            if not isinstance(text, str):
+                errors.append(f"{where}: {key} must be text")
+                break
+            text = text.strip()
+            if required and not text:
+                errors.append(f"{where}: {key} is required")
+                break
+            if len(text) > limit:
+                errors.append(f"{where}: {key} at most {limit} characters")
+                break
+            texts.append(text)
+        else:
+            result.append(tuple(texts))
+    return tuple(result)
+
+
+def _named_list(value, label, table, errors):
+    """A list of names from `table` (canonical, no repeats)."""
+    if not isinstance(value, list):
+        errors.append(f"{label}: must be a list")
+        return ()
+    result = []
+    for raw in value:
+        name = _canonical(raw, table) if isinstance(raw, str) else None
+        if name is None:
+            errors.append(f"{label}: unknown {label[:-1]} {raw!r}")
+        elif name in result:
+            errors.append(f"{label}: {name} is listed twice")
+        else:
+            result.append(name)
+    return tuple(result)
 
 
 # ----------------------------------------------------------------------------
@@ -476,6 +577,7 @@ def build_sheet(sub):
     for kind, item in advantages:
         if kind == "merits":
             sheet.merits[item.name] = sheet.merits.get(item.name, 0) + item.dots
+            _add_note(sheet.merit_notes, item.name, item.note)
         elif BACKGROUNDS[item.name].get("instanced"):
             sheet.background_instances.append((item.name, item.note, item.dots))
         else:
@@ -484,7 +586,13 @@ def build_sheet(sub):
         canonical = _canonical(item.name, FLAWS)
         if canonical:
             sheet.flaws[canonical] = sheet.flaws.get(canonical, 0) + item.dots
+            _add_note(sheet.flaw_notes, canonical, item.note)
     return sheet
+
+
+def _add_note(notes, name, note):
+    if note:
+        notes[name] = f"{notes[name]}; {note}" if notes.get(name) else note
 
 
 # ----------------------------------------------------------------------------
@@ -496,6 +604,8 @@ def validate_name(name):
     """Errors for a character name (format only; uniqueness is checked against the DB)."""
     if "|" in name or not NAME_RE.match(name):
         return ["Name: 2-30 characters, starting with a letter, using only letters, spaces, apostrophes and hyphens"]
+    if name.strip().lower() in RESERVED_NAMES:
+        return [f"Name: '{name}' is reserved; choose another"]
     return []
 
 
@@ -517,12 +627,15 @@ def _identity_errors(sub):
         else:
             errors.append("Generation: thin-bloods are of the 14th-16th generation and are Childer")
 
-    no_predator = sub.clan == THIN_BLOOD_CLAN or sub.age == "Childer"
-    if no_predator:
+    # Thin-bloods take no predator type (QR p.2). The QR also says recently
+    # Embraced fledglings don't; the owner chose to let Childer pick one if
+    # they like, so for them it is optional. Neonates and Ancillae must.
+    if sub.clan == THIN_BLOOD_CLAN:
         if sub.predator_type:
-            errors.append("Predator type: thin-bloods and Childer (recently Embraced) take no predator type")
+            errors.append("Predator type: thin-bloods take no predator type")
     elif not sub.predator_type:
-        errors.append("Predator type: choose one")
+        if sub.age != "Childer":
+            errors.append("Predator type: choose one")
     elif sub.predator_type not in PREDATOR_TYPES:
         errors.append(f"Predator type: '{sub.predator_type}' is not a predator type")
     else:
@@ -805,6 +918,10 @@ def _advantage_errors(sub):
                 f"(you have {len(thin_merits)} and {len(thin_flaws)})"
             )
     elif thin_merits or thin_flaws:
+        # Thin-bloods only, Caitiff included: Players Guide pp.135-136 ("Only
+        # Thin-Bloods may take these Merits and Flaws") and core pp.182-184.
+        # The fan-made QR 2.0 p.11 heading ("Thin-bloods and Caitiff") is the
+        # outlier; the owner chose the book (reviews/caitiff-thinblood-research.md).
         errors.append("Thin-blood merits and flaws are for thin-bloods only")
 
     # Totals on the sheet: each merged rating must still be a legal one.
@@ -834,6 +951,9 @@ def _restriction_errors(sub, sheet):
     errors = []
     clan = CLANS.get(sub.clan, {})
     banned_categories = set(clan.get("excluded_merit_categories", []))
+    for background in clan.get("excluded_backgrounds", []):
+        if _sheet_rating(sheet, "backgrounds", background):
+            errors.append(f"Advantages: {sub.clan} can't take {background} at creation")
     taken = set(sheet.merits) | set(sheet.flaws)
     reported = set()
     entries = [("merits", n, MERITS[n]) for n in sheet.merits] + [("flaws", n, FLAWS[n]) for n in sheet.flaws]
@@ -853,17 +973,25 @@ def _restriction_errors(sub, sheet):
         by_clan = entry.get("requires_by_clan")
         if by_clan:
             curse_clan = _clan_from_note(sub, name)
+            if curse_clan is None:
+                errors.append(
+                    f"{name}: name the clan whose Bane you carry in its note (one of {', '.join(CURSE_CLANS)})"
+                )
+                continue
             for needed in by_clan.get(curse_clan, []):
                 if needed not in taken:
                     errors.append(f"{name} ({curse_clan}) needs {needed}")
     return errors
 
 
+CURSE_CLANS = tuple(name for name, clan in CLANS.items() if clan.get("bane"))
+
+
 def _clan_from_note(sub, flaw_name):
-    """The clan a Clan Curse names in its note."""
+    """The clan (a CLANS key with a bane) a Clan Curse names in its note, or None."""
     for item in sub.flaws:
         if _canonical(item.name, FLAWS) == flaw_name:
-            return _canonical(item.note, CLANS) or item.note
+            return _canonical(item.note, CURSE_CLANS)
     return None
 
 
@@ -891,6 +1019,35 @@ def validate_v5_creation(sub):
     errors += _discipline_errors(sub, merit_names)
     errors += _power_errors(sub)
     errors += _advantage_errors(sub)
+    errors += _conviction_errors(sub)
+    errors += _ritual_and_formula_errors(sub, merit_names)
+    return errors
+
+
+def _conviction_errors(sub):
+    low, high = CONVICTION_RANGE
+    if not low <= len(sub.convictions) <= high:
+        return [f"Convictions: take {low}-{high}, each with a Touchstone; you have {len(sub.convictions)}"]
+    return []
+
+
+def _ritual_and_formula_errors(sub, merit_names):
+    errors = []
+    # Core p.272: a character with Blood Sorcery starts with one ritual, free.
+    if sub.disciplines.get("Blood Sorcery", 0):
+        if len(sub.rituals) != 1 or RITUALS[sub.rituals[0]]["level"] != 1:
+            errors.append("Rituals: Blood Sorcery gives one level-1 ritual at creation; pick exactly one")
+    elif sub.rituals:
+        errors.append("Rituals: only characters with Blood Sorcery know rituals")
+    # QR p.11, core p.282: the Thin-blood Alchemist merit gives one formula.
+    if "Thin-blood Alchemist" in merit_names:
+        alchemy = sub.disciplines.get(ALCHEMY, 0)
+        if len(sub.formulas) != 1 or FORMULAS[sub.formulas[0]]["level"] > alchemy:
+            errors.append(
+                f"Formulas: Thin-blood Alchemist gives one formula of level {alchemy or 1} or lower; pick exactly one"
+            )
+    elif sub.formulas:
+        errors.append("Formulas: only a thin-blood with the Thin-blood Alchemist merit knows formulas")
     return errors
 
 
@@ -914,6 +1071,7 @@ def apply_chargen(character, sub):
     character.humanity = sheet.humanity
     character.hunger = CREATION_HUNGER
     character.predator_type = sub.predator_type
+    character.age_category = sub.age
 
     for key, rating in sub.attributes.items():
         character.set_trait(key, rating, "attributes")
@@ -925,15 +1083,22 @@ def apply_chargen(character, sub):
         character.set_trait(discipline, dots, "disciplines")
     for power in sub.discipline_powers:
         character.learn_power(power)
+    for ritual in sub.rituals:
+        character.learn_ritual(ritual)
+    for formula in sub.formulas:
+        character.learn_formula(formula)
 
     for name, dots in sheet.backgrounds.items():
         character.set_trait(name, dots, "backgrounds")
     for name, note, dots in sheet.background_instances:
         character.set_background_instance(name, note, dots)
     for name, dots in sheet.merits.items():
-        character.set_advantage("merits", name, dots)
+        character.set_advantage("merits", name, dots, note=sheet.merit_notes.get(name, ""))
     for name, dots in sheet.flaws.items():
-        character.set_advantage("flaws", name, dots)
+        character.set_advantage("flaws", name, dots, note=sheet.flaw_notes.get(name, ""))
+    for index, (conviction, touchstone, description) in enumerate(sub.convictions):
+        character.add_conviction(conviction)
+        character.add_touchstone(touchstone, description, conviction_index=index)
 
     if sheet.xp:
         award_xp(character, sheet.xp, reason=f"Starting experience ({sub.age})")
