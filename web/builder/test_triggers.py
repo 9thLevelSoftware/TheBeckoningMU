@@ -168,3 +168,26 @@ class ConditionTests(TestCase):
             self.assertFalse(check_condition("room_danger", {"operator": "gte", "value": "lots"}, room=self.room))
         with self.assertLogs("web.builder.v5_conditions", level="WARNING"):
             self.assertFalse(check_condition("character_clan", {}, character=self.char))
+
+
+class LookTriggerTests(TestCase):
+    """R-5: "interaction" (On Look) triggers fire when a player looks at the room."""
+
+    def test_look_fires_interaction_trigger(self):
+        room = create.create_object("typeclasses.rooms.Room", key="Crypt", nohome=True)
+        char = create.create_object("typeclasses.characters.Character", key="Nina", location=room, home=room)
+        room.db.triggers = [_trigger(type="interaction", parameters={"message": "Bones everywhere."})]
+        with (
+            mock.patch.object(type(char), "has_account", new_callable=mock.PropertyMock, return_value=True),
+            mock.patch.object(char, "msg") as msg,
+        ):
+            char.at_look(room)
+        self.assertIn(mock.call("Bones everywhere."), msg.call_args_list)
+
+    def test_look_by_an_npc_does_not_fire(self):
+        room = create.create_object("typeclasses.rooms.Room", key="Crypt", nohome=True)
+        char = create.create_object("typeclasses.characters.Character", key="Npc", location=room, home=room)
+        room.db.triggers = [_trigger(type="interaction", parameters={"message": "Bones everywhere."})]
+        with mock.patch.object(char, "msg") as msg:
+            char.at_look(room)
+        self.assertNotIn(mock.call("Bones everywhere."), msg.call_args_list)

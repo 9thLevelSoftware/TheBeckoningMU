@@ -16,7 +16,16 @@ from .sandbox_bridge import create_sandbox_from_project
 from .trigger_actions import ACTION_REGISTRY, list_actions
 from .trigger_engine import validate_trigger
 from .v5_conditions import list_condition_types
-from .validators import live_rooms, validate_build_map, validate_connection, validate_project
+from .validators import (
+    MAX_TIMED_TRIGGERS,
+    MAX_TRIGGERS_PER_ROOM,
+    count_timed,
+    entry_room_key,
+    live_rooms,
+    validate_build_map,
+    validate_connection,
+    validate_project,
+)
 
 # V5 Room Template Presets
 V5_ROOM_TEMPLATES = {
@@ -715,7 +724,7 @@ class BuildSandboxView(BuilderRequiredMixin, View):
         else:
             return JsonResponse(
                 {"status": "error", "error": result.get("error", "Unknown error")},
-                status=500,
+                status=result.get("status", 500),
             )
 
 
@@ -944,6 +953,20 @@ class RoomTriggersAPI(BuilderRequiredMixin, View):
                 triggers[existing_idx] = trigger_data
             else:
                 triggers.append(trigger_data)
+
+            if len(triggers) > MAX_TRIGGERS_PER_ROOM:
+                return JsonResponse(
+                    {"error": f"A room may have at most {MAX_TRIGGERS_PER_ROOM} triggers"}, status=400
+                )
+            timed = sum(
+                count_timed(triggers if rid == room_id else (r.get("triggers") or []))
+                for rid, r in rooms.items()
+                if isinstance(r, dict)
+            )
+            if timed > MAX_TIMED_TRIGGERS:
+                return JsonResponse(
+                    {"error": f"A project may have at most {MAX_TIMED_TRIGGERS} timed triggers"}, status=400
+                )
 
             # Save back to room
             room_data["triggers"] = triggers

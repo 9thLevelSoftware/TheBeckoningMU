@@ -278,6 +278,12 @@ class BuildUnitTests(SandboxTestBase):
         ok, result = create_sandbox_from_project(project.pk)
         self.assertFalse(ok)
         self.assertIn("already exists", result["error"])
+        # The view reports a refusal as 409, not a server error (R-7).
+        resp = self.post_json(self.client_for(self.owner), reverse("builder:build_sandbox", args=[project.pk]))
+        self.assertEqual(resp.status_code, 400)  # the view's own pre-check
+        BuildProject.objects.filter(pk=project.pk).update(sandbox_room_id=None)
+        resp = self.post_json(self.client_for(self.owner), reverse("builder:build_sandbox", args=[project.pk]))
+        self.assertEqual(resp.status_code, 409, resp.content)
 
     def test_fifty_room_build_query_budget(self):
         # F-050 measured ~6,000 queries for 50 rooms / 98 exits; the budget
@@ -440,7 +446,7 @@ class PromoteTests(SandboxTestBase):
             ok, result = promotion.promote_project_to_live(project.pk)
         # The failure is logged once; the undo itself raised nothing.
         self.assertEqual(len(logs.records), 1)
-        self.assertNotIn("undo", logs.output[0])
+        self.assertTrue(logs.records[0].getMessage().startswith("Promotion failed"))
         self.assertFalse(ok)
         self.assertIn("injected promotion failure", result["error"])
         self.assertEqual(len(calls), 2)

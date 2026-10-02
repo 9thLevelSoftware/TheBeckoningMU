@@ -9,7 +9,6 @@ import logging
 from typing import Any
 
 from evennia.utils.create import create_script
-from evennia.utils.search import search_script
 
 logger = logging.getLogger(__name__)
 
@@ -65,28 +64,6 @@ def create_timed_trigger(room, trigger_data: dict[str, Any]) -> Any | None:
     except Exception as e:
         logger.exception(f"Failed to create timed trigger {trigger_data.get('id')}: {e}")
         return None
-
-
-def delete_timed_trigger(trigger_id: str) -> bool:
-    """
-    Delete a specific timed trigger script by trigger ID.
-
-    Args:
-        trigger_id: The unique trigger identifier
-
-    Returns:
-        True if deleted or didn't exist, False on error
-    """
-    try:
-        scripts = search_script(f"trigger_{trigger_id}")
-        for script in scripts:
-            script.stop()
-            script.delete()
-            logger.info(f"Deleted timed trigger {trigger_id}")
-        return True
-    except Exception as e:
-        logger.exception(f"Failed to delete timed trigger {trigger_id}: {e}")
-        return False
 
 
 def delete_timed_triggers_for_room(room) -> int:

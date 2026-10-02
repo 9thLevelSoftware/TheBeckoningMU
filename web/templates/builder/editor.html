@@ -1516,7 +1516,7 @@
                 'entry': 'On Entry',
                 'exit': 'On Exit',
                 'timed': 'Timed',
-                'interaction': 'On Interaction'
+                'interaction': 'On Look'
             }[trigger.type] || String(trigger.type);
             const enabled = trigger.enabled !== false;
 
@@ -1811,15 +1811,15 @@
                         <option value="entry">On Entry (when someone enters)</option>
                         <option value="exit">On Exit (when someone leaves)</option>
                         <option value="timed">Timed (repeating interval)</option>
-                        <option value="interaction">On Interaction (look, use, etc.)</option>
+                        <option value="interaction">On Look (someone looks at the room, including on arrival)</option>
                     </select>
                 </div>
 
                 <div class="mb-3" id="interval-field" style="display: none;">
                     <label class="form-label">Interval (seconds)</label>
                     <input type="number" class="form-control" id="trigger-interval"
-                           min="10" value="300">
-                    <div class="form-text">Minimum 10 seconds. 300 = 5 minutes.</div>
+                           min="60" value="300">
+                    <div class="form-text">Minimum 60 seconds. 300 = 5 minutes. At most 10 triggers per room and 30 timed triggers per project.</div>
                 </div>
 
                 <div class="mb-3">

@@ -298,6 +298,21 @@ class Room(ObjectParent, DefaultRoom):
                 logger = logging.getLogger(__name__)
                 logger.exception(f"Error executing entry triggers in {self}: {e}")
 
+    def at_desc(self, looker=None, **kwargs):
+        """
+        Hook called when someone looks at this room (including the automatic
+        look on arrival). Runs the room's "interaction" triggers for player
+        characters.
+        """
+        super().at_desc(looker=looker, **kwargs)
+        if looker is not None and getattr(looker, "has_account", False):
+            try:
+                execute_triggers(self, "interaction", looker)
+            except Exception as e:
+                import logging
+
+                logging.getLogger(__name__).exception(f"Error executing look triggers in {self}: {e}")
+
     def at_object_leave(self, moved_obj, target_location, move_type="move", **kwargs):
         """
         Hook called when an object leaves this room.

@@ -19,6 +19,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from .markup import MXP_ERROR, contains_mxp
 from .trigger_actions import ACTION_REGISTRY, validate_set_attribute
 from .v5_conditions import check_condition, list_condition_types
 
@@ -29,10 +30,12 @@ class TriggerError(Exception):
     """Exception raised for trigger execution errors."""
 
 
+# "interaction" fires when a character looks at the room (Room.at_desc),
+# which includes the automatic look on arrival.
 VALID_TRIGGER_TYPES = {"entry", "exit", "timed", "interaction"}
 TRIGGER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 MAX_MESSAGE_LENGTH = 2000
-MIN_TIMED_INTERVAL = 10
+MIN_TIMED_INTERVAL = 60
 MAX_TIMED_INTERVAL = 86400
 
 
@@ -88,6 +91,8 @@ def validate_trigger(trigger_data: Any) -> tuple[bool, str | None]:
         message = parameters.get("message", "")
         if not isinstance(message, str) or len(message) > MAX_MESSAGE_LENGTH:
             return False, f"message must be text of at most {MAX_MESSAGE_LENGTH} characters"
+        if contains_mxp(message):
+            return False, f"message {MXP_ERROR}"
     elif action_name == "set_attribute":
         error = validate_set_attribute(
             parameters.get("target", "room"), parameters.get("attr_name"), parameters.get("value")

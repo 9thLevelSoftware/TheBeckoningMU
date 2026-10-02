@@ -29,7 +29,7 @@ def create_sandbox_from_project(project_id: int) -> tuple[bool, dict[str, Any]]:
     try:
         return True, call_in_main_thread(build_unit, project_id)
     except BuildError as e:
-        return False, {"error": str(e)}
+        return False, {"error": str(e), "status": e.status}
     except Exception as e:
         logger.exception("Sandbox build failed for project %s", project_id)
-        return False, {"error": f"Sandbox build failed: {e}"}
+        return False, {"error": f"Sandbox build failed: {e}", "status": 500}

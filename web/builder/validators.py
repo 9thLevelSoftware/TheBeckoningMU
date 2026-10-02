@@ -5,6 +5,8 @@ Validation utilities for the Web Builder.
 import re
 from collections.abc import Mapping, Sequence
 
+from .markup import MXP_ERROR, contains_mxp
+
 
 def validate_project(map_data):
     """
@@ -175,6 +177,9 @@ MAX_NAME_LENGTH = 80
 MAX_DESC_LENGTH = 10000
 MAX_ALIASES = 10
 MAX_ALIAS_LENGTH = 32
+# Triggers: each timed trigger is a running Script, so they are capped.
+MAX_TRIGGERS_PER_ROOM = 10
+MAX_TIMED_TRIGGERS = 30
 
 DAY_NIGHT_VALUES = ("always", "day_only", "night_only", "restricted")
 HAVEN_RATINGS = ("security", "size", "luxury", "warding")
@@ -287,6 +292,8 @@ def _text(value, field, errors, label, required=False, max_length=MAX_DESC_LENGT
         errors.append(f"{label}: {field} must be text")
     elif len(value) > max_length:
         errors.append(f"{label}: {field} is longer than {max_length} characters")
+    elif contains_mxp(value):
+        errors.append(f"{label}: {field} {MXP_ERROR}")
 
 
 def _validate_v5(v5, label, errors):
@@ -331,6 +338,10 @@ def _trigger_label(trigger):
     return "(no id)"
 
 
+def count_timed(triggers):
+    return sum(1 for t in triggers if isinstance(t, Mapping) and t.get("type") == "timed")
+
+
 def _validate_triggers(triggers, label, errors):
     from .trigger_engine import validate_trigger
 
@@ -339,6 +350,8 @@ def _validate_triggers(triggers, label, errors):
     if not _is_list(triggers):
         errors.append(f"{label}: triggers must be a list")
         return
+    if len(triggers) > MAX_TRIGGERS_PER_ROOM:
+        errors.append(f"{label}: a room may have at most {MAX_TRIGGERS_PER_ROOM} triggers")
     seen = set()
     for trigger in triggers:
         ok, error = validate_trigger(trigger)
@@ -391,6 +404,13 @@ def validate_build_map(map_data):
         _validate_triggers(room.get("triggers"), label, errors)
     if len(entries) > 1:
         errors.append("Only one room may be the entry room")
+    timed = sum(
+        count_timed(room.get("triggers") or [])
+        for room in rooms.values()
+        if isinstance(room, Mapping) and _is_list(room.get("triggers") or [])
+    )
+    if timed > MAX_TIMED_TRIGGERS:
+        errors.append(f"A project may have at most {MAX_TIMED_TRIGGERS} timed triggers (it has {timed})")
 
     for exit_id, exit_data in exits.items():
         if not isinstance(exit_id, str) or not OBJECT_ID_RE.match(exit_id):
@@ -410,7 +430,9 @@ def validate_build_map(map_data):
         if (
             not _is_list(aliases)
             or len(aliases) > MAX_ALIASES
-            or not all(isinstance(a, str) and 0 < len(a) <= MAX_ALIAS_LENGTH for a in aliases)
+            or not all(
+                isinstance(a, str) and 0 < len(a) <= MAX_ALIAS_LENGTH and not contains_mxp(a) for a in aliases
+            )
         ):
             errors.append(
                 f"{label}: aliases must be a list of at most {MAX_ALIASES} names "

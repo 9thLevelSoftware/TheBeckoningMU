@@ -12,6 +12,8 @@ character's sheet (`vampire`, `stats`, `experience`, `hunger`, ...).
 import logging
 import re
 
+from .markup import MXP_ERROR, contains_mxp
+
 logger = logging.getLogger(__name__)
 
 CHARACTER_ATTR_RE = re.compile(r"^trigger_flag_[a-z0-9_]{1,32}$")
@@ -41,6 +43,8 @@ def validate_set_attribute(target, attr_name, value):
         return f"set_attribute may not set '{attr_name}' on a room"
     if not _is_primitive(value):
         return f"set_attribute value must be text (at most {MAX_VALUE_LENGTH} characters), a number, true/false or null"
+    if contains_mxp(value):
+        return f"set_attribute value {MXP_ERROR}"
     return None
 
 

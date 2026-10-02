@@ -30,6 +30,7 @@ import logging
 from typing import Any
 
 from django.utils import timezone
+from evennia.utils.ansi import strip_mxp
 from evennia.utils.create import create_object
 
 from .trigger_scripts import start_timed_trigger
@@ -44,6 +45,10 @@ V5_ROOM_ATTRIBUTES = ("location_type", "day_night", "danger_level", "territory_o
 
 class BuildError(Exception):
     """The project can't be built; the message is safe to show the builder."""
+
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
 
 
 def project_tags(project_id):
@@ -98,7 +103,7 @@ def _bulk_tag_and_set(objects, tag_keys):
 
 
 def _room_attributes(room_data):
-    attributes = [("desc", room_data.get("description") or "")]
+    attributes = [("desc", strip_mxp(room_data.get("description") or ""))]
     v5 = room_data.get("v5") or {}
     for key in V5_ROOM_ATTRIBUTES:
         if v5.get(key):
@@ -120,7 +125,7 @@ def _create_room(project_id, web_id, room_data):
     """Create one sandbox room (tags and Attributes are added in bulk later)."""
     room = create_object(
         typeclass=ROOM_TYPECLASS,
-        key=room_data["name"],
+        key=strip_mxp(room_data["name"]),
         location=None,
         nohome=True,
     )
@@ -130,7 +135,7 @@ def _create_room(project_id, web_id, room_data):
 
 
 def _exit_attributes(exit_data):
-    return [("desc", exit_data["description"])] if exit_data.get("description") else []
+    return [("desc", strip_mxp(exit_data["description"]))] if exit_data.get("description") else []
 
 
 def _create_exit(project_id, exit_id, exit_data, rooms):
@@ -138,8 +143,8 @@ def _create_exit(project_id, exit_id, exit_data, rooms):
     source = rooms[exit_data["source"]]
     exit_obj = create_object(
         typeclass=EXIT_TYPECLASS,
-        key=exit_data["name"],
-        aliases=list(exit_data.get("aliases") or []),
+        key=strip_mxp(exit_data["name"]),
+        aliases=[strip_mxp(alias) for alias in exit_data.get("aliases") or []],
         location=source,
         destination=rooms[exit_data["target"]],
         home=source,
@@ -191,11 +196,11 @@ def build_unit(project_id: int) -> dict[str, Any]:
 
     project = BuildProject.objects.filter(pk=project_id).first()
     if project is None:
-        raise BuildError(f"Project {project_id} not found")
+        raise BuildError(f"Project {project_id} not found", status=404)
     if project.status != "approved":
-        raise BuildError(f"Project must be approved (current status: {project.status})")
+        raise BuildError(f"Project must be approved (current status: {project.status})", status=409)
     if project.sandbox_room_id or project.built_object_ids:
-        raise BuildError("Sandbox already exists")
+        raise BuildError("Sandbox already exists", status=409)
     snapshot = project.approved_map_data or {}
     map_data = snapshot.get("map_data")
     if not map_data:
@@ -235,7 +240,7 @@ def build_unit(project_id: int) -> dict[str, Any]:
             updated_at=timezone.now(),
         )
         if not updated:
-            raise BuildError("Project changed while it was being built; nothing was kept")
+            raise BuildError("Project changed while it was being built; nothing was kept", status=409)
     except BaseException:
         undo_build(scripts, exits.values(), rooms.values())
         raise
