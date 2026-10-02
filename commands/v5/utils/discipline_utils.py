@@ -8,6 +8,7 @@ from world.v5_data import DISCIPLINES, find_power
 from dice import discipline_roller
 from .discipline_effects import (
     apply_effect,
+    remove_effect,
     get_power_duration,
     apply_obfuscate_effect,
     apply_dominate_effect,
@@ -147,7 +148,7 @@ def activate_discipline_power(character, discipline_name, power_name, difficulty
             "message": str,
             "power": dict or None,
             "roll": dict or None (roll_discipline_power's result),
-            "rouse_results": list of RouseResult,
+            "rouse_result": RouseResult or None (all the action's Rouse checks),
             "duration": str or None,
             "effect_applied": bool,
             "effect": dict or None,
@@ -159,66 +160,91 @@ def activate_discipline_power(character, discipline_name, power_name, difficulty
             "message": message,
             "power": power,
             "roll": None,
-            "rouse_results": [],
+            "rouse_result": None,
             "duration": None,
             "effect_applied": False,
             "effect": None,
         }
 
     power = find_power(power_name)
-    if power is None or (discipline_name and power["discipline"].lower() != discipline_name.lower()):
+    if power is None:
         return refused(f"Unknown power: {power_name}")
+    if discipline_name and power["discipline"].lower() != discipline_name.lower():
+        return refused(f"{power['name']} is a {power['discipline']} power, not {discipline_name}.", power)
 
     try:
         if power.get("dice_pool"):
             roll = discipline_roller.roll_discipline_power(
                 character, power["name"], difficulty=difficulty, with_rouse=with_rouse, target=target
             )
-            rouse_results = roll["rouse_results"]
+            rouse_result = roll["rouse_result"]
         else:
             discipline_roller.check_power_use(character, power, with_rouse=with_rouse)
             roll = None
-            rouse_results = discipline_roller.pay_rouse_cost(character, power) if with_rouse else []
+            rouse_result = discipline_roller.pay_rouse_cost(character, power) if with_rouse else None
     except ValueError as err:
         return refused(str(err), power)
 
     duration = get_power_duration(power)
-    effect_applied = False
-    applied_effect = None
-
-    # A power whose roll failed has no effect to track; its Rouse is still paid.
-    if duration and duration != 'instant' and (roll is None or roll["success"]):
-        # A "turn" power lasts one turn unless an effect handler says otherwise.
-        parameters = {"turns": 1} if duration == "turn" else {}
-        applied_effect = apply_effect(character, power, duration, parameters)
-        effect_applied = True
-
-        discipline_lower = power["discipline"].lower()
-        if discipline_lower == 'obfuscate':
-            apply_obfuscate_effect(character, power['name'])
-        elif discipline_lower == 'dominate':
-            apply_dominate_effect(character, power['name'])
-        elif discipline_lower == 'auspex':
-            apply_auspex_effect(character, power['name'])
-        elif discipline_lower == 'celerity':
-            apply_celerity_effect(character, power['name'])
-        elif discipline_lower == 'fortitude':
-            apply_fortitude_effect(character, power['name'])
-        elif discipline_lower == 'presence':
-            apply_presence_effect(character, power['name'])
-        elif discipline_lower == 'protean':
-            apply_protean_effect(character, power['name'])
+    # A contested power used without naming a target is the Storyteller's
+    # call, so it starts no tracked effect.
+    uncontested = bool(power.get("opposed_by")) and roll is not None and roll["defense"] is None
+    effect_ids = []
+    if power_effect_applies(power, roll) and not uncontested:
+        effect_ids = start_power_effect(character, power)
+    effects = [e for e in (character.db.active_effects or []) if e.get("id") in effect_ids]
 
     return {
         "success": True,
         "message": f"You activate {power['name']}.",
         "power": power,
         "roll": roll,
-        "rouse_results": rouse_results,
+        "rouse_result": rouse_result,
         "duration": duration,
-        "effect_applied": effect_applied,
-        "effect": applied_effect,
+        "uncontested": uncontested,
+        "effect_applied": bool(effect_ids),
+        "effect": effects[0] if effects else None,
+        "effect_ids": effect_ids,
     }
+
+
+def power_effect_applies(power, roll):
+    """True if the power has a lasting effect and its roll (if any) succeeded."""
+    duration = get_power_duration(power)
+    return bool(duration) and duration != 'instant' and (roll is None or roll["success"])
+
+
+def start_power_effect(character, power):
+    """Start a power's tracked effect(s); return the ids of the effects added."""
+    before = {e.get("id") for e in (character.db.active_effects or [])}
+    duration = get_power_duration(power)
+    # A "turn" power lasts one turn unless an effect handler says otherwise.
+    parameters = {"turns": 1} if duration == "turn" else {}
+    apply_effect(character, power, duration, parameters)
+
+    discipline_lower = power["discipline"].lower()
+    if discipline_lower == 'obfuscate':
+        apply_obfuscate_effect(character, power['name'])
+    elif discipline_lower == 'dominate':
+        apply_dominate_effect(character, power['name'])
+    elif discipline_lower == 'auspex':
+        apply_auspex_effect(character, power['name'])
+    elif discipline_lower == 'celerity':
+        apply_celerity_effect(character, power['name'])
+    elif discipline_lower == 'fortitude':
+        apply_fortitude_effect(character, power['name'])
+    elif discipline_lower == 'presence':
+        apply_presence_effect(character, power['name'])
+    elif discipline_lower == 'protean':
+        apply_protean_effect(character, power['name'])
+
+    return [e.get("id") for e in (character.db.active_effects or []) if e.get("id") not in before]
+
+
+def stop_power_effect(character, effect_ids):
+    """Remove the effects start_power_effect added."""
+    for effect_id in effect_ids:
+        remove_effect(character, effect_id)
 
 
 def format_power_display(power, level, include_level=True):

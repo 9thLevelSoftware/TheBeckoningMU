@@ -4,7 +4,8 @@ Discipline Power Rolling System for V5 Integration
 Rolls discipline powers: looks powers up in world.v5_data.DISCIPLINE_POWERS,
 checks the character may use them, calculates dice pools from the
 character's traits (Character.get_trait), adds Blood Potency and Resonance
-dice, rolls with the character's Hunger, then makes the power's Rouse checks.
+dice and a pending Blood Surge, rolls with the character's Hunger, then
+settles the Rouse checks (Hunger is added after the action).
 """
 
 import re
@@ -13,7 +14,15 @@ from typing import Any
 from world.v5_data import BLOOD_POTENCY, UnknownTrait, find_power
 
 from .dice_roller import MAX_DIFFICULTY, MAX_POOL, roll_v5_pool
-from .rouse_checker import HUNGER_5_REFUSAL, MAX_HUNGER, RouseResult, perform_rouse_check
+from .rouse_checker import (
+    HUNGER_5_REFUSAL,
+    MAX_HUNGER,
+    RouseResult,
+    format_rouse_lines,
+    perform_rouse_check,
+    resolve_rouse,
+    roll_rouse_die,
+)
 
 
 class PowerRefused(ValueError):  # noqa: N818 - reads as "the power was refused"
@@ -41,7 +50,8 @@ def check_power_use(character, power: dict[str, Any], with_rouse: bool = True) -
 
     The character must know the power and have the discipline (and any
     amalgam) rating. A power that costs a Rouse can't be used at Hunger 5
-    (QR p.4).
+    (core p.211: no voluntary Rouse at Hunger 5). Below Hunger 5 any power
+    may be started, whatever its Rouse count.
     """
     can_use, reason = can_use_power(character, power["name"])
     if not can_use:
@@ -50,17 +60,31 @@ def check_power_use(character, power: dict[str, Any], with_rouse: bool = True) -
         raise PowerRefused(HUNGER_5_REFUSAL)
 
 
-def pay_rouse_cost(character, power: dict[str, Any]) -> list[RouseResult]:
-    """Make the power's Rouse checks: ``power["rouse"]`` of them (0 = free).
+def pay_rouse_cost(character, power: dict[str, Any]) -> RouseResult | None:
+    """Make a power's Rouse checks, ``power["rouse"]`` of them (None if free).
 
-    Each check may raise Hunger. If a failed check brings Hunger to 5, the
-    remaining checks are refused (perform_rouse_check returns refused
-    results, which change nothing); the action has already happened.
+    Called after the power's action. All its checks are rolled; Hunger goes
+    up by the failures, stopping at 5, and failures past 5 record a pending
+    hunger frenzy test (rouse_checker.resolve_rouse). The power stands.
     """
-    reason = f"Activating {power['name']}"
-    return [
-        perform_rouse_check(character, reason=reason, power_level=power["level"]) for _ in range(power.get("rouse", 0))
-    ]
+    count = power.get("rouse", 0)
+    if not count:
+        return None
+    return perform_rouse_check(character, reason=power["name"], power_level=power["level"], count=count)
+
+
+def _usable_surge(character, with_rouse: bool) -> int:
+    """Dice of a pending Blood Surge this roll can use (0 if none or not now).
+
+    A surge needs its own Rouse, so it isn't used at Hunger 5 or when the
+    Rouse checks are skipped; it then stays pending.
+    """
+    from commands.v5.utils.blood_utils import get_blood_surge
+
+    surge = get_blood_surge(character)
+    if not surge or not with_rouse or character.hunger >= MAX_HUNGER:
+        return 0
+    return surge.get("bonus", 0)
 
 
 def roll_discipline_power(
@@ -78,18 +102,20 @@ def roll_discipline_power(
        needs a Rouse at Hunger 5, or if it has no dice pool. Nothing is
        rolled or charged when it is refused.
     3. Build the pool from the power's ``dice_pool`` plus the Blood Potency
-       power bonus and any Resonance dice.
-    4. Roll with the character's current Hunger. When ``target`` is given
-       and the power is contested (``opposed_by``), the target rolls that
-       pool with their own Hunger and the user needs more successes than the
-       target; ``difficulty`` is then ignored.
-    5. Make the power's Rouse checks after the roll (QR p.4: Hunger rises
-       after the action), unless ``with_rouse`` is False.
+       power bonus, any Resonance dice and a pending Blood Surge.
+    4. Roll with the character's current Hunger. When ``target`` (a
+       Character) is given and the power is contested (``opposed_by``),
+       the target rolls that pool with their own Hunger and the user needs
+       at least as many successes (a tie goes to the acting character);
+       ``difficulty`` is then ignored.
+    5. Settle the power's Rouse checks and the surge's after the roll: the
+       Hunger they cost is added after the action (core pp.211-212), unless
+       ``with_rouse`` is False.
 
     Raises:
         PowerRefused (a ValueError): the power was refused; nothing changed.
         ValueError: the roll itself was invalid (e.g. a pool over MAX_POOL);
-            nothing was charged.
+            nothing was charged and a pending surge is kept.
     """
     power = lookup_power(power_name)
     check_power_use(character, power, with_rouse=with_rouse)
@@ -104,29 +130,38 @@ def roll_discipline_power(
     resonance_bonus = _resonance_dice(character, power["discipline"])
     if resonance_bonus:
         pool_breakdown["Resonance"] = resonance_bonus
-    total_pool = max(1, base_pool + bp_bonus + resonance_bonus)
+    surge_dice = _usable_surge(character, with_rouse)
+    if surge_dice:
+        pool_breakdown["Blood Surge"] = surge_dice
+    total_pool = max(1, base_pool + bp_bonus + resonance_bonus + surge_dice)
     if total_pool > MAX_POOL:
-        raise ValueError(f"Pool size cannot exceed {MAX_POOL} dice (got {total_pool})")
-
-    hunger_before = character.hunger
+        surge_note = f", including {surge_dice} Blood Surge dice; the surge is kept" if surge_dice else ""
+        raise ValueError(f"Pool size cannot exceed {MAX_POOL} dice (got {total_pool}{surge_note})")
 
     defense = None
     if target is not None and power.get("opposed_by"):
         defense = _roll_defense(target, power["opposed_by"])
-        # UNVERIFIED tie rule: the user must beat the defender's successes.
-        difficulty = min(MAX_DIFFICULTY, defense["roll_result"].total_successes + 1)
+        difficulty = min(MAX_DIFFICULTY, max(1, defense["roll_result"].total_successes))
 
+    hunger_before = character.hunger
     roll_result = roll_v5_pool(pool_size=total_pool, hunger=hunger_before, difficulty=difficulty)
 
-    rouse_results = pay_rouse_cost(character, power) if with_rouse else []
+    checks = []
+    if with_rouse:
+        checks = [roll_rouse_die(character, power["level"], label=power["name"]) for _ in range(power.get("rouse", 0))]
+    if surge_dice:
+        from commands.v5.utils.blood_utils import consume_blood_surge
+
+        consume_blood_surge(character)
+        checks.append(roll_rouse_die(character, None, label="Blood Surge"))
+    rouse_result = resolve_rouse(character, power["name"], checks) if checks else None
 
     message = _format_discipline_roll_message(
         power=power,
         pool_breakdown=pool_breakdown,
         total_pool=total_pool,
-        rouse_results=rouse_results,
+        rouse_result=rouse_result,
         roll_result=roll_result,
-        difficulty=difficulty,
         defense=defense,
     )
 
@@ -137,7 +172,8 @@ def roll_discipline_power(
         "dice_pool_breakdown": pool_breakdown,
         "blood_potency_bonus": bp_bonus,
         "resonance_bonus": resonance_bonus,
-        "rouse_results": rouse_results,
+        "surge_dice": surge_dice,
+        "rouse_result": rouse_result,
         "roll_result": roll_result,
         "defense": defense,
         "hunger_before": hunger_before,
@@ -150,21 +186,19 @@ def roll_discipline_power(
 def _roll_defense(target, opposed_by: str) -> dict[str, Any]:
     """Roll the target's ``opposed_by`` pool with the target's own Hunger.
 
-    A target without the Character accessors rolls one die with no Hunger.
+    The target must be a Character (PowerRefused otherwise).
     """
+    if not hasattr(target, "get_trait"):
+        raise PowerRefused(f"{getattr(target, 'key', target)} can't resist a power; name a character.")
     trait_names = parse_dice_pool(opposed_by)
-    if hasattr(target, "get_trait"):
-        pool, breakdown = calculate_pool_from_traits(target, trait_names)
-        hunger = getattr(target, "hunger", 0)
-    else:
-        pool, breakdown, hunger = 0, dict.fromkeys(trait_names, 0), 0
+    pool, breakdown = calculate_pool_from_traits(target, trait_names)
     pool = min(MAX_POOL, max(1, pool))
     return {
         "target": target,
         "opposed_by": opposed_by,
         "dice_pool": pool,
         "dice_pool_breakdown": breakdown,
-        "roll_result": roll_v5_pool(pool_size=pool, hunger=hunger, difficulty=0),
+        "roll_result": roll_v5_pool(pool_size=pool, hunger=target.hunger, difficulty=0),
     }
 
 
@@ -297,33 +331,22 @@ def get_character_discipline_powers(character, discipline_name: str | None = Non
     return results
 
 
-def format_rouse_results(rouse_results: list[RouseResult]) -> list[str]:
-    """Display lines for a power's Rouse checks."""
-    lines = []
-    for result in rouse_results:
-        if result.refused:
-            lines.append("Rouse Check: |rnot rolled|n (Hunger 5).")
-            continue
-        if result.reroll_used:
-            roll_text = f"|y{result.rolls[0]}|n, Blood Potency re-roll |y{result.roll}|n"
-        else:
-            roll_text = f"|y{result.roll}|n"
-        if result.success:
-            lines.append(f"Rouse Check: {roll_text}. |gSuccess.|n Hunger stays at |r{result.hunger_after}|n.")
-        else:
-            lines.append(f"Rouse Check: {roll_text}. |rFailed.|n Hunger rises to |r{result.hunger_after}|n.")
-    if any(result.refused for result in rouse_results):
-        lines.append("|rYou reached Hunger 5; the remaining Rouse checks were not rolled.|n")
-    return lines
+def format_defense(defense: dict[str, Any]) -> str:
+    """The defender's roll, without second-person outcome text or pool size."""
+    roll = defense["roll_result"]
+    name = getattr(defense["target"], "key", str(defense["target"]))
+    dice = " ".join(str(die) for die in roll.regular_dice)
+    hunger = " ".join(str(die) for die in roll.hunger_dice)
+    shown = f"[{dice}]" + (f" Hunger [{hunger}]" if hunger else "")
+    return f"|w{name} resists|n ({defense['opposed_by']}): {shown} - |w{roll.total_successes}|n successes."
 
 
 def _format_discipline_roll_message(
     power: dict[str, Any],
     pool_breakdown: dict[str, int],
     total_pool: int,
-    rouse_results: list[RouseResult],
+    rouse_result: RouseResult | None,
     roll_result,
-    difficulty: int,
     defense: dict[str, Any] | None = None,
 ) -> str:
     """Format a discipline power roll for display."""
@@ -340,7 +363,7 @@ def _format_discipline_roll_message(
 
     lines.append("|wDice Pool:|n")
     for trait_name, value in pool_breakdown.items():
-        if trait_name in ("Blood Potency Bonus", "Resonance") and value > 0:
+        if trait_name in ("Blood Potency Bonus", "Resonance", "Blood Surge") and value > 0:
             lines.append(f"  {trait_name}: |y+{value}|n")
         else:
             lines.append(f"  {trait_name}: {value}")
@@ -349,19 +372,19 @@ def _format_discipline_roll_message(
     lines.append("")
 
     if defense is not None:
-        target = defense["target"]
-        target_name = getattr(target, "key", str(target))
-        lines.append(f"|wOpposed by {target_name}:|n {defense['opposed_by']} ({defense['dice_pool']} dice)")
-        lines.append(defense["roll_result"].format_result(show_details=True))
+        lines.append(format_defense(defense))
+        lines.append(f"|wYou need at least {roll_result.difficulty} successes (a tie goes to you).|n")
         lines.append("")
-        lines.append(f"|wYou need more than {defense['roll_result'].total_successes} successes.|n")
     elif power.get("opposed_by"):
-        lines.append(f"|xContested: the target resists with {power['opposed_by']}.|n")
+        lines.append(
+            f"|xUncontested: the target resists with {power['opposed_by']}. "
+            "Name a target (= <name>), or the Storyteller adjudicates.|n"
+        )
 
     lines.append(roll_result.format_result(show_details=True))
 
-    if rouse_results:
+    if rouse_result is not None:
         lines.append("")
-        lines.extend(format_rouse_results(rouse_results))
+        lines.extend(format_rouse_lines(rouse_result))
 
     return "\n".join(lines)

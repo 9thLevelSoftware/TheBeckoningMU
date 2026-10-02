@@ -75,7 +75,9 @@ class RollResult:
 
         Result types:
         - 'bestial_failure': Failed with a Hunger 1
-        - 'failure': Failed without bestial complications
+        - 'total_failure': No successes at all (and not bestial)
+        - 'failure': Failed with at least one success (a near miss: the
+          Storyteller may offer a win at a cost, core p.121)
         - 'messy_critical': Critical success with Hunger complications
         - 'critical_success': Critical success without complications
         - 'success': Normal success
@@ -84,7 +86,9 @@ class RollResult:
             String describing result type
         """
         if not self.is_success:
-            return 'bestial_failure' if self.is_bestial_failure else 'failure'
+            if self.is_bestial_failure:
+                return 'bestial_failure'
+            return 'total_failure' if self.total_successes == 0 else 'failure'
         elif self.is_messy_critical:
             return 'messy_critical'
         elif self.is_critical:
@@ -176,8 +180,12 @@ class RollResult:
                    "You fail, and a Hunger die shows a 1: the Beast takes its due.\n"
                    "Act out a Compulsion; the Storyteller decides the details.")
 
+        elif self.result_type == 'total_failure':
+            return "|rTotal failure.|n You get no successes at all."
+
         elif self.result_type == 'failure':
-            return "|rFailure|n\nYou do not achieve your goal."
+            return ("|rFailure|n\nYou do not achieve your goal.\n"
+                    "|xThe Storyteller may offer a win at a cost.|n")
 
         elif self.result_type == 'messy_critical':
             return ("|y|h** MESSY CRITICAL **|n\n"

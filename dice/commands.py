@@ -5,22 +5,47 @@ Provides Evennia MuxCommands for rolling dice, using discipline powers,
 performing Rouse checks, and viewing dice mechanics.
 """
 
+import time
+
 from evennia import Command, default_cmds
 from evennia.utils.utils import inherits_from
 
 from . import dice_roller, rouse_checker
+
+# A Willpower re-roll is made right after the roll it improves (QR p.3):
+# the last roll can be re-rolled for this many seconds.
+LAST_ROLL_WINDOW = 300
+
+WILLPOWER_USAGE = "Usage: roll/willpower <die> [<die> <die>]  (the values shown on your regular dice)"
+
 
 def _is_staff(caller) -> bool:
     """True if the caller (or the account puppeting it) has Builder permission."""
     return caller.locks.check_lockstring(caller, "staff:perm(Builder)")
 
 
-def remember_roll(caller, result, label: str, secret: bool = False) -> None:
+def remember_roll(caller, result, label: str, secret: bool = False, power=None, effect_ids=None, uncontested=False):
     """Store a roll on caller.ndb.last_roll so `roll/willpower` can re-roll its dice.
 
-    Shape: {"result": RollResult, "label": str, "secret": bool, "rerolled": bool}.
+    Shape: {"result": RollResult, "label": str, "secret": bool, "rerolled": bool,
+    "time": float, "power": power name or None, "effect_ids": [...],
+    "uncontested": bool}. A power's entry lets a re-roll re-resolve it.
     """
-    caller.ndb.last_roll = {"result": result, "label": label, "secret": secret, "rerolled": False}
+    caller.ndb.last_roll = {
+        "result": result,
+        "label": label,
+        "secret": secret,
+        "rerolled": False,
+        "time": time.time(),
+        "power": power,
+        "effect_ids": list(effect_ids or []),
+        "uncontested": uncontested,
+    }
+
+
+def forget_roll(caller) -> None:
+    """Clear the stored last roll (another action happened since)."""
+    caller.ndb.last_roll = None
 
 
 class CmdRoll(default_cmds.MuxCommand):
@@ -47,17 +72,21 @@ class CmdRoll(default_cmds.MuxCommand):
     is a success, and each pair of 10s counts as four successes. A success
     with a pair of 10s is a critical; if a Hunger die shows one of the 10s
     it is a messy critical, and the Storyteller decides the complication. A
-    failed roll with a Hunger die showing 1 is a bestial failure.
+    failed roll with a Hunger die showing 1 is a bestial failure; a failed
+    roll with no successes is a total failure, and a near miss may be turned
+    into a win at a cost by the Storyteller.
 
-    If you used bloodsurge, the surge dice are added to this roll and the
-    surge is used up.
+    If you readied a bloodsurge, its dice are added to this roll and its
+    Rouse check is made with it: the roll uses your Hunger from before, and
+    a failed check raises Hunger afterwards.
 
-    Willpower: once per roll, mark 1 Superficial Willpower damage to re-roll
-    up to three of the last roll's regular (non-Hunger) dice, chosen by the
-    value they show. Hunger dice can't be re-rolled.
+    Willpower: once per roll, within five minutes of it, mark 1 Superficial
+    Willpower damage to re-roll up to three of the last roll's regular
+    (non-Hunger) dice, chosen by the value they show. Hunger dice can't be
+    re-rolled. A re-rolled power roll re-resolves the power.
 
     Staff can set the Hunger dice (roll <pool> <hunger>) or roll with none
-    (/mortal) for NPCs.
+    (/mortal) for NPCs; those rolls don't use a Blood Surge.
     """
 
     key = "roll"
@@ -67,8 +96,9 @@ class CmdRoll(default_cmds.MuxCommand):
 
     def func(self):
         """Execute the roll command."""
-        if not inherits_from(self.caller, "typeclasses.characters.Character"):
-            self.caller.msg("|rYou must be in character to roll dice.|n")
+        caller = self.caller
+        if not inherits_from(caller, "typeclasses.characters.Character"):
+            caller.msg("|rYou must be in character to roll dice.|n")
             return
 
         if "willpower" in self.switches:
@@ -77,18 +107,19 @@ class CmdRoll(default_cmds.MuxCommand):
 
         args = self.args.strip()
         if not args:
-            self.caller.msg("Usage: roll <pool> [vs <difficulty>]")
+            caller.msg("Usage: roll <pool> [vs <difficulty>]")
             return
 
         try:
             pool_size, hunger_arg, difficulty = self._parse_args(args)
         except ValueError as e:
-            self.caller.msg(f"|rError:|n {e}")
+            caller.msg(f"|rError:|n {e}")
             return
 
         mortal = "mortal" in self.switches
-        if (hunger_arg is not None or mortal) and not _is_staff(self.caller):
-            self.caller.msg(
+        staff_override = hunger_arg is not None or mortal
+        if staff_override and not _is_staff(caller):
+            caller.msg(
                 "|rOnly staff can set the Hunger dice.|n Your roll uses your own Hunger: roll <pool> [vs <difficulty>]"
             )
             return
@@ -97,37 +128,54 @@ class CmdRoll(default_cmds.MuxCommand):
         elif hunger_arg is not None:
             hunger = hunger_arg
         else:
-            hunger = self.caller.hunger
+            hunger = caller.hunger
 
         from commands.v5.utils import blood_utils
 
-        surge = blood_utils.get_blood_surge(self.caller)
-        surge_dice = surge.get("bonus", 0) if surge else 0
+        surge_dice = 0
+        surge_note = ""
+        surge = None if staff_override else blood_utils.get_blood_surge(caller)
+        if surge:
+            if caller.hunger >= rouse_checker.MAX_HUNGER:
+                surge_note = "|xYour Blood Surge can't be used at Hunger 5; it stays ready.|n"
+            else:
+                surge_dice = surge.get("bonus", 0)
+
         total_pool = pool_size + surge_dice
+        if total_pool > dice_roller.MAX_POOL:
+            caller.msg(
+                f"|rRoll error:|n Pool size cannot exceed {dice_roller.MAX_POOL} dice: {pool_size} plus "
+                f"{surge_dice} Blood Surge dice. The surge is kept for your next roll."
+            )
+            return
 
         try:
             result = dice_roller.roll_v5_pool(total_pool, hunger, difficulty)
         except ValueError as e:
-            self.caller.msg(f"|rRoll error:|n {e}")
+            caller.msg(f"|rRoll error:|n {e}")
             return
+
+        rouse_result = None
         if surge_dice:
-            blood_utils.consume_blood_surge(self.caller)
+            blood_utils.consume_blood_surge(caller)
+            rouse_result = rouse_checker.perform_rouse_check(caller, reason="Blood Surge")
 
         is_secret = "secret" in self.switches
-        remember_roll(self.caller, result, f"{total_pool} dice", secret=is_secret)
+        remember_roll(caller, result, f"{total_pool} dice", secret=is_secret)
 
-        message = self._format_roll_message(result, total_pool, hunger, difficulty, surge_dice)
+        message = self._format_roll_message(result, total_pool, difficulty, surge_dice)
+        if rouse_result is not None:
+            message += "\n\n" + "\n".join(rouse_checker.format_rouse_lines(rouse_result))
+        if surge_note:
+            message += "\n" + surge_note
         if result.regular_dice:
             message += "\n|x(roll/willpower <dice> re-rolls up to 3 regular dice for 1 Willpower.)|n"
 
-        if is_secret or not self.caller.location:
-            self.caller.msg("|y[Secret Roll]|n\n" + message if is_secret else message)
+        if is_secret or not caller.location:
+            caller.msg("|y[Secret Roll]|n\n" + message if is_secret else message)
         else:
-            self.caller.location.msg_contents(
-                f"|c{self.caller.name}|n rolls dice...\n{message}",
-                exclude=[self.caller]
-            )
-            self.caller.msg(message)
+            caller.location.msg_contents(f"|c{caller.name}|n rolls dice...\n{message}", exclude=[caller])
+            caller.msg(message)
 
     def _parse_args(self, args):
         """
@@ -139,8 +187,8 @@ class CmdRoll(default_cmds.MuxCommand):
         Raises:
             ValueError: If arguments are invalid
         """
-        if ' vs ' in args.lower():
-            pool_args, diff_str = args.lower().split(' vs ', 1)
+        if " vs " in args.lower():
+            pool_args, diff_str = args.lower().split(" vs ", 1)
             try:
                 difficulty = int(diff_str.strip())
             except ValueError:
@@ -180,7 +228,7 @@ class CmdRoll(default_cmds.MuxCommand):
 
         return pool_size, hunger, difficulty
 
-    def _format_roll_message(self, result, pool_size, hunger, difficulty, surge_dice=0):
+    def _format_roll_message(self, result, pool_size, difficulty, surge_dice=0):
         """Format a roll result for display."""
         lines = ["|c=== Dice Roll ===|n"]
         pool_line = f"Pool: {pool_size} dice ({len(result.hunger_dice)} Hunger)"
@@ -200,6 +248,10 @@ class CmdRoll(default_cmds.MuxCommand):
         if not last:
             caller.msg("|rYou have no roll to re-roll.|n Roll first, then use roll/willpower <dice>.")
             return
+        if time.time() - last.get("time", 0) > LAST_ROLL_WINDOW:
+            forget_roll(caller)
+            caller.msg("|rYour last roll is too old to re-roll.|n Spend Willpower right after the roll.")
+            return
         if last["rerolled"]:
             caller.msg("|rYou have already spent Willpower on that roll.|n")
             return
@@ -207,10 +259,10 @@ class CmdRoll(default_cmds.MuxCommand):
         try:
             values = [int(value) for value in self.args.replace(",", " ").split()]
         except ValueError:
-            caller.msg("Usage: roll/willpower <die> [<die> <die>]  (the values shown on your regular dice)")
+            caller.msg(WILLPOWER_USAGE)
             return
         if not values:
-            caller.msg("Usage: roll/willpower <die> [<die> <die>]  (the values shown on your regular dice)")
+            caller.msg(WILLPOWER_USAGE)
             return
 
         if caller.current_willpower < 1:
@@ -225,6 +277,7 @@ class CmdRoll(default_cmds.MuxCommand):
 
         marks = caller.damage["willpower"]
         caller.set_damage("willpower", superficial=marks["superficial"] + 1)
+        was_success = last["result"].is_success
         last.update(result=result, rerolled=True)
 
         dice_text = ", ".join(str(value) for value in values)
@@ -235,6 +288,9 @@ class CmdRoll(default_cmds.MuxCommand):
             "",
             result.format_result(show_details=True),
         ]
+        if last.get("power") and result.is_success != was_success:
+            lines.append("")
+            lines.append(self._re_resolve_power(last, result.is_success))
         message = "\n".join(lines)
         if last["secret"] or not caller.location:
             caller.msg(message)
@@ -243,6 +299,24 @@ class CmdRoll(default_cmds.MuxCommand):
                 f"|c{caller.name}|n spends Willpower to re-roll...\n{message}", exclude=[caller]
             )
             caller.msg(message)
+
+    def _re_resolve_power(self, last, now_success):
+        """Start or end a re-rolled power's tracked effect; return a display line."""
+        from commands.v5.utils import discipline_utils
+        from world.v5_data import find_power
+
+        caller = self.caller
+        power = find_power(last["power"])
+        if now_success:
+            if last.get("uncontested") or not discipline_utils.power_effect_applies(power, {"success": True}):
+                return f"|g{power['name']} now succeeds.|n"
+            last["effect_ids"] = discipline_utils.start_power_effect(caller, power)
+            return f"|g{power['name']} now succeeds:|n its effect starts. Use +effects to view."
+        if last.get("effect_ids"):
+            discipline_utils.stop_power_effect(caller, last["effect_ids"])
+            last["effect_ids"] = []
+            return f"|r{power['name']} now fails:|n its effect ends."
+        return f"|r{power['name']} now fails.|n"
 
 
 class CmdPower(default_cmds.MuxCommand):
@@ -260,24 +334,28 @@ class CmdPower(default_cmds.MuxCommand):
       power Scry the Soul
       power Scry the Soul vs 3
       power Dread Gaze = Bob
-      +power Feral Whispers
+      +power presence/dread gaze
 
     You must know the power and have its discipline (and any amalgam
     discipline) at the power's level. The power's dice pool comes from your
-    traits, plus the Blood Potency power bonus and a die from a matching
-    Intense or Acute resonance. You roll with your current Hunger; the
-    power's Rouse checks are made after the roll, and each failed one raises
-    Hunger by 1. Some powers cost two or three Rouse checks; free powers
-    cost none.
+    traits, plus the Blood Potency power bonus, a die from a matching
+    Intense or Acute resonance, and a readied bloodsurge. You roll with your
+    current Hunger; the power's Rouse checks (and the surge's) are rolled
+    with the action, and the Hunger they cost is added afterwards. Some
+    powers cost two or three Rouse checks; free powers cost none.
+
+    At Hunger 5 you can't use a power that needs a Rouse check: feed first.
+    Below Hunger 5 you can start any power. If its failed checks would take
+    Hunger past 5, Hunger stops at 5 and you must test for hunger frenzy
+    (Difficulty 4); the power still works.
 
     A contested power (one the target resists) rolls against the target's
-    resistance pool when you name a target with = <target>; you need more
-    successes than they get.
+    resistance pool when you name a target with = <target>; you need at
+    least as many successes as they get (a tie goes to you). Without a
+    target the Storyteller adjudicates, and no effect is tracked.
 
     Powers without a dice roll are used without rolling: you pay their Rouse
     checks and their effect starts.
-
-    At Hunger 5 you can't use a power that needs a Rouse check: feed first.
 
     `+power <discipline>/<power name>` also works.
     """
@@ -300,9 +378,10 @@ class CmdPower(default_cmds.MuxCommand):
             return
 
         difficulty = 0
-        if ' vs ' in args.lower():
-            index = args.lower().index(' vs ')
-            power_name, diff_str = args[:index].strip(), args[index + 4:].strip()
+        has_difficulty = " vs " in args.lower()
+        if has_difficulty:
+            index = args.lower().index(" vs ")
+            power_name, diff_str = args[:index].strip(), args[index + 4 :].strip()
             try:
                 difficulty = int(diff_str)
             except ValueError:
@@ -310,8 +389,7 @@ class CmdPower(default_cmds.MuxCommand):
                 return
             if not dice_roller.MIN_DIFFICULTY <= difficulty <= dice_roller.MAX_DIFFICULTY:
                 caller.msg(
-                    f"|rDifficulty must be between {dice_roller.MIN_DIFFICULTY} "
-                    f"and {dice_roller.MAX_DIFFICULTY}.|n"
+                    f"|rDifficulty must be between {dice_roller.MIN_DIFFICULTY} and {dice_roller.MAX_DIFFICULTY}.|n"
                 )
                 return
         else:
@@ -319,10 +397,13 @@ class CmdPower(default_cmds.MuxCommand):
 
         from world.v5_data import find_power
 
+        discipline_name = None
         power = find_power(power_name)
         if power is None and "/" in power_name:
             # "+power <discipline>/<power name>"
-            power = find_power(power_name.split("/", 1)[1])
+            discipline_name, _, name = power_name.partition("/")
+            discipline_name = discipline_name.strip()
+            power = find_power(name)
         if power is None:
             caller.msg(f"|rError:|n Discipline power '{power_name}' not found.")
             return
@@ -338,14 +419,26 @@ class CmdPower(default_cmds.MuxCommand):
 
         target = None
         if self.rhs:
+            if not power.get("opposed_by"):
+                caller.msg(f"|rError:|n {power['name']} isn't resisted by a target; leave out = <target>.")
+                return
+            if has_difficulty:
+                caller.msg(
+                    "|rError:|n Name a target or a difficulty, not both: against a target the "
+                    "difficulty is their successes."
+                )
+                return
             target = caller.search(self.rhs.strip())
             if not target:
+                return
+            if not inherits_from(target, "typeclasses.characters.Character"):
+                caller.msg(f"|rError:|n {target.key} can't resist a power; name a character.")
                 return
 
         from commands.v5.utils.discipline_utils import activate_discipline_power
 
         result = activate_discipline_power(
-            caller, None, power["name"], difficulty=difficulty, target=target, with_rouse=with_rouse
+            caller, discipline_name, power["name"], difficulty=difficulty, target=target, with_rouse=with_rouse
         )
         if not result["success"]:
             caller.msg(f"|rError:|n {result['message']}")
@@ -354,34 +447,63 @@ class CmdPower(default_cmds.MuxCommand):
         roll = result["roll"]
         if roll:
             caller.msg(roll["message"])
-            remember_roll(caller, roll["roll_result"], power["name"])
+            remember_roll(
+                caller,
+                roll["roll_result"],
+                power["name"],
+                power=power["name"],
+                effect_ids=result["effect_ids"],
+                uncontested=result["uncontested"],
+            )
         else:
+            forget_roll(caller)
             caller.msg(self._format_unrolled(power, result))
 
-        if result.get("effect_applied") and result.get("effect"):
+        if result.get("effect_applied"):
             caller.msg(f"|xEffect active ({result['duration']}). Use +effects to view.|n")
 
+        if roll and roll["defense"] is not None:
+            self._tell_target(roll)
+
         if caller.location:
-            if roll is None:
-                room_msg = f"|c{caller.name}|n uses |w{power['name']}|n."
-            elif roll["success"]:
-                room_msg = f"|c{caller.name}|n uses |w{power['name']}|n... |gSuccess!|n"
-            else:
-                room_msg = f"|c{caller.name}|n attempts |w{power['name']}|n... |rFailure.|n"
-            caller.location.msg_contents(room_msg, exclude=[caller])
+            caller.location.msg_contents(
+                self._room_message(power, roll, result), exclude=[obj for obj in (caller, target) if obj]
+            )
+
+    def _tell_target(self, roll):
+        """Tell the defender what was used on them and how their resistance went."""
+        from .discipline_roller import format_defense
+
+        caller = self.caller
+        defense = roll["defense"]
+        outcome = "It takes hold." if roll["success"] else "You resist it."
+        defense["target"].msg(
+            f"|c{caller.name}|n uses |w{roll['power_name']}|n on you.\n"
+            f"{format_defense(defense)}\n"
+            f"{caller.name} gets {roll['roll_result'].total_successes} successes. {outcome}"
+        )
+
+    def _room_message(self, power, roll, result):
+        name = self.caller.name
+        if roll is None:
+            return f"|c{name}|n uses |w{power['name']}|n."
+        if result["uncontested"]:
+            return f"|c{name}|n uses |w{power['name']}|n (uncontested; the Storyteller adjudicates)."
+        on_target = f" on {roll['defense']['target'].key}" if roll["defense"] is not None else ""
+        if roll["success"]:
+            return f"|c{name}|n uses |w{power['name']}|n{on_target}... |gSuccess!|n"
+        return f"|c{name}|n attempts |w{power['name']}|n{on_target}... |rFailure.|n"
 
     @staticmethod
     def _format_unrolled(power, result):
         """Display for a power used without a dice roll."""
-        from .discipline_roller import format_rouse_results
-
         lines = [f"|c=== {power['name']} ===|n", f"|w{power['discipline']} Level {power['level']}|n"]
         if power.get("description"):
             lines.append(f"|x{power['description']}|n")
         lines.append("")
         lines.append("No roll needed.")
-        if result["rouse_results"]:
-            lines.extend(format_rouse_results(result["rouse_results"]))
+        if result["rouse_result"] is not None:
+            lines.extend(rouse_checker.format_rouse_lines(result["rouse_result"]))
         elif power.get("rouse", 0) == 0:
             lines.append("Free: no Rouse check.")
         return "\n".join(lines)
@@ -476,9 +598,9 @@ class CmdShowDice(Command):
         """Show complete dice mechanics reference."""
         lines = []
 
-        lines.append("|c" + "="*60 + "|n")
-        lines.append("|c" + " "*15 + "V5 DICE MECHANICS" + " "*15 + "|n")
-        lines.append("|c" + "="*60 + "|n")
+        lines.append("|c" + "=" * 60 + "|n")
+        lines.append("|c" + " " * 15 + "V5 DICE MECHANICS" + " " * 15 + "|n")
+        lines.append("|c" + "=" * 60 + "|n")
         lines.append("")
 
         # Basic Rules
@@ -528,7 +650,7 @@ class CmdShowDice(Command):
         lines.append("• You choose the dice, a 10 included; once per roll")
         lines.append("")
 
-        lines.append("|c" + "="*60 + "|n")
+        lines.append("|c" + "=" * 60 + "|n")
 
         self.caller.msg("\n".join(lines))
 

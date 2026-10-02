@@ -84,6 +84,9 @@ class CmdFeed(default_cmds.MuxCommand):
 
         hunger = blood_utils.get_hunger_level(self.caller)
 
+        from dice.commands import forget_roll
+
+        forget_roll(self.caller)  # a Willpower re-roll can't reach back past this roll
         result = dice_roller.roll_v5_pool(pool, hunger, difficulty=2)
 
         # 6. Resolve feeding based on result
@@ -147,11 +150,13 @@ class CmdBloodSurge(Command):
       bloodsurge strength
       bloodsurge brawl
 
-    Blood Surge costs one Rouse check (a 1-5 raises your Hunger by 1). Your
-    next `roll` gets the Blood Surge dice from the Blood Potency table
-    (BP 0: +1, BP 1-2: +2, BP 3-4: +3, and so on), then the surge is used
-    up. It doesn't apply to `power` rolls. An unused surge lapses after a
-    scene (one hour).
+    Your next roll whose pool includes an Attribute (a `roll`, or a `power`
+    roll) gets the Blood Surge dice from the Blood Potency table (BP 0: +1,
+    BP 1-2: +2, BP 3-4: +3, and so on), then the surge is used up. Its one
+    Rouse check is made with that roll: the roll uses the Hunger you had
+    before it, and a failed check raises Hunger by 1 afterwards (core
+    pp.211-212, p.218). One surge at a time; an unused surge lapses after an
+    hour and costs nothing.
 
     At Hunger 5 you can't Rouse the Blood, so you can't surge.
     """
@@ -213,12 +218,12 @@ class CmdBloodSurge(Command):
 
         if result['success']:
             message = "|yBlood Surge activated!|n\n\n"
-            message += result['message']
-            message += f"\n\n|g+{result['bonus']} dice to your next roll ({trait_name}).|n"
-            message += "\n|x(Used up by your next roll; lapses after one hour.)|n"
+            message += f"|g+{result['bonus']} dice to your next roll ({trait_name}).|n"
+            message += "\nIts Rouse check is made with that roll; any Hunger it costs comes after."
+            message += "\n|x(Used up by your next roll; lapses unused after one hour.)|n"
             self.caller.msg(message)
         else:
-            self.caller.msg(f"|rBlood Surge failed.|n\n{result['message']}")
+            self.caller.msg(f"|rBlood Surge failed.|n {result['message']}")
 
 
 class CmdHunger(Command):

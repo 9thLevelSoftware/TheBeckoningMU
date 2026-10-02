@@ -96,6 +96,9 @@ class CmdAttack(Command):
             return
 
         # Calculate attack
+        from dice.commands import forget_roll
+
+        forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
         result = calculate_attack(caller, target, pool_desc)
 
         # Build output

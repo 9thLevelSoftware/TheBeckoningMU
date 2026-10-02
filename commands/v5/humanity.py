@@ -274,6 +274,9 @@ class CmdRemorse(Command):
             return
 
         # Perform remorse roll
+        from dice.commands import forget_roll
+
+        forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
         result = remorse_roll(caller)
 
         # Display roll result
@@ -361,6 +364,9 @@ class CmdFrenzy(default_cmds.MuxCommand):
                 return
 
             # Perform resistance roll
+            from dice.commands import forget_roll
+
+            forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
             result = resist_frenzy(caller, difficulty)
 
             # Display result

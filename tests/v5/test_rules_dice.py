@@ -16,8 +16,8 @@ from evennia.utils.test_resources import EvenniaCommandTest, EvenniaTest
 from commands.v5.blood import CmdBloodSurge
 from commands.v5.hunt import CmdHunt
 from commands.v5.utils import blood_utils
-from dice.commands import CmdPower, CmdRoll, CmdRouse
-from dice.dice_roller import roll_v5_pool
+from dice.commands import LAST_ROLL_WINDOW, CmdPower, CmdRoll, CmdRouse
+from dice.dice_roller import MAX_POOL, roll_v5_pool
 from dice.roll_result import RollResult
 
 RANDINT = "random.randint"
@@ -188,20 +188,26 @@ class RouseCommandTests(EvenniaCommandTest):
 
 
 class BloodSurgeTests(EvenniaCommandTest):
-    """bloodsurge: one Rouse, then the BP table's surge dice on the next roll only."""
+    """bloodsurge: the BP table's surge dice on the next roll; its Rouse is made with that roll."""
 
-    def test_surge_rouses_and_adds_dice_to_the_next_roll_only(self):
+    def setUp(self):
+        super().setUp()
         self.char2.hunger = 1
         self.char2.blood_potency = 1  # surge +2
-        with all_dice(3):
-            output = self.call(CmdBloodSurge(), "strength", caller=self.char2)
-        self.assertIn("Blood Surge activated", output)
-        self.assertEqual(self.char2.hunger, 2)
 
-        with all_dice(7):
+    def test_surge_rouse_comes_after_the_surged_roll(self):
+        """Hunger dice use the pre-Rouse Hunger; the surge's Hunger is added after (core pp.211-212)."""
+        output = self.call(CmdBloodSurge(), "strength", caller=self.char2)
+        self.assertIn("Blood Surge activated", output)
+        self.assertEqual(self.char2.hunger, 1)
+
+        with all_dice(3):
             output = self.call(CmdRoll(), "3", caller=self.char2)
-        self.assertEqual(len(self.char2.ndb.last_roll["result"].all_dice), 5)
+        result = self.char2.ndb.last_roll["result"]
+        self.assertEqual(len(result.all_dice), 5)
+        self.assertEqual(len(result.hunger_dice), 1)
         self.assertIn("Blood Surge", strip_ansi(output))
+        self.assertEqual(self.char2.hunger, 2)
 
         with all_dice(7):
             self.call(CmdRoll(), "3", caller=self.char2)
@@ -214,6 +220,40 @@ class BloodSurgeTests(EvenniaCommandTest):
         self.assertIn("cannot Rouse the Blood", output)
         self.assertIsNone(blood_utils.get_blood_surge(self.char2))
 
+    def test_one_surge_at_a_time(self):
+        self.call(CmdBloodSurge(), "strength", caller=self.char2)
+        output = self.call(CmdBloodSurge(), "dexterity", caller=self.char2)
+        self.assertIn("already have a Blood Surge", output)
+        self.assertEqual(blood_utils.get_blood_surge(self.char2)["trait"], "Strength")
+
+    def test_surge_is_kept_when_the_roll_errors(self):
+        """A pool pushed over MAX_POOL by the surge is refused and the surge stays ready."""
+        self.call(CmdBloodSurge(), "strength", caller=self.char2)
+        with patch(RANDINT, side_effect=AssertionError("no dice should be rolled")):
+            output = self.call(CmdRoll(), str(MAX_POOL), caller=self.char2)
+        self.assertIn("cannot exceed", output)
+        self.assertIn("Blood Surge", output)
+        self.assertIsNotNone(blood_utils.get_blood_surge(self.char2))
+        self.assertEqual(self.char2.hunger, 1)
+
+    def test_staff_npc_roll_keeps_the_surge(self):
+        self.char1.blood_potency = 1
+        self.char1.hunger = 1
+        self.call(CmdBloodSurge(), "strength")
+        with all_dice(7):
+            self.call(CmdRoll(), "3 0")
+        self.assertEqual(len(self.char1.ndb.last_roll["result"].all_dice), 3)
+        self.assertIsNotNone(blood_utils.get_blood_surge(self.char1))
+
+    def test_surge_waits_while_at_hunger_5(self):
+        self.call(CmdBloodSurge(), "strength", caller=self.char2)
+        self.char2.hunger = 5
+        with all_dice(7):
+            output = self.call(CmdRoll(), "3", caller=self.char2)
+        self.assertEqual(len(self.char2.ndb.last_roll["result"].all_dice), 3)
+        self.assertIn("can't be used at Hunger 5", output)
+        self.assertIsNotNone(blood_utils.get_blood_surge(self.char2))
+
 
 class PowerCommandTests(EvenniaCommandTest):
     """`power` (alias +power) on a fresh character that learns its powers."""
@@ -222,13 +262,16 @@ class PowerCommandTests(EvenniaCommandTest):
         super().setUp()
         self.char = self.char2
         self.char.hunger = 1
-        self.char.blood_potency = 0  # no Rouse re-rolls, no power bonus
+        self.char.blood_potency = 0  # no Rouse re-rolls, no power bonus, surge +1
         self.char.set_trait("Animalism", 1)
         self.char.set_trait("Presence", 3)
         self.char.set_trait("Manipulation", 3)
         self.char.set_trait("Celerity", 2)
         for name in ("Bond Famulus", "Sense the Beast", "Awe", "Dread Gaze", "Fleetness"):
             self.char.learn_power(name)
+
+    def effects(self, power="Dread Gaze"):
+        return [e for e in self.char.db.active_effects or [] if e["power"] == power]
 
     def test_unknown_power_is_refused_without_hunger_change(self):
         with patch(RANDINT, side_effect=AssertionError("no dice should be rolled")):
@@ -257,17 +300,26 @@ class PowerCommandTests(EvenniaCommandTest):
             self.call(CmdPower(), "Bond Famulus", caller=self.char)
         self.assertEqual(self.char.hunger, 4)
 
-    def test_rouse_checks_stop_at_hunger_5(self):
-        """A failed check that reaches Hunger 5 leaves the rest of the power's checks unrolled."""
+    def test_multi_rouse_past_hunger_5_rolls_every_check_and_owes_a_frenzy_test(self):
+        """At Hunger 4 a 3-Rouse power still works; Hunger stops at 5 and a frenzy test is owed."""
         self.char.hunger = 4
-        # Bond Famulus: 1 die, then up to 3 Rouse dice; only one Rouse die is rolled.
-        with dice(3, 3):
+        with dice(8, 3, 3, 3):  # pool die, then all three Rouse dice
             output = self.call(CmdPower(), "Bond Famulus", caller=self.char)
         self.assertEqual(self.char.hunger, 5)
-        self.assertIn("not rolled", output)
+        self.assertEqual(strip_ansi(output).count("Rouse Check (Bond Famulus)"), 3)
+        self.assertIn("hunger frenzy", output)
+        self.assertEqual(self.char.db.pending_frenzy_test["difficulty"], 4)
+        self.assertTrue(self.char.ndb.last_roll["result"].is_success)
+
+    def test_no_frenzy_test_when_hunger_stays_within_5(self):
+        self.char.hunger = 2
+        with all_dice(3):
+            self.call(CmdPower(), "Bond Famulus", caller=self.char)
+        self.assertEqual(self.char.hunger, 5)
+        self.assertIsNone(self.char.db.pending_frenzy_test)
 
     def test_roll_uses_pre_rouse_hunger(self):
-        """The pool is rolled with the Hunger from before the power's Rouse (QR p.4)."""
+        """The pool is rolled with the Hunger from before the power's Rouse (core pp.211-212)."""
         # Dread Gaze: Charisma 1 + Presence 3 = 4 dice, 1 Hunger die; then 1 Rouse.
         with all_dice(3):
             self.call(CmdPower(), "Dread Gaze", caller=self.char)
@@ -277,14 +329,30 @@ class PowerCommandTests(EvenniaCommandTest):
 
     def test_failed_roll_starts_no_effect_but_pays_the_rouse(self):
         with all_dice(3):
-            self.call(CmdPower(), "Dread Gaze", caller=self.char)
-        self.assertFalse([e for e in self.char.db.active_effects or [] if e["power"] == "Dread Gaze"])
+            self.call(CmdPower(), "Dread Gaze = Char", caller=self.char)
+        self.assertFalse(self.effects())
         self.assertEqual(self.char.hunger, 2)
 
-    def test_successful_roll_starts_the_effect(self):
+    def test_successful_contested_roll_starts_the_effect(self):
         with all_dice(8):
-            self.call(CmdPower(), "Dread Gaze", caller=self.char)
-        self.assertTrue([e for e in self.char.db.active_effects or [] if e["power"] == "Dread Gaze"])
+            self.call(CmdPower(), "Dread Gaze = Char", caller=self.char)
+        self.assertTrue(self.effects())
+
+    def test_uncontested_power_starts_no_effect_and_claims_no_success(self):
+        with patch.object(self.char1, "msg") as room_msg, all_dice(8):
+            output = self.call(CmdPower(), "Dread Gaze", caller=self.char)
+        self.assertIn("Uncontested", output)
+        self.assertFalse(self.effects())
+        sent = " ".join(str(call) for call in room_msg.call_args_list)
+        self.assertIn("uncontested", sent)
+        self.assertNotIn("Success", sent)
+
+    def test_messy_critical_power_adds_no_stain(self):
+        """Plan (d): no automatic Stain on a messy critical, for powers too."""
+        with all_dice(10):
+            output = self.call(CmdPower(), "Dread Gaze", caller=self.char)
+        self.assertIn("MESSY CRITICAL", output)
+        self.assertEqual(self.char.stains, 0)
 
     def test_free_power_costs_no_rouse(self):
         # Sense the Beast: Resolve 1 + Animalism 1 = 2 dice, free.
@@ -299,10 +367,31 @@ class PowerCommandTests(EvenniaCommandTest):
         self.assertIn("No roll needed", output)
         self.assertEqual(self.char.hunger, 2)
 
+    def test_rouse_reroll_at_the_power_level(self):
+        """BP 3 re-rolls Rouse checks for level 1-2 powers: Fleetness (level 2) gets one."""
+        self.char.blood_potency = 3
+        with dice(3, 7):
+            output = self.call(CmdPower(), "Fleetness", caller=self.char)
+        self.assertIn("Blood Potency re-roll", output)
+        self.assertEqual(self.char.hunger, 1)
+
+    def test_no_rouse_reroll_above_the_power_level(self):
+        """BP 2 re-rolls level 1 powers only: Fleetness (level 2) gets none."""
+        self.char.blood_potency = 2
+        with dice(3):
+            self.call(CmdPower(), "Fleetness", caller=self.char)
+        self.assertEqual(self.char.hunger, 2)
+
     def test_plus_power_discipline_slash_power(self):
         with all_dice(7):
             output = self.call(CmdPower(), "animalism/sense the beast", caller=self.char, cmdstring="+power")
         self.assertIn("Sense the Beast", output)
+
+    def test_plus_power_with_the_wrong_discipline_is_refused(self):
+        with patch(RANDINT, side_effect=AssertionError("no dice should be rolled")):
+            output = self.call(CmdPower(), "animalism/dread gaze", caller=self.char, cmdstring="+power")
+        self.assertIn("is a Presence power", output)
+        self.assertEqual(self.char.hunger, 1)
 
     def test_player_cannot_skip_rouse(self):
         with patch(RANDINT, side_effect=AssertionError("no dice should be rolled")):
@@ -318,10 +407,115 @@ class PowerCommandTests(EvenniaCommandTest):
             self.call(CmdPower(), "Awe = Char", caller=self.char)
         self.assertTrue(self.char.ndb.last_roll["result"].is_success)
 
-    def test_contested_tie_is_not_a_win(self):
+    def test_contested_tie_goes_to_the_acting_character(self):
         with dice(7, 2, 8, 1, 1, 1, 1, 1):
             self.call(CmdPower(), "Awe = Char", caller=self.char)
+        self.assertTrue(self.char.ndb.last_roll["result"].is_success)
+
+    def test_contested_no_successes_is_not_a_win(self):
+        with all_dice(2):
+            self.call(CmdPower(), "Awe = Char", caller=self.char)
         self.assertFalse(self.char.ndb.last_roll["result"].is_success)
+
+    def test_target_is_told_and_defender_roll_is_not_shown_as_yours(self):
+        # Defender: [10] + Hunger [10] = 4 successes (a messy critical of theirs).
+        # User: 4 dice of 2 -> fails; Rouse die 7.
+        with patch.object(self.char1, "msg") as target_msg, dice(10, 10, 2, 2, 2, 2, 7):
+            output = self.call(CmdPower(), "Dread Gaze = Char", caller=self.char)
+        self.assertIn("Char resists", output)
+        self.assertNotIn("MESSY CRITICAL", output)
+        self.assertNotIn("2 dice", output)  # the defender's pool size isn't revealed
+        sent = strip_ansi(" ".join(str(call) for call in target_msg.call_args_list))
+        self.assertIn("uses Dread Gaze on you", sent)
+        self.assertIn("You resist it", sent)
+
+    def test_target_and_difficulty_together_are_refused(self):
+        with patch(RANDINT, side_effect=AssertionError("no dice should be rolled")):
+            output = self.call(CmdPower(), "Dread Gaze vs 3 = Char", caller=self.char)
+        self.assertIn("not both", output)
+
+    def test_object_cannot_be_the_defender(self):
+        with patch(RANDINT, side_effect=AssertionError("no dice should be rolled")):
+            output = self.call(CmdPower(), "Awe = Obj", caller=self.char)
+        self.assertIn("can't resist a power", output)
+        self.assertEqual(self.char.hunger, 1)
+
+    def test_target_for_an_uncontested_power_is_refused(self):
+        with patch(RANDINT, side_effect=AssertionError("no dice should be rolled")):
+            output = self.call(CmdPower(), "Bond Famulus = Char", caller=self.char)
+        self.assertIn("isn't resisted", output)
+
+    def test_blood_surge_adds_to_a_power_roll(self):
+        """A readied surge goes on a power roll too; its Rouse is settled after the roll."""
+        self.call(CmdBloodSurge(), "charisma", caller=self.char)  # BP 0: +1 die
+        with all_dice(3):
+            output = self.call(CmdPower(), "Dread Gaze", caller=self.char)
+        result = self.char.ndb.last_roll["result"]
+        self.assertEqual(len(result.all_dice), 5)
+        self.assertEqual(len(result.hunger_dice), 1)
+        self.assertIn("Blood Surge", output)
+        self.assertEqual(self.char.hunger, 3)  # power Rouse + surge Rouse, both failed
+        self.assertIsNone(blood_utils.get_blood_surge(self.char))
+
+
+class PowerWillpowerTests(EvenniaCommandTest):
+    """A Willpower re-roll of a power roll re-resolves the power (QR p.3)."""
+
+    def setUp(self):
+        super().setUp()
+        self.char = self.char2
+        self.char.hunger = 1
+        self.char.blood_potency = 0
+        self.char.set_trait("Presence", 3)
+        self.char.learn_power("Dread Gaze")
+
+    def effects(self):
+        return [e for e in self.char.db.active_effects or [] if e["power"] == "Dread Gaze"]
+
+    def test_reroll_into_success_starts_the_effect(self):
+        # Defender [2] + Hunger [2] = 0 -> difficulty 1. User [2, 2, 2] + Hunger [2]; Rouse 7.
+        with dice(2, 2, 2, 2, 2, 2, 7):
+            self.call(CmdPower(), "Dread Gaze = Char", caller=self.char)
+        self.assertFalse(self.effects())
+        with dice(8):
+            output = self.call(CmdRoll(), "/willpower 2", caller=self.char)
+        self.assertIn("now succeeds", output)
+        self.assertTrue(self.effects())
+
+    def test_reroll_into_failure_ends_the_effect(self):
+        with dice(2, 2, 8, 2, 2, 2, 7):
+            self.call(CmdPower(), "Dread Gaze = Char", caller=self.char)
+        self.assertTrue(self.effects())
+        with dice(2):
+            output = self.call(CmdRoll(), "/willpower 8", caller=self.char)
+        self.assertIn("now fails", output)
+        self.assertFalse(self.effects())
+
+
+class LastRollTests(EvenniaCommandTest):
+    """roll/willpower reaches only a fresh last roll (QR p.3)."""
+
+    def setUp(self):
+        super().setUp()
+        self.char2.hunger = 1
+        self.char2.set_trait("Celerity", 2)
+        self.char2.learn_power("Fleetness")
+
+    def test_old_roll_cannot_be_rerolled(self):
+        with all_dice(3):
+            self.call(CmdRoll(), "3", caller=self.char2)
+        self.char2.ndb.last_roll["time"] -= LAST_ROLL_WINDOW + 1
+        with patch(RANDINT, side_effect=AssertionError("no dice should be rolled")):
+            output = self.call(CmdRoll(), "/willpower 3", caller=self.char2)
+        self.assertIn("too old", output)
+        self.assertEqual(self.char2.damage["willpower"]["superficial"], 0)
+
+    def test_power_without_a_roll_clears_the_last_roll(self):
+        with all_dice(3):
+            self.call(CmdRoll(), "3", caller=self.char2)
+            self.call(CmdPower(), "Fleetness", caller=self.char2)
+            output = self.call(CmdRoll(), "/willpower 3", caller=self.char2)
+        self.assertIn("no roll to re-roll", output)
 
 
 class ResonanceDiceTests(EvenniaTest):

@@ -1,11 +1,19 @@
 """
-Rouse checks (QR p.4) and Blood Potency re-rolls.
+Rouse checks (QR p.4; core pp.211-212) and Blood Potency re-rolls.
 
-perform_rouse_check is the only Rouse function in the game. Hunger and Blood
-Potency are read and written through the Character accessors
-(``character.hunger``, ``character.blood_potency``).
+perform_rouse_check is the Rouse entry point. An action that makes several
+Rouse checks at once (a power's checks plus a Blood Surge's) builds them with
+roll_rouse_die and settles them with resolve_rouse, which is what
+perform_rouse_check does too. Hunger and Blood Potency are read and written
+through the Character accessors (``character.hunger``,
+``character.blood_potency``).
+
+Timing (core pp.211-212): "Any Hunger gained is added after the desired
+effect resolves". Callers roll the action first, with the Hunger it started
+at, and settle its Rouse checks afterwards.
 """
 
+import time
 from dataclasses import dataclass, field
 
 from world.v5_data import BLOOD_POTENCY
@@ -16,79 +24,164 @@ MAX_HUNGER = 5
 
 HUNGER_5_REFUSAL = "You are at Hunger 5 and cannot Rouse the Blood. Feed first."
 
+# Core p.211 / p.220: a Rouse that would take Hunger past 5 calls for an
+# immediate hunger frenzy test at Difficulty 4. Nothing rolls it automatically
+# yet: the pending test is recorded on the character (flag_hunger_frenzy) for
+# the frenzy code to pick up, and the player is told to make it.
+HUNGER_FRENZY_DIFFICULTY = 4
+
+
+@dataclass(frozen=True)
+class RouseDie:
+    """One Rouse check: its die, plus the Blood Potency re-roll if one was made."""
+
+    label: str
+    rolls: tuple
+    reroll_eligible: bool = False
+
+    @property
+    def roll(self) -> int:
+        return self.rolls[-1]
+
+    @property
+    def success(self) -> bool:
+        return self.rolls[-1] >= 6
+
+    @property
+    def reroll_used(self) -> bool:
+        return len(self.rolls) > 1
+
 
 @dataclass(frozen=True)
 class RouseResult:
-    """The outcome of one Rouse check.
+    """The outcome of the Rouse checks of one action.
 
-    ``refused`` is True when the check was not rolled because the character
-    is at Hunger 5; nothing changed. ``rolls`` holds every die rolled (two
-    when Blood Potency allowed a re-roll); ``roll`` is the one that counts.
+    ``refused`` is True when nothing was rolled because the character is at
+    Hunger 5; nothing changed. ``checks`` holds each check. ``frenzy_test``
+    is True when failures would have taken Hunger past 5: Hunger stops at 5
+    and the character owes a hunger frenzy test at Difficulty 4.
+
+    For a single check, ``roll``, ``rolls``, ``reroll_eligible`` and
+    ``reroll_used`` describe that check.
     """
 
     reason: str
     hunger_before: int
     hunger_after: int
-    success: bool
+    checks: tuple = field(default_factory=tuple)
     refused: bool = False
-    roll: int | None = None
-    rolls: tuple = field(default_factory=tuple)
-    reroll_eligible: bool = False
-    reroll_used: bool = False
+    frenzy_test: bool = False
+
+    @property
+    def success(self) -> bool:
+        """True if every check passed (and something was rolled)."""
+        return not self.refused and all(check.success for check in self.checks)
+
+    @property
+    def failures(self) -> int:
+        return sum(1 for check in self.checks if not check.success)
 
     @property
     def hunger_change(self) -> int:
         return self.hunger_after - self.hunger_before
 
     @property
+    def roll(self):
+        return self.checks[0].roll if self.checks else None
+
+    @property
+    def rolls(self) -> tuple:
+        return self.checks[0].rolls if self.checks else ()
+
+    @property
+    def reroll_eligible(self) -> bool:
+        return any(check.reroll_eligible for check in self.checks)
+
+    @property
+    def reroll_used(self) -> bool:
+        return any(check.reroll_used for check in self.checks)
+
+    @property
     def message(self) -> str:
         return _format_rouse_message(self)
 
 
-def perform_rouse_check(character, reason: str = "", power_level: int | None = None) -> RouseResult:
-    """
-    Make one Rouse check and write the new Hunger through ``character.hunger``.
-
-    Roll one die: 6+ leaves Hunger alone, 1-5 raises it by 1 (QR p.4). At
-    Hunger 5 the check is refused and nothing changes: a character can't
-    Rouse the Blood at Hunger 5 (QR p.4). Callers must treat a refused check
-    as "the action doesn't happen".
+def roll_rouse_die(character, power_level: int | None = None, label: str = "") -> RouseDie:
+    """Roll one Rouse check without touching Hunger.
 
     Blood Potency lets a vampire re-roll a failed check for a Discipline
     power at or below the table's ``rouse_reroll`` level. ``power_level`` is
-    that power's level; None (any Rouse that isn't for a Discipline power)
+    that power's level; None (a Rouse that isn't for a Discipline power)
     means no re-roll.
-
-    A power that costs several Rouse checks calls this once per check.
     """
-    hunger_before = character.hunger
-    if hunger_before >= MAX_HUNGER:
-        return RouseResult(
-            reason=reason, hunger_before=hunger_before, hunger_after=hunger_before, success=False, refused=True
-        )
-
     rolls = [dice_roller.randint(1, 10)]
-    reroll_eligible = False
+    eligible = False
     if rolls[0] < 6 and power_level is not None:
-        reroll_eligible = can_reroll_rouse(character, power_level)
-        if reroll_eligible:
+        eligible = can_reroll_rouse(character, power_level)
+        if eligible:
             rolls.append(dice_roller.randint(1, 10))
+    return RouseDie(label=label, rolls=tuple(rolls), reroll_eligible=eligible)
 
-    success = rolls[-1] >= 6
-    hunger_after = hunger_before if success else hunger_before + 1
-    if not success:
+
+def resolve_rouse(character, reason: str, checks) -> RouseResult:
+    """Add the Hunger the checks' failures cost, after the action resolved.
+
+    Each failure adds 1 Hunger, up to 5. Failures beyond 5 don't cancel the
+    action; they record a pending hunger frenzy test (flag_hunger_frenzy).
+    Hunger is written once.
+    """
+    checks = tuple(checks)
+    hunger_before = character.hunger
+    failures = sum(1 for check in checks if not check.success)
+    hunger_after = min(MAX_HUNGER, hunger_before + failures)
+    frenzy_test = hunger_before + failures > MAX_HUNGER
+    if hunger_after != hunger_before:
         character.hunger = hunger_after
-
+    if frenzy_test:
+        flag_hunger_frenzy(character, reason)
     return RouseResult(
         reason=reason,
         hunger_before=hunger_before,
         hunger_after=hunger_after,
-        success=success,
-        roll=rolls[-1],
-        rolls=tuple(rolls),
-        reroll_eligible=reroll_eligible,
-        reroll_used=len(rolls) > 1,
+        checks=checks,
+        frenzy_test=frenzy_test,
     )
+
+
+def perform_rouse_check(character, reason: str = "", power_level: int | None = None, count: int = 1) -> RouseResult:
+    """
+    Make an action's Rouse checks and add the Hunger they cost.
+
+    Each check is one die: 6+ costs nothing, 1-5 costs 1 Hunger (QR p.4).
+    A vampire can never voluntarily Rouse at Hunger 5 (core p.211): at
+    Hunger 5 nothing is rolled, nothing changes and the result is
+    ``refused``; a caller that hasn't acted yet must not act. Once an action
+    has started below Hunger 5, all its checks are rolled; Hunger stops at
+    5 and any failure beyond that records a pending hunger frenzy test
+    (resolve_rouse). The action is not cancelled.
+
+    ``power_level`` (a Discipline power's level) enables the Blood Potency
+    re-roll; ``count`` is the number of checks (a power's ``rouse``).
+    """
+    hunger_before = character.hunger
+    if hunger_before >= MAX_HUNGER:
+        return RouseResult(reason=reason, hunger_before=hunger_before, hunger_after=hunger_before, refused=True)
+    checks = [roll_rouse_die(character, power_level, label=reason) for _ in range(count)]
+    return resolve_rouse(character, reason, checks)
+
+
+def flag_hunger_frenzy(character, reason: str) -> None:
+    """Record that the character owes a hunger frenzy test at Difficulty 4.
+
+    Stored in ``character.db.pending_frenzy_test`` for the frenzy code,
+    which rolls the test and clears it.
+    """
+    character.db.pending_frenzy_test = {
+        "type": "hunger",
+        "difficulty": HUNGER_FRENZY_DIFFICULTY,
+        "reason": reason,
+        "time": time.time(),
+    }
 
 
 def can_reroll_rouse(character, power_level: int) -> bool:
@@ -140,26 +233,52 @@ def set_hunger_level(character, hunger: int) -> int:
     return character.hunger
 
 
+def format_rouse_lines(result: RouseResult) -> list:
+    """Display lines for an action's Rouse checks and the Hunger they cost."""
+    if result.refused:
+        return [f"|r{HUNGER_5_REFUSAL}|n"]
+    lines = []
+    for check in result.checks:
+        label = f" ({check.label})" if check.label else ""
+        if check.reroll_used:
+            roll_text = f"|y{check.rolls[0]}|n, Blood Potency re-roll |y{check.roll}|n"
+        else:
+            roll_text = f"|y{check.roll}|n"
+        outcome = "|gsuccess|n" if check.success else "|rfailed|n"
+        lines.append(f"Rouse Check{label}: {roll_text}, {outcome}.")
+    if result.hunger_change:
+        lines.append(f"Hunger rises from |r{result.hunger_before}|n to |r{result.hunger_after}|n.")
+    else:
+        lines.append(f"Hunger stays at |r{result.hunger_after}|n.")
+    if result.frenzy_test:
+        lines.append(
+            "|r|hYour Hunger can't rise past 5: you must test for hunger frenzy now "
+            f"(Difficulty {HUNGER_FRENZY_DIFFICULTY}).|n The Storyteller runs the test."
+        )
+    return lines
+
+
 def _format_rouse_message(result: RouseResult) -> str:
     """Player-facing text for a RouseResult."""
-    lines = [f"|wRouse Check:|n {result.reason}" if result.reason else "|wRouse Check|n"]
-
+    header = f"|wRouse Check:|n {result.reason}" if result.reason else "|wRouse Check|n"
+    lines = [header]
     if result.refused:
         lines.append(f"|r{HUNGER_5_REFUSAL}|n")
         return "\n".join(lines)
-
-    if result.reroll_used:
-        lines.append(f"Roll: |y{result.rolls[0]}|n, Blood Potency re-roll: |y{result.roll}|n")
-    else:
-        lines.append(f"Roll: |y{result.roll}|n")
-
-    if result.success:
-        lines.append(f"|gSuccess.|n Hunger stays at |r{result.hunger_after}|n.")
-    elif result.hunger_after >= MAX_HUNGER:
-        lines.append(f"|r|hFailed.|n Hunger rises to |r|h{result.hunger_after}|n (maximum).")
-    else:
-        lines.append(f"|rFailed.|n Hunger rises from |r{result.hunger_before}|n to |r{result.hunger_after}|n.")
-
+    if len(result.checks) == 1:
+        check = result.checks[0]
+        if check.reroll_used:
+            lines.append(f"Roll: |y{check.rolls[0]}|n, Blood Potency re-roll: |y{check.roll}|n")
+        else:
+            lines.append(f"Roll: |y{check.roll}|n")
+        if check.success:
+            lines.append(f"|gSuccess.|n Hunger stays at |r{result.hunger_after}|n.")
+        else:
+            lines.append(f"|rFailed.|n Hunger rises from |r{result.hunger_before}|n to |r{result.hunger_after}|n.")
+        if result.frenzy_test:
+            lines.append(format_rouse_lines(result)[-1])
+        return "\n".join(lines)
+    lines.extend(format_rouse_lines(result))
     return "\n".join(lines)
 
 

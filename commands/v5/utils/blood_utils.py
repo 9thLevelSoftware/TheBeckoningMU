@@ -296,52 +296,51 @@ def get_blood_potency_bonus(character) -> int:
 
 def activate_blood_surge(character, trait_type: str, trait_name: str) -> Dict[str, Any]:
     """
-    Blood Surge (QR p.4): one Rouse check, then the Blood Potency table's
-    surge dice are added to the character's next roll, once.
+    Ready a Blood Surge (core p.218; QR p.4).
 
-    At Hunger 5 the surge is refused: nothing is rolled or charged.
+    The surge adds the Blood Potency table's surge dice to the character's
+    next roll whose pool includes an Attribute (`roll` or a `power` roll).
+    Its one Rouse check is made with that roll, and the Hunger it costs is
+    added after the roll (core pp.211-212). Readying it costs nothing.
 
-    Args:
-        character: Character object
-        trait_type: 'attribute' or 'physical_skill' (for display)
-        trait_name: The trait the player means to surge (for display)
+    Refused, with nothing stored, at Hunger 5 (no voluntary Rouse) or while
+    another surge is pending (one surge per roll).
+
+    The pending surge is kept in ``character.db.blood_surge`` (persistent,
+    so a reload doesn't lose it) and lapses unused after one hour.
 
     Returns:
-        dict: {'success': bool, 'bonus': int, 'trait': str,
-               'rouse_result': RouseResult, 'message': str}
+        dict: {'success': bool, 'bonus': int, 'trait': str, 'message': str}
     """
-    from dice.rouse_checker import perform_rouse_check
+    from dice.rouse_checker import HUNGER_5_REFUSAL, MAX_HUNGER
 
-    rouse_result = perform_rouse_check(character, reason=f"Blood Surge ({trait_name})")
-    if rouse_result.refused:
+    if character.hunger >= MAX_HUNGER:
+        return {'success': False, 'bonus': 0, 'trait': trait_name, 'message': HUNGER_5_REFUSAL}
+    if get_blood_surge(character):
         return {
             'success': False,
             'bonus': 0,
             'trait': trait_name,
-            'rouse_result': rouse_result,
-            'message': rouse_result.message,
+            'message': "You already have a Blood Surge waiting for your next roll.",
         }
 
     bonus = get_blood_potency_bonus(character)
-    character.ndb.blood_surge = {
+    character.db.blood_surge = {
         'trait': trait_name,
         'trait_type': trait_type,
         'bonus': bonus,
-        # Unused surges lapse after a scene (one hour).
         'expires': time.time() + 3600,
     }
-
     return {
         'success': True,
         'bonus': bonus,
         'trait': trait_name,
-        'rouse_result': rouse_result,
-        'message': rouse_result.message,
+        'message': f"+{bonus} dice to your next roll; its Rouse check is made with that roll.",
     }
 
 
 def consume_blood_surge(character) -> int:
-    """Use up an active Blood Surge: return its bonus dice (0 if none) and clear it."""
+    """Use up a pending Blood Surge: return its bonus dice (0 if none) and clear it."""
     surge = get_blood_surge(character)
     if not surge:
         return 0
@@ -351,24 +350,17 @@ def consume_blood_surge(character) -> int:
 
 def get_blood_surge(character) -> Optional[Dict[str, Any]]:
     """
-    Get character's active Blood Surge status.
-
-    Args:
-        character: Character object
+    The character's pending Blood Surge, or None if there is none or it lapsed.
 
     Returns:
-        dict or None: Blood Surge data or None if inactive/expired
+        dict or None: {'trait', 'trait_type', 'bonus', 'expires'}
     """
-    surge = getattr(character.ndb, 'blood_surge', None)
-
+    surge = character.db.blood_surge
     if not surge:
         return None
-
-    # Check if expired
     if surge.get('expires', 0) < time.time():
         deactivate_blood_surge(character)
         return None
-
     return surge
 
 
@@ -401,12 +393,13 @@ def get_blood_surge_bonus(character, trait_name: Optional[str] = None) -> int:
 
 def deactivate_blood_surge(character):
     """
-    Deactivate Blood Surge.
+    Clear the pending Blood Surge.
 
     Args:
         character: Character object
     """
-    character.ndb.blood_surge = None
+    if character.attributes.has('blood_surge'):
+        character.attributes.remove('blood_surge')
 
 
 def format_blood_surge_display(character) -> Optional[str]:

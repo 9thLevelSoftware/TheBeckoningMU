@@ -317,13 +317,19 @@ class RollResultTestCase(EvenniaTest):
         )
         self.assertEqual(result.result_type, 'success')
 
-        # Failure
+        # Total failure: no successes at all
         result = RollResult(
             regular_dice=[1, 2, 3],
             hunger_dice=[],
             difficulty=2
         )
+        self.assertEqual(result.result_type, 'total_failure')
+        self.assertIn("Total failure", result.format_result())
+
+        # Failure with a success: a near miss, open to a win at a cost (core p.121)
+        result = RollResult(regular_dice=[7, 2, 3], hunger_dice=[], difficulty=2)
         self.assertEqual(result.result_type, 'failure')
+        self.assertIn("win at a cost", result.format_result())
 
         # Critical success
         result = RollResult(
@@ -533,11 +539,23 @@ class DisciplineRollerTestCase(EvenniaTest):
             result = roll_discipline_power(self.char1, "Extinguish Vitae", difficulty=2)
 
         self.assertEqual(len(result['roll_result'].hunger_dice), 1)
-        self.assertEqual(len(result['rouse_results']), 1)
-        self.assertFalse(result['rouse_results'][0].success)
+        self.assertEqual(len(result['rouse_result'].checks), 1)
+        self.assertFalse(result['rouse_result'].success)
+        self.assertFalse(result['rouse_result'].reroll_used)
         self.assertEqual(result['hunger_before'], 1)
         self.assertEqual(result['hunger_after'], 2)
         self.assertEqual(self.char1.hunger, 2)
+
+    def test_rouse_reroll_uses_the_power_level(self):
+        """BP 3 re-rolls level 1-2 powers: Extinguish Vitae's failed Rouse is re-rolled."""
+        self.char1.blood_potency = 3
+        # 4 pool dice (Intelligence 1 + Blood Sorcery 2 + BP 3 bonus 1), then the
+        # Rouse die (3) and its re-roll (7).
+        with patch('dice.dice_roller.randint', side_effect=[3, 3, 3, 3, 3, 7]):
+            result = roll_discipline_power(self.char1, "Extinguish Vitae", difficulty=2)
+        self.assertTrue(result['rouse_result'].reroll_used)
+        self.assertTrue(result['rouse_result'].success)
+        self.assertEqual(self.char1.hunger, 1)
 
     def test_can_use_power(self):
         """Test checking if character can use a power."""
