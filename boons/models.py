@@ -7,6 +7,13 @@ Tracks political favors and debts (Prestation) in Kindred society.
 from django.db import models
 from evennia.typeclasses.models import SharedMemoryModel
 
+# A boon is owed from acceptance until it is fulfilled or canceled, whether
+# it has been called in or is under dispute.
+OUTSTANDING_STATUSES = ("accepted", "called_in", "disputed")
+DISPUTABLE_STATUSES = ("accepted", "called_in")
+TERMINAL_STATUSES = ("fulfilled", "declined", "canceled")
+BOON_WEIGHTS = {"trivial": 1, "minor": 2, "major": 3, "blood": 4, "life": 5}
+
 
 class Boon(SharedMemoryModel):
     """
@@ -14,6 +21,14 @@ class Boon(SharedMemoryModel):
 
     In Vampire society, boons are the currency of influence. They represent
     favors owed and debts to be repaid, tracked meticulously by Harpies.
+
+    Lifecycle: the debtor offers (offered); the creditor accepts (accepted)
+    or declines (declined); the creditor calls it in (called_in); it is
+    fulfilled when both parties confirm (fulfilled). Either party may
+    dispute an accepted or called-in boon once (disputed); staff or a Harpy
+    who is not a party then rule: uphold it (back to accepted/called_in),
+    fulfil it, or cancel it. A boon is outstanding (still owed) while
+    accepted, called in or disputed.
     """
 
     # Boon participants
@@ -103,6 +118,28 @@ class Boon(SharedMemoryModel):
         help_text="Description of how the boon was fulfilled"
     )
 
+    # A called-in boon is fulfilled once both parties confirm it.
+    debtor_confirmed = models.BooleanField(
+        default=False,
+        help_text="The debtor has confirmed the called-in favor was done"
+    )
+    creditor_confirmed = models.BooleanField(
+        default=False,
+        help_text="The creditor has confirmed the called-in favor was done"
+    )
+
+    # Disputes: the status to restore if the dispute is rejected (upheld),
+    # and whether a dispute was already rejected (no second dispute).
+    disputed_from = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Status the boon had when it was disputed"
+    )
+    dispute_upheld = models.BooleanField(
+        default=False,
+        help_text="A dispute was rejected and the boon upheld; it can't be disputed again"
+    )
+
     # Public/Private
     is_public = models.BooleanField(
         default=True,
@@ -170,36 +207,84 @@ class Boon(SharedMemoryModel):
 
         return (True, f"Boon called in: {description}")
 
-    def fulfill(self, description):
-        """Mark a boon as fulfilled."""
+    def add_note(self, who, text):
+        """Append "<who>: <text>" to the boon's fulfilment record (nothing is overwritten)."""
+        if not text:
+            return
+        line = f"{who}: {text}"
+        self.fulfillment_description = (
+            f"{self.fulfillment_description}\n{line}" if self.fulfillment_description else line
+        )
+
+    def confirm_fulfilled(self, character, description=""):
+        """
+        Record one party's confirmation that a called-in boon was repaid.
+
+        The boon becomes fulfilled only when both the debtor and the
+        creditor have confirmed. Each party's description is kept.
+        """
+        if self.status != 'called_in':
+            return (False, "Only a boon that has been called in can be fulfilled.")
+        if character == self.debtor:
+            self.debtor_confirmed = True
+        elif character == self.creditor:
+            self.creditor_confirmed = True
+        else:
+            return (False, "Only the debtor or creditor can confirm this boon.")
+
+        self.add_note(character.key, description)
+        if self.debtor_confirmed and self.creditor_confirmed:
+            return self.fulfill()
+
+        self.save()
+        other = self.creditor if character == self.debtor else self.debtor
+        return (True, f"Fulfilment confirmed. Waiting for {other.key} to confirm.")
+
+    def fulfill(self, description="", by=""):
+        """Mark a boon fulfilled (both parties confirmed, or a staff/Harpy ruling)."""
         from django.utils import timezone
 
-        if self.status not in ['accepted', 'called_in']:
+        if self.status not in OUTSTANDING_STATUSES:
             return (False, "This boon is not in a state to be fulfilled.")
 
         self.status = 'fulfilled'
-        self.fulfillment_description = description
+        self.add_note(by or "Fulfilled", description)
         self.fulfilled_date = timezone.now()
         self.save()
 
         return (True, "Boon fulfilled.")
 
-    def dispute(self, reason):
-        """Dispute a boon (requires Harpy intervention)."""
+    def dispute(self, reason, by=""):
+        """Dispute an accepted or called-in boon; it stays owed until resolved."""
+        if self.status not in DISPUTABLE_STATUSES:
+            return (False, "Only an accepted or called-in boon can be disputed.")
+        if self.dispute_upheld:
+            return (False, "A dispute over this boon was already rejected; it can't be disputed again.")
+        self.disputed_from = self.status
         self.status = 'disputed'
-        if not self.fulfillment_description:
-            self.fulfillment_description = f"Disputed: {reason}"
-        else:
-            self.fulfillment_description += f"\nDisputed: {reason}"
+        self.add_note(f"Disputed by {by}" if by else "Disputed", reason)
         self.save()
 
-        return (True, "Boon disputed. A Harpy must adjudicate.")
+        return (True, "Boon disputed. Staff or a Harpy must adjudicate.")
 
-    def cancel(self, reason=""):
+    def uphold(self, reason="", by=""):
+        """Reject a dispute: the boon stands and returns to its pre-dispute status."""
+        if self.status != 'disputed':
+            return (False, "Only a disputed boon can be upheld.")
+        self.status = self.disputed_from if self.disputed_from in DISPUTABLE_STATUSES else 'accepted'
+        self.disputed_from = ""
+        self.dispute_upheld = True
+        self.add_note(f"Upheld by {by}" if by else "Upheld", reason)
+        self.save()
+
+        return (True, f"Dispute rejected. The boon stands ({self.get_status_display()}).")
+
+    def cancel(self, reason="", by=""):
         """Cancel a boon (typically by mutual agreement or Harpy ruling)."""
+        if self.status in TERMINAL_STATUSES:
+            return (False, f"This boon is already {self.status}.")
         self.status = 'canceled'
-        if reason:
-            self.fulfillment_description = f"Canceled: {reason}"
+        self.add_note(f"Canceled by {by}" if by else "Canceled", reason)
         self.save()
 
         return (True, "Boon canceled.")
@@ -219,107 +304,4 @@ class Boon(SharedMemoryModel):
         Returns:
             int: Weight value (1-5)
         """
-        weights = {
-            'trivial': 1,
-            'minor': 2,
-            'major': 3,
-            'blood': 4,
-            'life': 5
-        }
-        return weights.get(self.boon_type, 2)
-
-
-class BoonLedger(SharedMemoryModel):
-    """
-    Summary ledger for a character's boons (cached for performance).
-
-    This is automatically updated when boons change.
-    """
-
-    character = models.OneToOneField(
-        'objects.ObjectDB',
-        on_delete=models.CASCADE,
-        related_name='boon_ledger',
-        help_text="Character this ledger belongs to"
-    )
-
-    # Owed counts (debts)
-    trivial_owed = models.IntegerField(default=0)
-    minor_owed = models.IntegerField(default=0)
-    major_owed = models.IntegerField(default=0)
-    blood_owed = models.IntegerField(default=0)
-    life_owed = models.IntegerField(default=0)
-
-    # Held counts (credits)
-    trivial_held = models.IntegerField(default=0)
-    minor_held = models.IntegerField(default=0)
-    major_held = models.IntegerField(default=0)
-    blood_held = models.IntegerField(default=0)
-    life_held = models.IntegerField(default=0)
-
-    # Totals (weighted)
-    total_debt_weight = models.IntegerField(default=0, help_text="Total weight of boons owed")
-    total_credit_weight = models.IntegerField(default=0, help_text="Total weight of boons held")
-    net_weight = models.IntegerField(default=0, help_text="Net boon position (credit - debt)")
-
-    # Timestamps
-    last_updated = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        app_label = 'boons'
-        verbose_name = "Boon Ledger"
-        verbose_name_plural = "Boon Ledgers"
-
-    def __str__(self):
-        return f"{self.character.key}'s Boon Ledger (Net: {self.net_weight})"
-
-    def recalculate(self):
-        """Recalculate ledger from actual boons."""
-        # Count owed boons
-        owed_boons = Boon.objects.filter(
-            debtor=self.character,
-            status='accepted'
-        )
-
-        self.trivial_owed = owed_boons.filter(boon_type='trivial').count()
-        self.minor_owed = owed_boons.filter(boon_type='minor').count()
-        self.major_owed = owed_boons.filter(boon_type='major').count()
-        self.blood_owed = owed_boons.filter(boon_type='blood').count()
-        self.life_owed = owed_boons.filter(boon_type='life').count()
-
-        # Count held boons
-        held_boons = Boon.objects.filter(
-            creditor=self.character,
-            status='accepted'
-        )
-
-        self.trivial_held = held_boons.filter(boon_type='trivial').count()
-        self.minor_held = held_boons.filter(boon_type='minor').count()
-        self.major_held = held_boons.filter(boon_type='major').count()
-        self.blood_held = held_boons.filter(boon_type='blood').count()
-        self.life_held = held_boons.filter(boon_type='life').count()
-
-        # Calculate weights
-        weights = {'trivial': 1, 'minor': 2, 'major': 3, 'blood': 4, 'life': 5}
-
-        self.total_debt_weight = sum([
-            self.trivial_owed * weights['trivial'],
-            self.minor_owed * weights['minor'],
-            self.major_owed * weights['major'],
-            self.blood_owed * weights['blood'],
-            self.life_owed * weights['life']
-        ])
-
-        self.total_credit_weight = sum([
-            self.trivial_held * weights['trivial'],
-            self.minor_held * weights['minor'],
-            self.major_held * weights['major'],
-            self.blood_held * weights['blood'],
-            self.life_held * weights['life']
-        ])
-
-        self.net_weight = self.total_credit_weight - self.total_debt_weight
-
-        self.save()
-
-        return (self.total_debt_weight, self.total_credit_weight, self.net_weight)
+        return BOON_WEIGHTS.get(self.boon_type, 2)

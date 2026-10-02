@@ -21,12 +21,15 @@ COMMAND_DEFAULT_CLASS = class_from_module(settings.COMMAND_DEFAULT_CLASS)
 
 class CmdJobs(COMMAND_DEFAULT_CLASS):
     """
-    List all available jobs.
-    
+    List open jobs you can see.
+
     Usage:
-      jobs                    - List all open jobs
+      jobs                    - List open jobs
       +job/list               - Same as above (standard syntax)
-      jobs <bucket_name>      - List jobs in a specific bucket
+      jobs <bucket_name>      - List open jobs in a specific bucket
+
+    Staff see every job. Players see the jobs they created or are
+    assigned to.
     
     Examples:
       jobs
@@ -40,17 +43,20 @@ class CmdJobs(COMMAND_DEFAULT_CLASS):
     help_category = "Jobs"
     
     def func(self):
+        if self.switches and self.switches != ["list"]:
+            self.caller.msg(f"Unknown or staff-only switch: /{self.switches[0]}. See help jobs.")
+            return
         if self.args:
             # List jobs in specific bucket
             bucket = utils.get_bucket(self.caller, self.args.strip())
             if not bucket:
                 return
             
-            jobs = bucket.jobs.filter(status="OPEN")
+            jobs = utils.jobs_visible_to(self.caller, bucket.jobs.filter(status="OPEN"))
             output = utils.format_job_list(jobs, f"Open Jobs in {bucket.name}")
         else:
             # List all open jobs
-            jobs = Job.objects.filter(status="OPEN")
+            jobs = utils.jobs_visible_to(self.caller, Job.objects.filter(status="OPEN"))
             output = utils.format_job_list(jobs, "All Open Jobs")
         
         self.caller.msg(output)
@@ -61,12 +67,16 @@ class CmdJobView(COMMAND_DEFAULT_CLASS):
     View details of a specific job.
     
     Usage:
-      job <job_id>
-      +job/view <job_id>      - Same as above (standard syntax)
-    
+      job <bucket>/<number>
+      job <number>            - When only one bucket has that number
+      +job/view <bucket>/<number>
+
+    Job numbers are per bucket, so "job 1" is ambiguous once two buckets
+    each have a job 1.
+
     Examples:
-      job 5
-      +job/view 42
+      job Bugs/5
+      +job/view Approval/42
     """
     
     key = "job"
@@ -75,8 +85,12 @@ class CmdJobView(COMMAND_DEFAULT_CLASS):
     help_category = "Jobs"
     
     def func(self):
+        # A player's "job/claim X" lands here when job/claim is locked to them.
+        if self.switches and self.switches != ["view"]:
+            self.caller.msg(f"Unknown or staff-only switch: /{self.switches[0]}. See help job.")
+            return
         if not self.args:
-            self.caller.msg("Usage: job <job_id>")
+            self.caller.msg("Usage: job <bucket>/<number>")
             return
         
         job = utils.get_job(self.caller, self.args.strip())
@@ -87,29 +101,29 @@ class CmdJobView(COMMAND_DEFAULT_CLASS):
             self.caller.msg("You don't have permission to view this job.")
             return
         
-        output = utils.format_job_view(job)
+        output = utils.format_job_view(job, self.caller)
         self.caller.msg(output)
 
 
 class CmdJobClaim(COMMAND_DEFAULT_CLASS):
     """
-    Claim an unassigned job.
-    
+    Claim an unassigned job (staff).
+
     Usage:
-      job/claim <job_id>
-    
+      job/claim <bucket>/<number>
+
     Examples:
-      job/claim 5
+      job/claim Bugs/5
     """
-    
+
     key = "job/claim"
     aliases = ["+job/claim"]
-    locks = "cmd:all()"
+    locks = "cmd:perm(Builder)"
     help_category = "Jobs"
     
     def func(self):
         if not self.args:
-            self.caller.msg("Usage: job/claim <job_id>")
+            self.caller.msg("Usage: job/claim <bucket>/<number>")
             return
         
         job = utils.get_job(self.caller, self.args.strip())
@@ -128,20 +142,22 @@ class CmdJobClaim(COMMAND_DEFAULT_CLASS):
         job.players.add(self.caller.account)
         job.save()
         
-        self.caller.msg(f"You have claimed job #{job.sequence_number}: {job.title}")
+        self.caller.msg(f"You have claimed job {job.ref}: {job.title}")
 
 
 class CmdJobDone(COMMAND_DEFAULT_CLASS):
     """
-    Mark a job assigned to you as complete.
-    
+    Close a job.
+
     Usage:
-      job/done <job_id>
-      job/complete <job_id>
-    
+      job/done <bucket>/<number>
+      +job/complete <bucket>/<number>
+
+    Staff close jobs. A player may close (withdraw) a job they created.
+
     Examples:
-      job/done 5
-      job/complete 42
+      job/done Bugs/5
+      +job/complete Approval/42
     """
     
     key = "job/done"
@@ -151,7 +167,7 @@ class CmdJobDone(COMMAND_DEFAULT_CLASS):
     
     def func(self):
         if not self.args:
-            self.caller.msg("Usage: job/done <job_id>")
+            self.caller.msg("Usage: job/done <bucket>/<number>")
             return
         
         job = utils.get_job(self.caller, self.args.strip())
@@ -171,19 +187,21 @@ class CmdJobDone(COMMAND_DEFAULT_CLASS):
         job.status = "CLOSED"
         job.save()
         
-        self.caller.msg(f"Job #{job.sequence_number}: {job.title} has been marked as complete.")
+        self.caller.msg(f"Job {job.ref}: {job.title} has been marked as complete.")
 
 
 class CmdJobComment(COMMAND_DEFAULT_CLASS):
     """
     Add a private comment to a job.
-    
+
     Usage:
-      job/comment <job_id> = <comment>
-    
+      job/comment <bucket>/<number> = <comment>
+
+    Private comments are shown to staff and to the comment's author only.
+
     Examples:
-      job/comment 5 = Working on this now
-      job/comment 42 = Need more information about the bug
+      job/comment Bugs/5 = Working on this now
+      job/comment Bugs/42 = Need more information about the bug
     """
     
     key = "job/comment"
@@ -193,13 +211,13 @@ class CmdJobComment(COMMAND_DEFAULT_CLASS):
     
     def func(self):
         if not self.args or "=" not in self.args:
-            self.caller.msg("Usage: job/comment <job_id> = <comment>")
+            self.caller.msg("Usage: job/comment <bucket>/<number> = <comment>")
             return
         
         try:
             job_id, comment_text = self.args.split("=", 1)
         except ValueError:
-            self.caller.msg("Usage: job/comment <job_id> = <comment>")
+            self.caller.msg("Usage: job/comment <bucket>/<number> = <comment>")
             return
         
         job = utils.get_job(self.caller, job_id.strip())
@@ -218,7 +236,7 @@ class CmdJobComment(COMMAND_DEFAULT_CLASS):
                 content=comment_text.strip(),
                 public=False
             )
-            self.caller.msg(f"Private comment added to job #{job.sequence_number}.")
+            self.caller.msg(f"Private comment added to job {job.ref}.")
         except DbError as e:
             self.caller.msg(f"A database error occurred while adding the comment: {e}")
 
@@ -228,11 +246,13 @@ class CmdJobPublic(COMMAND_DEFAULT_CLASS):
     Add a public comment to a job.
     
     Usage:
-      job/public <job_id> = <comment>
-    
+      job/public <bucket>/<number> = <comment>
+
+    Public comments are shown to everyone who can see the job.
+
     Examples:
-      job/public 5 = This issue has been resolved
-      job/public 42 = Update: Still investigating
+      job/public Bugs/5 = This issue has been resolved
+      job/public Bugs/42 = Update: Still investigating
     """
     
     key = "job/public"
@@ -242,13 +262,13 @@ class CmdJobPublic(COMMAND_DEFAULT_CLASS):
     
     def func(self):
         if not self.args or "=" not in self.args:
-            self.caller.msg("Usage: job/public <job_id> = <comment>")
+            self.caller.msg("Usage: job/public <bucket>/<number> = <comment>")
             return
         
         try:
             job_id, comment_text = self.args.split("=", 1)
         except ValueError:
-            self.caller.msg("Usage: job/public <job_id> = <comment>")
+            self.caller.msg("Usage: job/public <bucket>/<number> = <comment>")
             return
         
         job = utils.get_job(self.caller, job_id.strip())
@@ -267,7 +287,7 @@ class CmdJobPublic(COMMAND_DEFAULT_CLASS):
                 content=comment_text.strip(),
                 public=True
             )
-            self.caller.msg(f"Public comment added to job #{job.sequence_number}.")
+            self.caller.msg(f"Public comment added to job {job.ref}.")
         except DbError as e:
             self.caller.msg(f"A database error occurred while adding the comment: {e}")
 
@@ -278,11 +298,12 @@ class CmdJobPublic(COMMAND_DEFAULT_CLASS):
 
 class CmdMyJobs(COMMAND_DEFAULT_CLASS):
     """
-    List all jobs you have created.
-    
+    List the jobs you have created.
+
     Usage:
-      myjobs
-    
+      myjobs          - Your open jobs
+      myjobs all      - Your jobs, including closed ones
+
     Examples:
       myjobs
     """
@@ -293,7 +314,10 @@ class CmdMyJobs(COMMAND_DEFAULT_CLASS):
     help_category = "Jobs"
     
     def func(self):
-        jobs = Job.objects.filter(creator=self.caller.account)
+        jobs = Job.objects.filter(creator=utils.account_of(self.caller))
+        if self.args.strip().lower() != "all":
+            jobs = jobs.filter(status="OPEN")
+        jobs = jobs.select_related("bucket").prefetch_related("players")
         output = utils.format_job_list(jobs, "My Jobs")
         self.caller.msg(output)
 
@@ -344,7 +368,7 @@ class CmdJobSubmit(COMMAND_DEFAULT_CLASS):
                 creator=self.caller.account,
                 status="OPEN"
             )
-            self.caller.msg(f"Job #{job.sequence_number} created in bucket '{bucket.name}': {job.title}")
+            self.caller.msg(f"Job {job.ref} created: {job.title}")
         except DbError as e:
             self.caller.msg(f"A database error occurred while creating the job: {e}")
 
@@ -398,7 +422,7 @@ class CmdJobCreate(COMMAND_DEFAULT_CLASS):
                 creator=self.caller.account,
                 status="OPEN"
             )
-            self.caller.msg(f"Job #{job.sequence_number} created in bucket '{bucket.name}': {job.title}")
+            self.caller.msg(f"Job {job.ref} created: {job.title}")
         except DbError as e:
             self.caller.msg(f"A database error occurred while creating the job: {e}")
 
@@ -408,11 +432,11 @@ class CmdJobAssign(COMMAND_DEFAULT_CLASS):
     Assign a job to a player (admin).
     
     Usage:
-      job/assign <job_id> = <player_name>
-    
+      job/assign <bucket>/<number> = <player_name>
+
     Examples:
-      job/assign 5 = Alice
-      job/assign 42 = Bob
+      job/assign Bugs/5 = Alice
+      job/assign Bugs/42 = Bob
     """
     
     key = "job/assign"
@@ -422,13 +446,13 @@ class CmdJobAssign(COMMAND_DEFAULT_CLASS):
     
     def func(self):
         if not self.args or "=" not in self.args:
-            self.caller.msg("Usage: job/assign <job_id> = <player_name>")
+            self.caller.msg("Usage: job/assign <bucket>/<number> = <player_name>")
             return
         
         try:
             job_id, player_name = self.args.split("=", 1)
         except ValueError:
-            self.caller.msg("Usage: job/assign <job_id> = <player_name>")
+            self.caller.msg("Usage: job/assign <bucket>/<number> = <player_name>")
             return
         
         job = utils.get_job(self.caller, job_id.strip())
@@ -443,7 +467,7 @@ class CmdJobAssign(COMMAND_DEFAULT_CLASS):
         job.players.add(account)
         job.save()
         
-        self.caller.msg(f"Job #{job.sequence_number} assigned to {account.username}.")
+        self.caller.msg(f"Job {job.ref} assigned to {account.username}.")
 
 
 class CmdJobReopen(COMMAND_DEFAULT_CLASS):
@@ -451,10 +475,10 @@ class CmdJobReopen(COMMAND_DEFAULT_CLASS):
     Reopen a completed job (admin).
     
     Usage:
-      job/reopen <job_id>
-    
+      job/reopen <bucket>/<number>
+
     Examples:
-      job/reopen 5
+      job/reopen Bugs/5
     """
     
     key = "job/reopen"
@@ -464,7 +488,7 @@ class CmdJobReopen(COMMAND_DEFAULT_CLASS):
     
     def func(self):
         if not self.args:
-            self.caller.msg("Usage: job/reopen <job_id>")
+            self.caller.msg("Usage: job/reopen <bucket>/<number>")
             return
         
         job = utils.get_job(self.caller, self.args.strip())
@@ -480,7 +504,7 @@ class CmdJobReopen(COMMAND_DEFAULT_CLASS):
         job.status = "OPEN"
         job.save()
         
-        self.caller.msg(f"Job #{job.sequence_number}: {job.title} has been reopened.")
+        self.caller.msg(f"Job {job.ref}: {job.title} has been reopened.")
 
 
 class CmdJobDelete(COMMAND_DEFAULT_CLASS):
@@ -488,10 +512,10 @@ class CmdJobDelete(COMMAND_DEFAULT_CLASS):
     Delete a job (admin).
     
     Usage:
-      job/delete <job_id>
-    
+      job/delete <bucket>/<number>
+
     Examples:
-      job/delete 5
+      job/delete Bugs/5
     """
     
     key = "job/delete"
@@ -501,7 +525,7 @@ class CmdJobDelete(COMMAND_DEFAULT_CLASS):
     
     def func(self):
         if not self.args:
-            self.caller.msg("Usage: job/delete <job_id>")
+            self.caller.msg("Usage: job/delete <bucket>/<number>")
             return
         
         job = utils.get_job(self.caller, self.args.strip())
@@ -509,10 +533,10 @@ class CmdJobDelete(COMMAND_DEFAULT_CLASS):
             return
         
         job_title = job.title
-        job_id = job.sequence_number
+        job_ref = job.ref
         job.delete()
-        
-        self.caller.msg(f"Job #{job_id}: {job_title} has been deleted.")
+
+        self.caller.msg(f"Job {job_ref}: {job_title} has been deleted.")
 
 
 # =============================================================================
@@ -624,7 +648,7 @@ class CmdBucketView(COMMAND_DEFAULT_CLASS):
         else:
             output += f"|wCreated by:|n System\n\n"
         
-        jobs = bucket.jobs.all()
+        jobs = bucket.jobs.select_related("bucket").prefetch_related("players")
         job_list = utils.format_job_list(jobs, f"Jobs in {bucket.name}")
         output += job_list
         

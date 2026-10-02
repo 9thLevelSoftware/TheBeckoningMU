@@ -106,7 +106,8 @@ The |yHarpy|n maintains the boon ledger:
 |y+boongive <name> <type> = <reason>|n - Offer a boon
 |y+boonaccept <#>|n - Accept a boon offer
 |y+booncall <#> = <request>|n - Call in a boon
-|y+boonfulfill <#> = <description>|n - Mark boon fulfilled
+|y+boonfulfill <#> = <description>|n - Confirm a called-in boon repaid
+|y+boon/dispute <#> = <reason>|n - Dispute a boon (staff or a Harpy rules)
 
 |ySee |Whelp boon_commands|y for detailed command syntax.|n
 

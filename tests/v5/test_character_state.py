@@ -411,3 +411,46 @@ class SpendRefusalTests(EvenniaTest):
         self.assertTrue(ok)
         self.assertEqual((self.char.xp_earned, self.char.xp_spent, self.char.xp), (20, 3, 17))
         self.assertNotIn("current", self.char.db.experience)
+
+
+class IdleTimeTests(EvenniaTest):
+    """F-035/F-098: the room display's idle column never crashes `look`."""
+
+    def test_format_idle_seconds(self):
+        from typeclasses.characters import format_idle_seconds
+
+        cases = {
+            None: "|g0s|n",
+            0: "|g0s|n",
+            0.4: "|g0s|n",
+            59.6: "|g1m|n",
+            600: "|g10m|n",
+            660: "|G11m|n",
+            900: "|y15m|n",
+            1200: "|r20m|n",
+            3600: "|x1h|n",
+            86400: "|x1d|n",
+        }
+        for seconds, expected in cases.items():
+            with self.subTest(seconds=seconds):
+                self.assertEqual(format_idle_seconds(seconds), expected)
+
+    def test_format_idle_time_under_half_a_second(self):
+        with patch.object(Character, "idle_time", new=0.4):
+            self.assertEqual(self.char1.format_idle_time(self.char2), "|g0s|n")
+
+
+class ShortSheetCommandTests(EvenniaTest):
+    """F-077: `+status` no longer shadows `+st`/`st` in the merged cmdset."""
+
+    def test_st_resolves_to_short_sheet(self):
+        from commands.default_cmdsets import CharacterCmdSet
+        from commands.v5.sheet import CmdSheetShort
+
+        cmdset = CharacterCmdSet()
+        cmdset.at_cmdset_creation()
+        for name in ("+st", "st"):
+            with self.subTest(name=name):
+                matches = [cmd for cmd in cmdset.commands if name in (cmd.key, *cmd.aliases)]
+                self.assertEqual(len(matches), 1)
+                self.assertIsInstance(matches[0], CmdSheetShort)

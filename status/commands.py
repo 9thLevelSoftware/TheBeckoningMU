@@ -435,9 +435,12 @@ class CmdStatusAdmin(default_cmds.MuxCommand):
             reason = self.rhs.strip()
 
             request = StatusRequest.objects.get(id=req_id, status='pending')
-            request.approve(caller, reason)
+            success, message = request.approve(caller, reason)
+            if not success:
+                caller.msg(f"|rRequest #{req_id} not approved: {message}|n")
+                return
 
-            caller.msg(f"|gRequest #{req_id} approved.|n")
+            caller.msg(f"|gRequest #{req_id} approved. {message}|n")
 
             # Notify player
             if request.character.sessions.all():
@@ -465,7 +468,10 @@ class CmdStatusAdmin(default_cmds.MuxCommand):
             reason = self.rhs.strip()
 
             request = StatusRequest.objects.get(id=req_id, status='pending')
-            request.deny(caller, reason)
+            success, message = request.deny(caller, reason)
+            if not success:
+                caller.msg(f"|r{message}|n")
+                return
 
             caller.msg(f"|rRequest #{req_id} denied.|n")
 
@@ -496,11 +502,11 @@ class CmdStatusAdmin(default_cmds.MuxCommand):
 
         try:
             amount = int(self.rhs.strip())
-            set_earned_status(target, amount, "Set by admin", caller)
-            caller.msg(f"|g{target.key}'s earned status set to {amount}.|n")
+            stored = set_earned_status(target, amount, "Set by admin", caller).earned_status
+            caller.msg(f"|g{target.key}'s earned status set to {stored}.|n")
 
             if target.sessions.all():
-                target.msg(f"|yYour earned Status has been set to {amount} by staff.|n")
+                target.msg(f"|yYour earned Status has been set to {stored} by staff.|n")
 
         except ValueError:
             caller.msg("|rAmount must be a number (0-5).|n")
