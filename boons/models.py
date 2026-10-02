@@ -25,9 +25,10 @@ class Boon(SharedMemoryModel):
     Lifecycle: the debtor offers (offered); the creditor accepts (accepted)
     or declines (declined); the creditor calls it in (called_in); it is
     fulfilled when both parties confirm (fulfilled). Either party may
-    dispute an accepted or called-in boon (disputed); staff or a Harpy who
-    is not a party then resolve it by fulfilling or canceling it. A boon is
-    outstanding (still owed) while accepted, called in or disputed.
+    dispute an accepted or called-in boon once (disputed); staff or a Harpy
+    who is not a party then rule: uphold it (back to accepted/called_in),
+    fulfil it, or cancel it. A boon is outstanding (still owed) while
+    accepted, called in or disputed.
     """
 
     # Boon participants
@@ -125,6 +126,18 @@ class Boon(SharedMemoryModel):
     creditor_confirmed = models.BooleanField(
         default=False,
         help_text="The creditor has confirmed the called-in favor was done"
+    )
+
+    # Disputes: the status to restore if the dispute is rejected (upheld),
+    # and whether a dispute was already rejected (no second dispute).
+    disputed_from = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Status the boon had when it was disputed"
+    )
+    dispute_upheld = models.BooleanField(
+        default=False,
+        help_text="A dispute was rejected and the boon upheld; it can't be disputed again"
     )
 
     # Public/Private
@@ -245,11 +258,26 @@ class Boon(SharedMemoryModel):
         """Dispute an accepted or called-in boon; it stays owed until resolved."""
         if self.status not in DISPUTABLE_STATUSES:
             return (False, "Only an accepted or called-in boon can be disputed.")
+        if self.dispute_upheld:
+            return (False, "A dispute over this boon was already rejected; it can't be disputed again.")
+        self.disputed_from = self.status
         self.status = 'disputed'
         self.add_note(f"Disputed by {by}" if by else "Disputed", reason)
         self.save()
 
         return (True, "Boon disputed. Staff or a Harpy must adjudicate.")
+
+    def uphold(self, reason="", by=""):
+        """Reject a dispute: the boon stands and returns to its pre-dispute status."""
+        if self.status != 'disputed':
+            return (False, "Only a disputed boon can be upheld.")
+        self.status = self.disputed_from if self.disputed_from in DISPUTABLE_STATUSES else 'accepted'
+        self.disputed_from = ""
+        self.dispute_upheld = True
+        self.add_note(f"Upheld by {by}" if by else "Upheld", reason)
+        self.save()
+
+        return (True, f"Dispute rejected. The boon stands ({self.get_status_display()}).")
 
     def cancel(self, reason="", by=""):
         """Cancel a boon (typically by mutual agreement or Harpy ruling)."""

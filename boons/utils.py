@@ -73,12 +73,14 @@ def is_staff(character):
 
 def can_resolve(actor, boon):
     """
-    Staff may fulfil or cancel any boon; a Harpy only boons they're not party to.
+    Staff may rule on any boon; a Harpy only on boons that neither they nor
+    another character on their account is party to.
     """
     if is_staff(actor):
         return (True, "")
-    if actor in (boon.debtor, boon.creditor):
-        return (False, "You can't rule on a boon you are party to. Ask staff.")
+    for party in (boon.debtor, boon.creditor):
+        if actor == party or share_account(actor, party):
+            return (False, "You can't rule on a boon you (or your account) are party to. Ask staff.")
     return (True, "")
 
 
@@ -267,6 +269,25 @@ def cancel_boon(boon_id, reason="", character=None):
         if not allowed:
             return (False, message)
     return boon.cancel(reason, by=character.key if character else "")
+
+
+def uphold_boon(boon_id, reason="", actor=None):
+    """
+    Staff/Harpy ruling: reject a dispute and restore the boon's prior status.
+
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        boon = Boon.objects.get(id=boon_id)
+    except Boon.DoesNotExist:
+        return (False, "Boon not found.")
+
+    if actor is not None:
+        allowed, message = can_resolve(actor, boon)
+        if not allowed:
+            return (False, message)
+    return boon.uphold(reason, by=actor.key if actor else "")
 
 
 def dispute_boon(boon_id, reason, character=None):

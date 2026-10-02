@@ -30,6 +30,7 @@ from .utils import (
     decline_boon,
     dispute_boon,
     force_fulfill_boon,
+    uphold_boon,
     format_boon_ledger,
     format_boons_with_character,
     format_pending_boons,
@@ -417,6 +418,7 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
         +boonadmin/acknowledge <boon #>
         +boonadmin/cancel <boon #> = <reason>
         +boonadmin/fulfill <boon #> = <reason>
+        +boonadmin/uphold <boon #> = <reason>
         +boonadmin/list
 
     Switches:
@@ -424,10 +426,13 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
         /cancel - Cancel a boon (also resolves a dispute)
         /fulfill - Mark an outstanding or disputed boon fulfilled without
                    both confirmations
+        /uphold - Reject a dispute: the boon stands and returns to accepted
+                  or called in (it can't be disputed again)
         /list - List all public boons
 
-    Staff (Builder+) may fulfil or cancel any boon. A Harpy may not
-    fulfil or cancel a boon they are the debtor or creditor of.
+    Staff (Builder+) may rule on any boon. A Harpy may not fulfil,
+    cancel or uphold a boon that they, or another character on their
+    account, owe or are owed.
 
     Harpies can acknowledge boons to make them official in Kindred society.
     """
@@ -446,6 +451,8 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
             self._cancel_boon()
         elif "fulfill" in self.switches:
             self._force_fulfill()
+        elif "uphold" in self.switches:
+            self._uphold()
         elif "list" in self.switches:
             self._list_boons()
         else:
@@ -511,6 +518,24 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
 
         reason = self.rhs.strip() if self.rhs else "Ruled fulfilled without both confirmations"
         success, message = force_fulfill_boon(boon_id, reason, caller)
+        caller.msg(f"|g{message}|n" if success else f"|r{message}|n")
+
+    def _uphold(self):
+        """Reject a dispute and restore the boon."""
+        caller = self.caller
+
+        if not self.lhs:
+            caller.msg("Usage: +boonadmin/uphold <boon #> = <reason>")
+            return
+
+        try:
+            boon_id = int(self.lhs.strip())
+        except ValueError:
+            caller.msg("|rBoon ID must be a number.|n")
+            return
+
+        reason = self.rhs.strip() if self.rhs else "Dispute rejected"
+        success, message = uphold_boon(boon_id, reason, caller)
         caller.msg(f"|g{message}|n" if success else f"|r{message}|n")
 
     def _list_boons(self):

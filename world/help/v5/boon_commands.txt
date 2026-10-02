@@ -24,7 +24,9 @@ Shows:
 
 |y+boon/dispute <boon #> = <reason>|n
   Dispute an accepted or called-in boon you owe or are owed. A disputed
-  boon still counts as owed until staff or a Harpy rules on it.
+  boon still counts as owed until staff or a Harpy rules on it: upheld
+  (it stands, as before the dispute), fulfilled, or canceled. A boon can
+  be disputed only once if the dispute is rejected.
 
 |yExamples:|n
   +boon
@@ -114,8 +116,9 @@ the second of them does.
 
 |WSTAFF/HARPY COMMANDS:|n
 
-Staff may rule on any boon. A Harpy may not fulfil or cancel a boon
-they owe or are owed.
+Staff may rule on any boon. A Harpy may not fulfil, cancel or uphold
+a boon that they, or another character on their account, owe or are
+owed.
 
 |y+boonadmin/acknowledge <boon #>|n
   Officially acknowledge a boon (Harpy function).
@@ -126,6 +129,10 @@ they owe or are owed.
 |y+boonadmin/fulfill <boon #> = <reason>|n
   Mark an outstanding or disputed boon fulfilled without both
   confirmations (the other way to resolve a dispute).
+
+|y+boonadmin/uphold <boon #> = <reason>|n
+  Reject a dispute: the boon stands and returns to accepted or called
+  in. A boon whose dispute was rejected can't be disputed again.
 
 |y+boonadmin/list|n
   List all public boons.
@@ -138,7 +145,7 @@ they owe or are owed.
 |yFulfilled|n - Debt has been repaid
 |yCancelled|n - Boon was cancelled (rare)
 |yDisputed|n - A party disputes it; still owed until staff or a Harpy
-  who is not a party fulfils or cancels it
+  who is not a party upholds, fulfils or cancels it
 
 |WTIPS:|n
 
