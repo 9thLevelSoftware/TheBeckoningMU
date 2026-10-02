@@ -86,6 +86,17 @@ class BloodPotencyTableTests(TestCase):
             else:
                 self.assertNotIn("drain and kill", text, f"BP {bp}")
 
+    def test_feeding_penalty_numbers_match_the_errata(self):
+        """The numeric feeding fields (PR 6) say what the feeding_penalty text says."""
+        animal_fraction = {None: 1, "half": 0.5, "no": 0}
+        for bp, (animal, less, kill_below) in ERRATA_FEEDING_PENALTY.items():
+            row = v5_data.BLOOD_POTENCY[bp]
+            self.assertEqual(
+                (row["animal_bagged_slake"], row["human_slake_penalty"], row["min_hunger_without_kill"]),
+                (animal_fraction[animal], less or 0, kill_below or 1),
+                f"BP {bp}",
+            )
+
     def test_no_other_module_hardcodes_a_bp_table(self):
         """dice/ and commands/ read BLOOD_POTENCY; they don't carry their own ladder."""
         patterns = [

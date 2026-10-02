@@ -184,9 +184,11 @@ def roll_discipline_power(
 
 
 def _roll_defense(target, opposed_by: str) -> dict[str, Any]:
-    """Roll the target's ``opposed_by`` pool with the target's own Hunger.
+    """Roll the target's ``opposed_by`` pool with the target's own Hunger dice.
 
-    The target must be a Character (PowerRefused otherwise).
+    The target must be a Character (PowerRefused otherwise). Only vampires
+    roll Hunger dice (Character.dice_hunger): a mortal or ghoul defender
+    rolls none, so it can't get a messy critical or bestial failure.
     """
     if not hasattr(target, "get_trait"):
         raise PowerRefused(f"{getattr(target, 'key', target)} can't resist a power; name a character.")
@@ -198,7 +200,7 @@ def _roll_defense(target, opposed_by: str) -> dict[str, Any]:
         "opposed_by": opposed_by,
         "dice_pool": pool,
         "dice_pool_breakdown": breakdown,
-        "roll_result": roll_v5_pool(pool_size=pool, hunger=target.hunger, difficulty=0),
+        "roll_result": roll_v5_pool(pool_size=pool, hunger=target.dice_hunger, difficulty=0),
     }
 
 

@@ -4,30 +4,32 @@ V5 Experience Point Commands
 Commands for viewing, spending, and awarding XP.
 """
 
-from evennia import Command
 from evennia import default_cmds
+
+from typeclasses.characters import SPEND_KINDS
+from world.ansi_theme import (
+    BLOOD_RED,
+    BOX_BL,
+    BOX_BR,
+    BOX_H,
+    BOX_TL,
+    BOX_TR,
+    BOX_V,
+    DARK_RED,
+    GOLD,
+    PALE_IVORY,
+    RESET,
+    SHADOW_GREY,
+)
+from world.v5_data import XP_COSTS
+
 from .utils.xp_utils import (
+    award_xp,
     get_current_xp,
     get_total_earned_xp,
     get_total_spent_xp,
     get_xp_log,
-    award_xp,
-    spend_xp_on_attribute,
-    spend_xp_on_skill,
-    spend_xp_on_specialty,
-    spend_xp_on_discipline,
-    spend_xp_on_humanity,
-    spend_xp_on_willpower,
-    get_xp_cost_attribute,
-    get_xp_cost_skill,
-    get_xp_cost_discipline,
-    unavailable_clan_message,
-    get_xp_cost_humanity,
-    get_xp_cost_willpower
-)
-from world.ansi_theme import (
-    BLOOD_RED, DARK_RED, PALE_IVORY, SHADOW_GREY,
-    GOLD, RESET, BOX_H, BOX_V, BOX_TL, BOX_TR, BOX_BL, BOX_BR
+    spend_xp,
 )
 
 
@@ -130,42 +132,38 @@ class CmdXP(default_cmds.MuxCommand):
         caller.msg("\n".join(output))
 
     def _show_costs(self):
-        """Show XP costs."""
+        """Show XP costs (QR p.1, world.v5_data.XP_COSTS)."""
         caller = self.caller
+        costs = {kind: multiplier for kind, (_basis, multiplier) in XP_COSTS.items()}
 
         output = []
         output.append(f"\n{DARK_RED}{BOX_TL}{BOX_H * 76}{BOX_TR}{RESET}")
         output.append(f"{BOX_V} {PALE_IVORY}XP COSTS FOR ADVANCEMENT{RESET}{' ' * 48}{BOX_V}")
         output.append(f"{DARK_RED}{BOX_BL}{BOX_H * 76}{BOX_BR}{RESET}")
 
-        output.append(f"\n{PALE_IVORY}Attributes:{RESET}")
-        output.append(f"  New Rating × 5 XP")
-        output.append(f"  {SHADOW_GREY}(e.g., Strength 3 → 4 costs 20 XP){RESET}")
-
-        output.append(f"\n{PALE_IVORY}Skills:{RESET}")
-        output.append(f"  New Rating × 3 XP")
-        output.append(f"  {SHADOW_GREY}(e.g., Brawl 2 → 3 costs 9 XP){RESET}")
-
-        output.append(f"\n{PALE_IVORY}Specialties:{RESET}")
-        output.append(f"  3 XP (flat)")
-
-        output.append(f"\n{PALE_IVORY}Disciplines:{RESET}")
-        output.append(f"  In-Clan: New Rating × 5 XP")
-        output.append(f"  Out-of-Clan: New Rating × 7 XP")
-        output.append(f"  {SHADOW_GREY}(e.g., in-clan Potence 1 → 2 costs 10 XP){RESET}")
-
-        output.append(f"\n{PALE_IVORY}Other:{RESET}")
-        output.append(f"  Humanity: New Rating × 10 XP")
-        output.append(f"  Willpower (permanent): 8 XP")
-        output.append(f"  Background: 3 XP per dot")
-        output.append(f"  Merit: 3 XP per dot")
-
-        output.append(f"\n{SHADOW_GREY}Use |w+spend <type> <name>|x to spend XP.{RESET}")
+        rows = [
+            ("Attribute", f"New level x {costs['attribute']}"),
+            ("Skill", f"New level x {costs['skill']}"),
+            ("Specialty", f"{costs['specialty']}"),
+            ("Clan Discipline", f"New level x {costs['clan_discipline']}"),
+            ("Other Discipline", f"New level x {costs['other_discipline']}"),
+            ("Caitiff Discipline", f"New level x {costs['caitiff_discipline']}"),
+            ("Blood Sorcery Ritual", f"Ritual level x {costs['ritual']}"),
+            ("Thin-blood Formula", f"Formula level x {costs['formula']}"),
+            ("Advantage (background or merit)", f"{costs['advantage']} per dot"),
+            ("Blood Potency", f"New level x {costs['blood_potency']} (up to your Generation's maximum)"),
+        ]
+        output.append("")
+        for label, cost in rows:
+            output.append(f"  {PALE_IVORY}{label:<34}{RESET}{cost}")
+        output.append(f"\n{SHADOW_GREY}Willpower is Composure + Resolve, and Humanity changes only at the "
+                      f"Storyteller's discretion; neither is bought.{RESET}")
+        output.append(f"{SHADOW_GREY}Use |w+spend <type> <name>|x to spend XP.{RESET}")
 
         caller.msg("\n".join(output))
 
 
-class CmdSpend(Command):
+class CmdSpend(default_cmds.MuxCommand):
     """
     Spend XP to improve your character.
 
@@ -174,18 +172,30 @@ class CmdSpend(Command):
         +spend skill <name>
         +spend specialty <skill> = <specialty name>
         +spend discipline <name>
-        +spend humanity
-        +spend willpower
+        +spend advantage <background or merit>
+        +spend advantage <background> = <who or what>   (Allies, Contacts, ...)
+        +spend bp
+        +spend ritual <name>
+        +spend formula <name>
 
-    Spends XP to raise traits according to V5 costs.
+    Costs (V5 core, QR p.1; see +xp/costs): attribute new level x 5, skill
+    new level x 3, specialty 3, clan discipline new level x 5, other
+    discipline x 7, Caitiff discipline x 6, ritual or formula level x 3,
+    advantage 3 per dot, Blood Potency new level x 10 (up to your
+    Generation's maximum).
+
+    The name must be a real trait of that type: `+spend skill strength`
+    is refused, and nothing is charged when a spend is refused. Willpower
+    (Composure + Resolve) and Humanity can't be bought.
 
     Examples:
         +spend attribute strength
         +spend skill brawl
         +spend specialty brawl = Grappling
         +spend discipline potence
-        +spend humanity
-        +spend willpower
+        +spend advantage Resources
+        +spend advantage Allies = street gang
+        +spend ritual Ward against Ghouls
     """
 
     key = "+spend"
@@ -193,186 +203,45 @@ class CmdSpend(Command):
     locks = "cmd:all()"
     help_category = "V5"
 
+    TYPES = "attribute, skill, specialty, discipline, advantage, bp, ritual, formula"
+
     def func(self):
         """Execute spend command."""
         caller = self.caller
 
-        if not self.args:
+        lhs = (self.lhs or "").strip()
+        if not lhs:
             caller.msg("Usage: +spend <type> <name>")
-            caller.msg("Types: attribute, skill, specialty, discipline, humanity, willpower")
-            caller.msg("See: help +spend")
+            caller.msg(f"Types: {self.TYPES}")
             return
 
-        args = self.args.strip().split(None, 1)
-        if len(args) < 1:
-            caller.msg("Usage: +spend <type> <name>")
+        parts = lhs.split(None, 1)
+        spend_type = parts[0].lower()
+        name = parts[1].strip() if len(parts) > 1 else ""
+        note = self.rhs.strip() if self.rhs else None
+
+        if spend_type in ("humanity", "willpower"):
+            caller.msg(
+                "|rWillpower is Composure + Resolve, and Humanity changes only at the Storyteller's "
+                "discretion; neither is bought with XP.|n"
+            )
             return
-
-        spend_type = args[0].lower()
-
-        # Humanity and Willpower don't need a name
-        if spend_type in ['humanity', 'willpower']:
-            self._spend_special(spend_type)
+        if spend_type not in SPEND_KINDS:
+            caller.msg(f"|rInvalid type: {spend_type}|n")
+            caller.msg(f"Types: {self.TYPES}")
             return
-
-        if len(args) < 2 and spend_type != 'specialty':
+        if not name and SPEND_KINDS[spend_type] != "blood_potency":
             caller.msg(f"Usage: +spend {spend_type} <name>")
             return
-
-        if spend_type == 'attribute':
-            self._spend_attribute(args[1])
-        elif spend_type == 'skill':
-            self._spend_skill(args[1])
-        elif spend_type == 'specialty':
-            self._spend_specialty()
-        elif spend_type == 'discipline':
-            self._spend_discipline(args[1])
-        else:
-            caller.msg(f"|rInvalid type: {spend_type}|n")
-            caller.msg("Types: attribute, skill, specialty, discipline, humanity, willpower")
-
-    def _spend_attribute(self, attribute_name):
-        """Spend XP on attribute."""
-        caller = self.caller
-
-        # Show cost first
-        cost, new_rating = get_xp_cost_attribute(caller, attribute_name)
-        if cost is None:
-            caller.msg(f"|rCannot raise {attribute_name} further (max 5).|n")
-            return
-
-        current_xp = get_current_xp(caller)
-        caller.msg(f"Raising {attribute_name} to {new_rating} will cost {GOLD}{cost} XP{RESET}.")
-        caller.msg(f"You have {GOLD}{current_xp} XP{RESET}.")
-
-        if current_xp < cost:
-            caller.msg(f"|rInsufficient XP.|n")
-            return
-
-        # Confirm and spend
-        success, message = spend_xp_on_attribute(caller, attribute_name)
-
-        if success:
-            caller.msg(f"|g{message}|n")
-        else:
-            caller.msg(f"|r{message}|n")
-
-    def _spend_skill(self, skill_name):
-        """Spend XP on skill."""
-        caller = self.caller
-
-        # Show cost first
-        cost, new_rating = get_xp_cost_skill(caller, skill_name)
-        if cost is None:
-            caller.msg(f"|rCannot raise {skill_name} further (max 5).|n")
-            return
-
-        current_xp = get_current_xp(caller)
-        caller.msg(f"Raising {skill_name} to {new_rating} will cost {GOLD}{cost} XP{RESET}.")
-        caller.msg(f"You have {GOLD}{current_xp} XP{RESET}.")
-
-        if current_xp < cost:
-            caller.msg(f"|rInsufficient XP.|n")
-            return
-
-        # Confirm and spend
-        success, message = spend_xp_on_skill(caller, skill_name)
-
-        if success:
-            caller.msg(f"|g{message}|n")
-        else:
-            caller.msg(f"|r{message}|n")
-
-    def _spend_specialty(self):
-        """Spend XP on specialty."""
-        caller = self.caller
-
-        if not self.rhs:
+        if SPEND_KINDS[spend_type] == "specialty" and not note:
             caller.msg("Usage: +spend specialty <skill> = <specialty name>")
             return
 
-        skill_name = self.lhs.strip().split()[-1]  # Get last word after 'specialty'
-        specialty_name = self.rhs.strip()
-
-        success, message = spend_xp_on_specialty(caller, skill_name, specialty_name)
-
+        success, message = spend_xp(caller, name, spend_type, note=note)
         if success:
-            caller.msg(f"|g{message}|n")
+            caller.msg(f"|g{message}|n You have {GOLD}{get_current_xp(caller)} XP{RESET} left.")
         else:
-            caller.msg(f"|r{message}|n")
-
-    def _spend_discipline(self, discipline_name):
-        """Spend XP on discipline."""
-        caller = self.caller
-
-        refusal = unavailable_clan_message(caller)
-        if refusal:
-            caller.msg(f"|r{refusal}|n")
-            return
-
-        # Show cost first
-        cost, new_rating, is_in_clan = get_xp_cost_discipline(caller, discipline_name)
-        if cost is None:
-            caller.msg(f"|rCannot raise {discipline_name} further (max 5).|n")
-            return
-
-        clan_str = " (in-clan)" if is_in_clan else " (out-of-clan)"
-        current_xp = get_current_xp(caller)
-        caller.msg(f"Raising {discipline_name} to {new_rating}{clan_str} will cost {GOLD}{cost} XP{RESET}.")
-        caller.msg(f"You have {GOLD}{current_xp} XP{RESET}.")
-
-        if current_xp < cost:
-            caller.msg(f"|rInsufficient XP.|n")
-            return
-
-        # Confirm and spend
-        success, message = spend_xp_on_discipline(caller, discipline_name)
-
-        if success:
-            caller.msg(f"|g{message}|n")
-        else:
-            caller.msg(f"|r{message}|n")
-
-    def _spend_special(self, spend_type):
-        """Spend XP on humanity or willpower."""
-        caller = self.caller
-
-        if spend_type == 'humanity':
-            cost, new_rating = get_xp_cost_humanity(caller)
-            if cost is None:
-                caller.msg("|rCannot raise Humanity further (max 10).|n")
-                return
-
-            current_xp = get_current_xp(caller)
-            caller.msg(f"Raising Humanity to {new_rating} will cost {GOLD}{cost} XP{RESET}.")
-            caller.msg(f"You have {GOLD}{current_xp} XP{RESET}.")
-
-            if current_xp < cost:
-                caller.msg("|rInsufficient XP.|n")
-                return
-
-            success, message = spend_xp_on_humanity(caller)
-
-        elif spend_type == 'willpower':
-            cost, new_rating = get_xp_cost_willpower(caller)
-            if cost is None:
-                caller.msg("|rCannot raise Willpower further (max 10).|n")
-                return
-
-            current_xp = get_current_xp(caller)
-            caller.msg(f"Raising permanent Willpower to {new_rating} will cost {GOLD}{cost} XP{RESET}.")
-            caller.msg(f"You have {GOLD}{current_xp} XP{RESET}.")
-
-            if current_xp < cost:
-                caller.msg("|rInsufficient XP.|n")
-                return
-
-            success, message = spend_xp_on_willpower(caller)
-
-        if success:
-            caller.msg(f"|g{message}|n")
-        else:
-            caller.msg(f"|r{message}|n")
+            caller.msg(f"|r{message}|n Nothing was spent.")
 
 
 class CmdXPAward(default_cmds.MuxCommand):
