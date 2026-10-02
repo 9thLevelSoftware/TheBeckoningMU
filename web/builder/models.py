@@ -115,6 +115,21 @@ class BuildProject(models.Model):
         status_display = self.get_status_display()
         return f"{self.name} ({status_display}) by {self.user.username}"
 
+    @property
+    def approved_entry_room_name(self):
+        """Name of the area room the reviewed connection lands in, or ''."""
+        from .validators import entry_room_key
+
+        try:
+            map_data = self.approved_map_data["map_data"]
+            return map_data["rooms"][entry_room_key(map_data)].get("name") or ""
+        except (KeyError, TypeError, StopIteration, AttributeError):
+            return ""
+
+    def has_sandbox(self):
+        """A built sandbox exists (its record must not be thrown away)."""
+        return self.status == "built" or bool(self.built_object_ids)
+
     def is_editable(self):
         """Map edits are allowed only before review (draft, which includes
         projects returned by a rejection)."""

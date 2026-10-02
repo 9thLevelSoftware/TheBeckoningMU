@@ -10,10 +10,10 @@ from django.views.generic import TemplateView, View
 
 from web.permissions import has_perm
 
-from .models import BuildProject, RoomTemplate, StaleReviewError
+from .models import BuildProject, StaleReviewError
 from .promotion import promote_project_to_live
 from .sandbox_bridge import create_sandbox_from_project
-from .trigger_actions import ACTION_REGISTRY, list_actions
+from .trigger_actions import list_actions
 from .trigger_engine import validate_trigger
 from .v5_conditions import list_condition_types
 from .validators import (
@@ -371,6 +371,14 @@ class DeleteProjectView(BuilderRequiredMixin, View):
                 status=409,
             )
 
+        # The record is the only trusted handle on a built sandbox; deleting
+        # it would orphan the rooms, exits and Scripts for good (Admins too).
+        if project.has_sandbox():
+            return JsonResponse(
+                {"status": "error", "error": "Project has a sandbox: clean up the sandbox first."},
+                status=409,
+            )
+
         project.delete()
         return JsonResponse({"status": "success"})
 
@@ -481,7 +489,17 @@ def _connection_info(project):
         "room_id": project.connection_room_id,
         "room_name": room.db_key if room else None,
         "direction": project.connection_direction,
+        # The area room the connecting exits land in (R-14).
+        "entry_room": entry_room_name(project.map_data),
     }
+
+
+def entry_room_name(map_data):
+    """The name of the area room players enter by, or None."""
+    try:
+        return map_data["rooms"][entry_room_key(map_data)].get("name")
+    except (KeyError, TypeError, StopIteration, AttributeError):
+        return None
 
 
 class BuildReviewView(BuilderRequiredMixin, View):

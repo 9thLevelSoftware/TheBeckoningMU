@@ -65,6 +65,11 @@ def _bulk_tag_and_set(objects, tag_keys):
     Attributes: no category, no attrtype, value pickled with `to_pickle`),
     then resets each object's tag and Attribute caches so the handlers
     reload from the DB.
+
+    This mirrors Evennia 6.1's ModelAttributeBackend.do_create_attribute and
+    TagHandler.add; test_sandbox.BulkRowShapeTests compares the rows field by
+    field with ones written through obj.attributes.add / obj.tags.add, so an
+    Evennia upgrade that changes them fails loudly.
     """
     from evennia.objects.models import ObjectDB
     from evennia.typeclasses.attributes import Attribute
@@ -90,12 +95,18 @@ def _bulk_tag_and_set(objects, tag_keys):
                 )
             )
     rows = Attribute.objects.bulk_create(rows)
-    if any(row.pk is None for row in rows):
-        raise RuntimeError("The database did not return ids for the new Attributes")
-    attr_link = ObjectDB.db_attributes.through
-    attr_link.objects.bulk_create(
-        [attr_link(objectdb_id=obj.id, attribute_id=row.pk) for obj, row in zip(owners, rows, strict=True)]
-    )
+    try:
+        if any(row.pk is None for row in rows):
+            raise RuntimeError("The database did not return ids for the new Attributes")
+        attr_link = ObjectDB.db_attributes.through
+        attr_link.objects.bulk_create(
+            [attr_link(objectdb_id=obj.id, attribute_id=row.pk) for obj, row in zip(owners, rows, strict=True)]
+        )
+    except BaseException:
+        # Unlinked Attribute rows would be invisible to obj.delete(); remove
+        # them here so a failed build leaves nothing behind (R-8).
+        Attribute.objects.filter(pk__in=[row.pk for row in rows if row.pk]).delete()
+        raise
 
     for obj, _ in objects:
         obj.tags.reset_cache()

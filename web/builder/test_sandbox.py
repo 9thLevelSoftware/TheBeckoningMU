@@ -585,3 +585,193 @@ class CleanupTests(SandboxTestBase):
         self.assertEqual(resp.status_code, 409)
         self.assertIn(f"#{dug.id}", resp.json()["error"])
         self.assertTrue(ObjectDB.objects.filter(pk=dug.id).exists())
+
+
+class ReviewRoundOneTests(SandboxTestBase):
+    """PR 8 review round 1: costs, races, partial failures."""
+
+    def test_fifty_room_promote_and_cleanup_query_budgets(self):
+        # R-2/R-3: both used to work one object at a time (~15 and ~45
+        # queries per object). They now work in bulk.
+        project = self.built_project(map_data=area_map(50, timed_rooms=(1, 25, 50)))
+        with CaptureQueriesContext(connection) as queries:
+            ok, result = promote_project_to_live(project.pk)
+        self.assertTrue(ok, result)
+        print(f"\n50-room promote: {len(queries)} queries")
+        self.assertLessEqual(len(queries), 150)
+
+        project = self.built_project(map_data=area_map(50, timed_rooms=(1, 25, 50)), direction="s")
+        recorded_ids = [o.id for o in self.recorded_objects(project)]
+        scripts = list(ScriptDB.objects.filter(db_obj_id__in=recorded_ids))
+        self.assertEqual(len(scripts), 3)
+        self.assertTrue(all(_timer_running(s) for s in scripts))
+        with CaptureQueriesContext(connection) as queries:
+            ok, result = cleanup_sandbox_for_project(project.pk)
+        self.assertTrue(ok, result)
+        self.assertEqual((result["deleted_rooms"], result["deleted_exits"]), (50, 98))
+        print(f"50-room cleanup: {len(queries)} queries")
+        self.assertLessEqual(len(queries), 500)
+        self.assertFalse(ObjectDB.objects.filter(pk__in=recorded_ids).exists())
+        self.assertFalse(ScriptDB.objects.filter(db_obj_id__in=recorded_ids).exists())
+        # The bulk delete bypasses Script.delete(), so the timers must have
+        # been stopped explicitly.
+        self.assertEqual([s for s in scripts if _timer_running(s)], [])
+
+    def test_cleanup_sends_loose_items_home(self):
+        project = self.built_project()
+        entry = ObjectDB.objects.get(pk=project.sandbox_room_id)
+        item = create.create_object("typeclasses.objects.Object", key="lamp", location=entry, home=self.plaza)
+        ok, result = cleanup_sandbox_for_project(project.pk)
+        self.assertTrue(ok, result)
+        item = ObjectDB.objects.get(pk=item.id)
+        self.assertEqual(item.location, self.plaza)
+        self.assertIn(item, self.plaza.contents)
+
+    def test_promotion_lost_live_update_is_undone(self):
+        # R-9: the project leaves 'built' while promotion runs.
+        project = self.built_project()
+        recorded = self.recorded_objects(project)
+        objects_before = ObjectDB.objects.count()
+        plaza_before = list(self.plaza.contents)
+        real_sweep = promotion.delete_recorded
+
+        def race(*args, **kwargs):
+            BuildProject.objects.filter(pk=project.pk).update(status="approved")
+            return real_sweep(*args, **kwargs)
+
+        with mock.patch.object(promotion, "delete_recorded", side_effect=race):
+            ok, result = promote_project_to_live(project.pk)
+        self.assertFalse(ok)
+        self.assertEqual(result["status"], 409)
+        self.assertEqual(self.plaza.contents, plaza_before)
+        for obj in recorded:
+            self.assertTrue(obj.tags.has("sandbox"), obj)
+            self.assertTrue(obj.tags.has(f"project_{project.pk}"), obj)
+        self.assertEqual(ObjectDB.objects.count(), objects_before)
+
+    def test_partial_cleanup_keeps_the_rest_on_record(self):
+        # R-10: the room delete fails after the exits are gone.
+        project = self.built_project(map_data=area_map(3))
+        record = project.built_object_ids
+        real = sandbox_cleanup._delete_rows
+        calls = []
+
+        def rooms_fail(ids):
+            calls.append(ids)
+            if len(calls) == 2:
+                raise RuntimeError("injected room delete failure")
+            return real(ids)
+
+        with mock.patch.object(sandbox_cleanup, "_delete_rows", side_effect=rooms_fail):
+            ok, result = cleanup_sandbox_for_project(project.pk)
+        self.assertFalse(ok)
+        self.assertIn("injected room delete failure", result["error"])
+        project.refresh_from_db()
+        self.assertEqual(project.status, "built")
+        self.assertEqual(project.built_object_ids["rooms"], record["rooms"])
+        self.assertEqual(project.built_object_ids["exits"], {})
+        # The rooms' contents no longer list the deleted exits.
+        for room_id in record["rooms"].values():
+            self.assertEqual(_exits_of(ObjectDB.objects.get(pk=room_id)), [])
+        ok, result = cleanup_sandbox_for_project(project.pk)
+        self.assertTrue(ok, result)
+        self.assertEqual(result["deleted_rooms"], 3)
+        project.refresh_from_db()
+        self.assertEqual((project.status, project.built_object_ids), ("approved", {}))
+
+    def test_failed_attribute_link_leaves_no_attribute_rows(self):
+        # R-8
+        from evennia.typeclasses.attributes import Attribute
+
+        project = self.approved_project()
+        attributes_before = Attribute.objects.count()
+        objects_before = ObjectDB.objects.count()
+        link = ObjectDB.db_attributes.through
+        real_bulk_create = type(link.objects).bulk_create
+
+        def bulk_create(manager, *args, **kwargs):
+            if manager.model is link:
+                raise RuntimeError("injected link failure")
+            return real_bulk_create(manager, *args, **kwargs)
+
+        with mock.patch.object(type(link.objects), "bulk_create", bulk_create):
+            ok, result = create_sandbox_from_project(project.pk)
+        self.assertFalse(ok)
+        self.assertIn("injected link failure", result["error"])
+        self.assertEqual(Attribute.objects.count(), attributes_before)
+        self.assertEqual(ObjectDB.objects.count(), objects_before)
+
+
+class BulkRowShapeTests(SandboxTestBase):
+    """R-13: _bulk_tag_and_set writes the rows Evennia's own handlers write."""
+
+    def test_rows_match_the_handlers(self):
+        bulk = create.create_object("typeclasses.rooms.Room", key="Bulk", nohome=True)
+        control = create.create_object("typeclasses.rooms.Room", key="Control", nohome=True)
+        values = [("desc", "A room."), ("danger_level", "low"), ("triggers", [{"id": "t", "n": 1}])]
+        sandbox_builder._bulk_tag_and_set([(bulk, values)], ["web_builder", "project_77", "sandbox"])
+        for key, value in values:
+            control.attributes.add(key, value)
+        for tag in ("web_builder", "project_77", "sandbox"):
+            control.tags.add(tag)
+
+        tag_fields = ("db_key", "db_category", "db_tagtype", "db_model", "db_data")
+        self.assertEqual(
+            sorted(bulk.db_tags.values_list(*tag_fields)), sorted(control.db_tags.values_list(*tag_fields))
+        )
+        attr_fields = ("db_key", "db_category", "db_attrtype", "db_model", "db_lock_storage", "db_strvalue")
+        mine = {a.db_key: a for a in bulk.db_attributes.all()}
+        theirs = {a.db_key: a for a in control.db_attributes.all() if a.db_key in mine}
+        self.assertEqual(set(mine), set(theirs))
+        for key in mine:
+            self.assertEqual(
+                [getattr(mine[key], f) for f in attr_fields], [getattr(theirs[key], f) for f in attr_fields], key
+            )
+            self.assertEqual(mine[key].value, theirs[key].value, key)
+        # Handler lookups and tag searches see the bulk rows.
+        self.assertTrue(bulk.tags.has("sandbox"))
+        self.assertIn(bulk, ObjectDB.objects.get_by_tag("project_77"))
+        self.assertEqual(bulk.attributes.get("danger_level"), "low")
+        # A later add updates the row in place rather than duplicating it.
+        bulk.attributes.add("danger_level", "high")
+        self.assertEqual(bulk.db_attributes.filter(db_key="danger_level").count(), 1)
+        self.assertEqual(bulk.attributes.get("danger_level"), "high")
+
+
+class DeleteBuiltProjectTests(SandboxTestBase):
+    """R-6/R-12: nobody can delete a project that has a sandbox."""
+
+    def test_admin_web_delete_refused_while_built(self):
+        project = self.built_project()
+        url = reverse("builder:delete_project", args=[project.pk])
+        resp = self.client_for(self.admin).post(url)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn("clean up the sandbox first", resp.json()["error"])
+        self.assertTrue(BuildProject.objects.filter(pk=project.pk).exists())
+        ok, _ = cleanup_sandbox_for_project(project.pk)
+        self.assertTrue(ok)
+        self.assertEqual(self.client_for(self.admin).post(url).status_code, 200)
+
+    def test_django_admin_cannot_delete_a_built_project(self):
+        from django.contrib.admin.sites import site
+        from django.test import RequestFactory
+
+        project = self.built_project()
+        model_admin = site._registry[BuildProject]
+        request = RequestFactory().get("/")
+        self.admin.is_superuser = True
+        request.user = self.admin
+        self.assertFalse(model_admin.has_delete_permission(request, project))
+        with mock.patch.object(model_admin, "message_user"):
+            model_admin.delete_queryset(request, BuildProject.objects.filter(pk=project.pk))
+        self.assertTrue(BuildProject.objects.filter(pk=project.pk).exists())
+
+    def test_review_card_and_dashboard_show_the_entry_room(self):
+        # R-14
+        from web.builder.views import _connection_info
+
+        project = self.built_project(map_data=area_map(3, entry=2))
+        self.assertEqual(project.approved_entry_room_name, "Room 2")
+        page = self.client_for(self.owner).get(reverse("builder:dashboard")).content.decode()
+        self.assertIn('data-entry-room="Room 2"', page)
+        self.assertEqual(_connection_info(project)["entry_room"], "Room 2")

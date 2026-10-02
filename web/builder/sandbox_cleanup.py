@@ -46,6 +46,35 @@ def _has_player(obj):
     return bool(obj.db_account_id) or obj.sessions.count() > 0
 
 
+def plain_tags(keys):
+    """The plain (no category, no tagtype) object Tags with these keys."""
+    from evennia.typeclasses.tags import Tag
+
+    return list(
+        Tag.objects.filter(
+            db_key__in=[key.lower() for key in keys],
+            db_model="objectdb",
+            db_category__isnull=True,
+            db_tagtype__isnull=True,
+        )
+    )
+
+
+def ids_with_tags(ids, keys):
+    """The subset of object ids that carry every one of these plain tags (one
+    query per tag, not per object)."""
+    from evennia.objects.models import ObjectDB
+
+    tags = plain_tags(keys)
+    if len(tags) < len(set(keys)):
+        return set()
+    link = ObjectDB.db_tags.through
+    result = set(ids)
+    for tag in tags:
+        result &= set(link.objects.filter(objectdb_id__in=result, tag_id=tag.id).values_list("objectdb_id", flat=True))
+    return result
+
+
 def recorded_objects(project, *, require_sandbox=True):
     """
     Split the project's recorded objects into those the builder may act on
@@ -63,13 +92,13 @@ def recorded_objects(project, *, require_sandbox=True):
     room_ids = {int(i) for i in (record.get("rooms") or {}).values()}
     exit_ids = {int(i) for i in (record.get("exits") or {}).values()}
 
+    objects = list(ObjectDB.objects.filter(pk__in=room_ids | exit_ids))
+    found = {obj.id for obj in objects}
+    tagged = ids_with_tags(found, [project_tag, "sandbox"] if require_sandbox else [project_tag])
+
     rooms, exits = [], []
-    found = set()
-    for obj in ObjectDB.objects.filter(pk__in=room_ids | exit_ids):
-        found.add(obj.id)
-        if not obj.tags.has(project_tag) or (require_sandbox and not obj.tags.has("sandbox")):
-            continue
-        if _has_player(obj):
+    for obj in objects:
+        if obj.id not in tagged or _has_player(obj):
             continue
         if obj.id in room_ids and obj.is_typeclass(ROOM_TYPECLASS, exact=False):
             rooms.append(obj)
@@ -85,13 +114,15 @@ def check_deletable(rooms, exits):
     from evennia.objects.models import ObjectDB
 
     room_ids = [room.id for room in rooms]
-    occupied = [f"{room.key} (#{room.id})" for room in rooms if any(_has_player(obj) for obj in room.contents)]
+    exit_ids = [exit_obj.id for exit_obj in exits]
+    inside = ObjectDB.objects.filter(db_location_id__in=room_ids).exclude(pk__in=exit_ids)
+    occupied = sorted({f"{obj.db_location.db_key} (#{obj.db_location_id})" for obj in inside if _has_player(obj)})
     if occupied:
         raise CleanupError("A character is still inside: " + ", ".join(occupied) + ". Move them out first.")
     foreign = (
         ObjectDB.objects.filter(Q(db_destination_id__in=room_ids) | Q(db_location_id__in=room_ids))
         .exclude(db_destination__isnull=True)
-        .exclude(pk__in=[exit_obj.id for exit_obj in exits])
+        .exclude(pk__in=exit_ids)
         .values_list("id", flat=True)
     )
     foreign = sorted(foreign)
@@ -103,25 +134,81 @@ def check_deletable(rooms, exits):
         )
 
 
+def _evict_contents(room_ids, exit_ids):
+    """Send loose objects (dropped items) inside the rooms to their home, as
+    DefaultObject.delete() would. Characters were refused by check_deletable."""
+    from evennia.objects.models import ObjectDB
+
+    for obj in ObjectDB.objects.filter(db_location_id__in=room_ids).exclude(pk__in=exit_ids):
+        home = obj.home if obj.home and obj.home.id not in room_ids else None
+        if home:
+            obj.move_to(home, quiet=True, move_type="teleport")
+        else:
+            obj.location = None
+
+
+def _remove_scripts(object_ids):
+    """Stop the timers of the objects' Scripts, then delete them and their
+    Attributes in bulk."""
+    from evennia.scripts.models import ScriptDB
+    from evennia.typeclasses.attributes import Attribute
+
+    scripts = list(ScriptDB.objects.filter(db_obj_id__in=object_ids))
+    for script in scripts:
+        stop = getattr(script, "_stop_task", None)
+        if stop:
+            stop()
+    script_ids = [script.id for script in scripts]
+    attr_ids = ScriptDB.db_attributes.through.objects.filter(scriptdb_id__in=script_ids).values_list(
+        "attribute_id", flat=True
+    )
+    Attribute.objects.filter(pk__in=list(attr_ids)).delete()
+    ScriptDB.objects.filter(pk__in=script_ids).delete()
+
+
+def _delete_rows(object_ids):
+    """Delete the objects' Attributes, then the objects (their tag and
+    Attribute links go with them); idmapper flushes each instance on
+    pre_delete. Returns how many objects were deleted."""
+    from evennia.objects.models import ObjectDB
+    from evennia.typeclasses.attributes import Attribute
+
+    if not object_ids:
+        return 0
+    attr_ids = ObjectDB.db_attributes.through.objects.filter(objectdb_id__in=object_ids).values_list(
+        "attribute_id", flat=True
+    )
+    Attribute.objects.filter(pk__in=list(attr_ids)).delete()
+    rows = ObjectDB.objects.filter(pk__in=object_ids)
+    count = rows.count()
+    rows.delete()
+    return count
+
+
 def delete_recorded(rooms, exits):
-    """Delete exits, then rooms (Scripts on a room go with it). Returns
-    (deleted_rooms, deleted_exits, errors)."""
+    """
+    Delete the given recorded exits and rooms in bulk (a handful of queries
+    per step rather than ~45 per object, R-2): evict loose items, stop and
+    delete the objects' Scripts, delete the exits, then the rooms.
+
+    Returns (deleted_rooms, deleted_exits, errors). On an error the rest is
+    left in place and reported, so the caller can keep it on record.
+    """
+    room_ids = [room.id for room in rooms]
+    exit_ids = [exit_obj.id for exit_obj in exits]
     deleted_rooms = deleted_exits = 0
     errors = []
-    for exit_obj in exits:
-        try:
-            exit_obj.delete()
-            deleted_exits += 1
-        except Exception as e:
-            logger.exception("Cleanup: could not delete exit #%s", exit_obj.id)
-            errors.append(f"Exit #{exit_obj.id}: {e}")
-    for room in rooms:
-        try:
-            room.delete()
-            deleted_rooms += 1
-        except Exception as e:
-            logger.exception("Cleanup: could not delete room #%s", room.id)
-            errors.append(f"Room #{room.id}: {e}")
+    try:
+        _evict_contents(room_ids, exit_ids)
+        _remove_scripts(room_ids + exit_ids)
+        deleted_exits = _delete_rows(exit_ids)
+        deleted_rooms = _delete_rows(room_ids)
+    except Exception as e:
+        logger.exception("Cleanup: bulk delete failed")
+        errors.append(str(e))
+    # No contents-cache refresh is needed: idmapper flushes each deleted
+    # object on pre_delete, and ContentsHandler.get() reloads when a cached
+    # pk is gone (test_partial_cleanup_keeps_the_rest_on_record).
     return deleted_rooms, deleted_exits, errors
 
 

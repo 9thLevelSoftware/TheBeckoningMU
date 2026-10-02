@@ -171,8 +171,12 @@ def validate_connection(connection_room_id, connection_direction):
 # submitted, and its approved snapshot can't be built, unless it passes.
 
 OBJECT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
-MAX_ROOMS = 200
-MAX_EXITS = 800
+# Measured on file-backed SQLite (PR 8 review R-2/R-3): a 100-room / 198-exit
+# area with 30 timed triggers builds in ~1.1 s, promotes in ~0.03 s and is
+# cleaned up in ~0.3 s, each in one reactor callback; 150 rooms took ~1.6 s
+# to build. Areas are tens of rooms, so the cap is 100 rooms / 200 exits.
+MAX_ROOMS = 100
+MAX_EXITS = 200
 MAX_NAME_LENGTH = 80
 MAX_DESC_LENGTH = 10000
 MAX_ALIASES = 10

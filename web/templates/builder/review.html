@@ -595,7 +595,8 @@ function escapeHtml(text) {
 function formatConnection(conn) {
     if (!conn) return 'No connection room set';
     const name = conn.room_name ? escapeHtml(conn.room_name) : '(missing room)';
-    return `${name} (#${Number(conn.room_id)}), direction ${escapeHtml(conn.direction)}`;
+    const entry = conn.entry_room ? `, into area room ${escapeHtml(conn.entry_room)}` : '';
+    return `${name} (#${Number(conn.room_id)}), direction ${escapeHtml(conn.direction)}${entry}`;
 }
 
 function renderReviewed(reviewed) {

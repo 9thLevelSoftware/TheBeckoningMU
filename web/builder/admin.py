@@ -23,6 +23,27 @@ class BuildProjectAdmin(admin.ModelAdmin):
         "updated_at",
     ]
 
+    def has_delete_permission(self, request, obj=None):
+        # A project with a built sandbox can't be deleted (that would orphan
+        # the sandbox); clean it up first.
+        if obj is not None and obj.has_sandbox():
+            return False
+        return super().has_delete_permission(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        # The changelist bulk action checks has_delete_permission(obj=None)
+        # only, so filter again here.
+        built = [project.pk for project in queryset if project.has_sandbox()]
+        if built:
+            from django.contrib import messages
+
+            self.message_user(
+                request,
+                f"Not deleted (clean up their sandboxes first): {', '.join(map(str, built))}",
+                level=messages.WARNING,
+            )
+        super().delete_queryset(request, queryset.exclude(pk__in=built))
+
 
 @admin.register(RoomTemplate)
 class RoomTemplateAdmin(admin.ModelAdmin):

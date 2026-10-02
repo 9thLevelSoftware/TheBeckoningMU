@@ -28,7 +28,7 @@ from evennia.utils.create import create_object
 
 from web.main_thread import call_in_main_thread
 
-from .sandbox_cleanup import delete_recorded, recorded_objects
+from .sandbox_cleanup import delete_recorded, plain_tags, recorded_objects
 from .validators import is_live_room
 
 logger = logging.getLogger(__name__)
@@ -96,6 +96,32 @@ def _create_connection_exit(direction, location, destination):
     return exit_obj
 
 
+def _remove_tags(objects, keys):
+    """Remove these plain tags from all the objects with one delete, and
+    return the (object id, tag id) links removed."""
+    from evennia.objects.models import ObjectDB
+
+    link = ObjectDB.db_tags.through
+    rows = link.objects.filter(
+        objectdb_id__in=[obj.id for obj in objects], tag_id__in=[tag.id for tag in plain_tags(keys)]
+    )
+    pairs = list(rows.values_list("objectdb_id", "tag_id"))
+    rows.delete()
+    for obj in objects:
+        obj.tags.reset_cache()
+    return pairs
+
+
+def _restore_tags(objects, pairs):
+    """Put back links removed by _remove_tags."""
+    from evennia.objects.models import ObjectDB
+
+    link = ObjectDB.db_tags.through
+    link.objects.bulk_create([link(objectdb_id=o, tag_id=t) for o, t in pairs], ignore_conflicts=True)
+    for obj in objects:
+        obj.tags.reset_cache()
+
+
 def _reviewed_connection(project, connection_room_id, connection_direction):
     snapshot = project.approved_map_data or {}
     room_id = snapshot.get("connection_room_id")
@@ -156,12 +182,11 @@ def promote_unit(
 
     # 2. Mutate; 3. compensate on any error.
     project_tag = f"project_{project_id}"
-    flipped, created = [], []
+    objects = rooms + exits
+    removed, created = [], []
     try:
-        for obj in rooms + exits:
-            flipped.append(obj)
-            obj.tags.remove("sandbox")
-            obj.tags.remove(project_tag)
+        # Untag every recorded object in one query (R-3), not per object.
+        removed.extend(_remove_tags(objects, ["sandbox", project_tag]))
         created.append(_create_connection_exit(direction, live_room, entry))
         created.append(_create_connection_exit(back, entry, live_room))
 
@@ -186,12 +211,10 @@ def promote_unit(
                 exit_obj.delete()
             except Exception:
                 logger.exception("Promotion undo: could not delete exit %s", exit_obj)
-        for obj in flipped:
-            try:
-                obj.tags.add("sandbox")
-                obj.tags.add(project_tag)
-            except Exception:
-                logger.exception("Promotion undo: could not restore tags on %s", obj)
+        try:
+            _restore_tags(objects, removed)
+        except Exception:
+            logger.exception("Promotion undo: could not restore the sandbox tags")
         raise
 
     logger.info(

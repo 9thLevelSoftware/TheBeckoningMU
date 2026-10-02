@@ -336,7 +336,8 @@
                 </button>
                 <button class="btn-accent" style="flex:1;" data-promote-id="{{ project.id }}" data-name="{{ project.name }}"
                         data-connection-room="{{ project.approved_map_data.connection_room_id }}"
-                        data-connection-direction="{{ project.approved_map_data.connection_direction }}">
+                        data-connection-direction="{{ project.approved_map_data.connection_direction }}"
+                        data-entry-room="{{ project.approved_entry_room_name }}">
                     <i class="bi bi-rocket"></i> Promote
                 </button>
                 {% endif %}
@@ -606,15 +607,16 @@ async function promoteProject(btn) {
     };
     document.getElementById('promote-project-name').textContent = btn.dataset.name;
     const label = document.getElementById('promote-connection');
-    label.textContent = `#${promoteConnection.connection_room_id}, going ${promoteConnection.connection_direction}`;
+    const entry = btn.dataset.entryRoom ? `, into ${btn.dataset.entryRoom}` : '';
+    label.textContent = `#${promoteConnection.connection_room_id}, going ${promoteConnection.connection_direction}${entry}`;
     promoteModal.show();
     try {
         const response = await fetch('/builder/api/connection-rooms/');
         const data = await response.json();
         const room = (data.rooms || []).find(r => r.id === promoteConnection.connection_room_id);
         label.textContent = room
-            ? `${room.name} (#${room.id}), going ${promoteConnection.connection_direction}`
-            : `#${promoteConnection.connection_room_id} (no longer a live room), going ${promoteConnection.connection_direction}`;
+            ? `${room.name} (#${room.id}), going ${promoteConnection.connection_direction}${entry}`
+            : `#${promoteConnection.connection_room_id} (no longer a live room), going ${promoteConnection.connection_direction}${entry}`;
     } catch (error) { /* keep the dbref label */ }
 }
 
