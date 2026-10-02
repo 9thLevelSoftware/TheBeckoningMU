@@ -16,6 +16,7 @@ from django.apps import apps as django_apps
 from django.contrib.admin.sites import site as admin_site
 from django.test import Client, RequestFactory, TestCase
 from django.urls import URLPattern, reverse
+from evennia.objects.models import ObjectDB
 from evennia.utils import create
 
 from web.builder import urls as builder_urls
@@ -319,8 +320,9 @@ class AuthorityTests(BuilderGateTestBase):
         self.assertEqual(resp.status_code, 400)
 
     def test_cleanup_is_owner_or_admin(self):
-        # The route is unrouted until PR 8, so call the view directly.
-        project = self.make_project(self.owner, status="built", sandbox_room_id=1)
+        project = self.make_project(
+            self.owner, status="built", sandbox_room_id=1, built_object_ids={"rooms": {"r1": 1}, "exits": {}}
+        )
         factory = RequestFactory()
 
         def call(user):
@@ -500,12 +502,11 @@ class ImmutabilityTests(BuilderGateTestBase):
         # Simulate the live map drifting after approval.
         BuildProject.objects.filter(pk=project.pk).update(map_data=_map("Swapped"))
 
-        built = {"sandbox_room_id": 1, "room_count": 2, "exit_count": 1}
-        with mock.patch("web.builder.sandbox_bridge.run_sync_in_main_thread", return_value=built) as run:
-            ok, _ = create_sandbox_from_project(project.pk)
-        self.assertTrue(ok)
-        built_map = run.call_args.args[2]
-        self.assertEqual(built_map["rooms"]["r1"]["name"], "Hall")
+        ok, result = create_sandbox_from_project(project.pk)
+        self.assertTrue(ok, result)
+        project.refresh_from_db()
+        built_room = ObjectDB.objects.get(pk=project.built_object_ids["rooms"]["r1"])
+        self.assertEqual(built_room.key, "Hall")
 
     def test_rejected_project_is_editable_again(self):
         project = self.submitted_project(self.owner)

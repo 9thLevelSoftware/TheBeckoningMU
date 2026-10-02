@@ -10,13 +10,22 @@ from django.views.generic import TemplateView, View
 
 from web.permissions import has_perm
 
-from .models import BuildProject, RoomTemplate, StaleReviewError
+from .models import BuildProject, StaleReviewError
 from .promotion import promote_project_to_live
 from .sandbox_bridge import create_sandbox_from_project
-from .trigger_actions import ACTION_REGISTRY, list_actions
+from .trigger_actions import list_actions
 from .trigger_engine import validate_trigger
 from .v5_conditions import list_condition_types
-from .validators import live_rooms, validate_connection, validate_project
+from .validators import (
+    MAX_TIMED_TRIGGERS,
+    MAX_TRIGGERS_PER_ROOM,
+    count_timed,
+    entry_room_key,
+    live_rooms,
+    validate_build_map,
+    validate_connection,
+    validate_project,
+)
 
 # V5 Room Template Presets
 V5_ROOM_TEMPLATES = {
@@ -216,8 +225,13 @@ class SaveProjectView(BuilderRequiredMixin, View):
         name = data.get("name", "Untitled Project")
         map_data = data.get("map_data", {})
 
-        # Validate project data
+        # Validate project data. A draft may be saved while invalid; the
+        # build rules (validate_build_map) are enforced at submit.
         is_valid, errors, warnings = validate_project(map_data)
+        for error in validate_build_map(map_data):
+            if error not in errors:
+                errors.append(error)
+        is_valid = not errors
 
         if project_id:
             # Update existing
@@ -357,6 +371,14 @@ class DeleteProjectView(BuilderRequiredMixin, View):
                 status=409,
             )
 
+        # The record is the only trusted handle on a built sandbox; deleting
+        # it would orphan the rooms, exits and Scripts for good (Admins too).
+        if project.has_sandbox():
+            return JsonResponse(
+                {"status": "error", "error": "Project has a sandbox: clean up the sandbox first."},
+                status=409,
+            )
+
         project.delete()
         return JsonResponse({"status": "success"})
 
@@ -411,6 +433,15 @@ class SubmitProjectView(BuilderRequiredMixin, View):
                 {"status": "error", "error": "Expected a JSON object"}, status=400
             )
 
+        # Only a map the sandbox build accepts can go to review: once it is
+        # submitted the map is locked, so a bad one would be stuck.
+        map_errors = validate_build_map(project.map_data)
+        if map_errors:
+            return JsonResponse(
+                {"status": "error", "error": "; ".join(map_errors[:5]), "errors": map_errors},
+                status=400,
+            )
+
         # The live attachment point is part of what gets reviewed.
         errors, room_id, direction = validate_connection(
             data.get("connection_room_id"), data.get("connection_direction")
@@ -458,7 +489,17 @@ def _connection_info(project):
         "room_id": project.connection_room_id,
         "room_name": room.db_key if room else None,
         "direction": project.connection_direction,
+        # The area room the connecting exits land in (R-14).
+        "entry_room": entry_room_name(project.map_data),
     }
+
+
+def entry_room_name(map_data):
+    """The name of the area room players enter by, or None."""
+    try:
+        return map_data["rooms"][entry_room_key(map_data)].get("name")
+    except (KeyError, TypeError, StopIteration, AttributeError):
+        return None
 
 
 class BuildReviewView(BuilderRequiredMixin, View):
@@ -701,28 +742,27 @@ class BuildSandboxView(BuilderRequiredMixin, View):
         else:
             return JsonResponse(
                 {"status": "error", "error": result.get("error", "Unknown error")},
-                status=500,
+                status=result.get("status", 500),
             )
 
 
 class CleanupSandboxView(BuilderRequiredMixin, View):
-    """Clean up a sandbox via API."""
+    """
+    Delete a project's sandbox (owner or Admin). Acts only on the object ids
+    recorded at build time (sandbox_cleanup.cleanup_unit); the project
+    record stays and returns to 'approved'.
+    """
 
     def post(self, request, pk, *args, **kwargs):
         from .sandbox_cleanup import cleanup_sandbox_for_project
 
         project = get_object_or_404(BuildProject, pk=pk)
 
-        # Permission check
         if not can_manage(request.user, project):
-            return JsonResponse(
-                {"status": "error", "error": "Not authorized"}, status=403
-            )
+            return JsonResponse({"status": "error", "error": "Not authorized"}, status=403)
 
-        if not project.sandbox_room_id:
-            return JsonResponse(
-                {"status": "error", "error": "No active sandbox"}, status=400
-            )
+        if project.status != "built" or not project.built_object_ids:
+            return JsonResponse({"status": "error", "error": "No active sandbox"}, status=400)
 
         success, result = cleanup_sandbox_for_project(pk)
 
@@ -738,10 +778,7 @@ class CleanupSandboxView(BuilderRequiredMixin, View):
                     },
                 }
             )
-        else:
-            return JsonResponse(
-                {"status": "error", "error": result.get("error", "Unknown")}, status=500
-            )
+        return JsonResponse({"status": "error", "error": result.get("error", "Unknown")}, status=409)
 
 
 class ListConnectionRoomsView(BuilderRequiredMixin, View):
@@ -785,10 +822,12 @@ class PromoteProjectView(BuilderRequiredMixin, View):
         """
         Promote a built project to live world.
 
-        Request body: {
+        Request body (optional): {
             "connection_room_id": int,
             "connection_direction": string (n/s/e/w/ne/nw/se/sw/u/d)
         }
+        The connection is the one reviewed at approval (approved_map_data).
+        A body that names a different one is refused with 409.
         """
         project = get_object_or_404(BuildProject, pk=pk)
 
@@ -816,36 +855,13 @@ class PromoteProjectView(BuilderRequiredMixin, View):
                 {"status": "error", "error": "Invalid JSON"}, status=400
             )
 
-        connection_room_id = data.get("connection_room_id")
-        connection_direction = data.get("connection_direction", "").lower()
+        if not isinstance(data, dict):
+            return JsonResponse({"status": "error", "error": "Expected a JSON object"}, status=400)
 
-        # Validate required fields
-        if not connection_room_id:
-            return JsonResponse(
-                {"status": "error", "error": "connection_room_id is required"},
-                status=400,
-            )
-
-        if not connection_direction:
-            return JsonResponse(
-                {"status": "error", "error": "connection_direction is required"},
-                status=400,
-            )
-
-        # Validate direction is valid
-        valid_directions = ["n", "s", "e", "w", "ne", "nw", "se", "sw", "u", "d"]
-        if connection_direction not in valid_directions:
-            return JsonResponse(
-                {
-                    "status": "error",
-                    "error": f"Invalid direction. Valid directions: {', '.join(valid_directions)}",
-                },
-                status=400,
-            )
-
-        # Call promotion engine
+        # Promotion uses the reviewed connection; a request may restate it
+        # (and is refused if it differs) but can't choose another.
         success, result = promote_project_to_live(
-            project.id, connection_room_id, connection_direction
+            project.id, data.get("connection_room_id"), data.get("connection_direction")
         )
 
         if success:
@@ -863,11 +879,10 @@ class PromoteProjectView(BuilderRequiredMixin, View):
                     },
                 }
             )
-        else:
-            return JsonResponse(
-                {"status": "error", "error": result.get("error", "Unknown error")},
-                status=500,
-            )
+        return JsonResponse(
+            {"status": "error", "error": result.get("error", "Unknown error")},
+            status=result.get("status", 500),
+        )
 
 
 class RoomTriggersAPI(BuilderRequiredMixin, View):
@@ -956,6 +971,20 @@ class RoomTriggersAPI(BuilderRequiredMixin, View):
                 triggers[existing_idx] = trigger_data
             else:
                 triggers.append(trigger_data)
+
+            if len(triggers) > MAX_TRIGGERS_PER_ROOM:
+                return JsonResponse(
+                    {"error": f"A room may have at most {MAX_TRIGGERS_PER_ROOM} triggers"}, status=400
+                )
+            timed = sum(
+                count_timed(triggers if rid == room_id else (r.get("triggers") or []))
+                for rid, r in rooms.items()
+                if isinstance(r, dict)
+            )
+            if timed > MAX_TIMED_TRIGGERS:
+                return JsonResponse(
+                    {"error": f"A project may have at most {MAX_TIMED_TRIGGERS} timed triggers"}, status=400
+                )
 
             # Save back to room
             room_data["triggers"] = triggers

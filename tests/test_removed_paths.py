@@ -11,7 +11,7 @@ from evennia.utils.test_resources import EvenniaTest
 
 from commands.default_cmdsets import AccountCmdSet, CharacterCmdSet
 
-REMOVED_COMMANDS = ("charcreate", "+chargen", "+setstat", "+setdisc", "@promote", "@abandon", "@cleanup_sandbox")
+REMOVED_COMMANDS = ("charcreate", "+chargen", "+setstat", "+setdisc", "@promote", "@abandon")
 
 
 class TestRemovedCommands(TestCase):
@@ -29,6 +29,8 @@ class TestRemovedCommands(TestCase):
         self.assertIn("chardelete", keys)
         self.assertIn("ic", keys)
         self.assertIn("roll", keys)
+        # Back since cleanup acts only on recorded object ids (PR 8).
+        self.assertIn("@cleanup_sandbox", keys)
 
 
 class TestOOCMenu(EvenniaTest):
@@ -52,5 +54,6 @@ class TestRemovedRoutes(TestCase):
     def test_character_import_route_removed(self):
         self.assertEqual(self.client.post("/api/traits/character/import/").status_code, 404)
 
-    def test_builder_cleanup_route_removed(self):
-        self.assertEqual(self.client.post("/builder/api/build/1/cleanup/").status_code, 404)
+    def test_builder_cleanup_route_requires_login(self):
+        # Routed again now that cleanup acts only on recorded object ids.
+        self.assertEqual(self.client.post("/builder/api/build/1/cleanup/").status_code, 302)

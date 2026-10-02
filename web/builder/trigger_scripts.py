@@ -6,94 +6,64 @@ attached to rooms for timed trigger execution.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from evennia.utils.create import create_script
-from evennia.utils.search import search_script
 
 logger = logging.getLogger(__name__)
 
 
-def create_timed_trigger(room, trigger_data: Dict[str, Any]) -> Optional[Any]:
+def start_timed_trigger(room, trigger_data: dict[str, Any]):
+    """
+    Create and start the timed-trigger Script for one trigger on one room.
+
+    Raises on any failure (the sandbox build relies on that to undo itself).
+    An existing script for the same trigger on the same room is returned
+    rather than duplicated; scripts on other rooms are never considered.
+    """
+    from evennia.scripts.models import ScriptDB
+
+    trigger_id = trigger_data.get("id")
+    if not trigger_id:
+        raise ValueError("Cannot create a timed trigger without an id")
+    key = f"trigger_{trigger_id}"
+
+    existing = ScriptDB.objects.filter(db_obj=room, db_key=key).first()
+    if existing:
+        return existing
+
+    interval = max(int(trigger_data.get("interval", 300)), 10)
+    script = create_script(
+        typeclass="typeclasses.scripts.RoomTriggerScript",
+        key=key,
+        obj=room,
+        interval=interval,
+        persistent=True,
+        repeats=0,  # Infinite
+        start_delay=True,
+        attributes=[
+            ("trigger_id", trigger_id),
+            ("trigger_action", trigger_data.get("action")),
+            ("trigger_parameters", dict(trigger_data.get("parameters") or {})),
+        ],
+    )
+    if script is None:
+        raise RuntimeError(f"Evennia refused to create timed trigger {trigger_id}")
+    logger.info(f"Created timed trigger {trigger_id} on room {room.id} (interval: {interval}s)")
+    return script
+
+
+def create_timed_trigger(room, trigger_data: dict[str, Any]) -> Any | None:
     """
     Create a timed trigger script attached to a room.
 
-    Args:
-        room: The Evennia room object to attach trigger to
-        trigger_data: Trigger configuration dict with:
-            - id: unique trigger identifier
-            - interval: seconds between firings (default 300)
-            - action: action name (from ACTION_REGISTRY)
-            - parameters: dict of action parameters
-            - enabled: bool (default True)
-
-    Returns:
-        The created Script object, or None if creation failed
-    """
-    trigger_id = trigger_data.get("id")
-    if not trigger_id:
-        logger.error("Cannot create timed trigger without id")
-        return None
-
-    # Check if script already exists for this trigger
-    existing = search_script(f"trigger_{trigger_id}")
-    if existing:
-        logger.warning(f"Timed trigger {trigger_id} already exists, skipping")
-        return existing[0]
-
-    interval = trigger_data.get("interval", 300)
-    if interval < 10:
-        logger.warning(
-            f"Trigger {trigger_id} interval {interval}s too short, using 10s minimum"
-        )
-        interval = 10
-
-    try:
-        script = create_script(
-            typeclass="typeclasses.scripts.RoomTriggerScript",
-            key=f"trigger_{trigger_id}",
-            obj=room,
-            interval=interval,
-            persistent=True,
-            repeats=0,  # Infinite
-            start_delay=False,
-        )
-
-        # Store trigger configuration
-        script.db.trigger_id = trigger_id
-        script.db.trigger_action = trigger_data.get("action")
-        script.db.trigger_parameters = trigger_data.get("parameters", {})
-
-        logger.info(
-            f"Created timed trigger {trigger_id} on room {room.id} (interval: {interval}s)"
-        )
-        return script
-
-    except Exception as e:
-        logger.exception(f"Failed to create timed trigger {trigger_id}: {e}")
-        return None
-
-
-def delete_timed_trigger(trigger_id: str) -> bool:
-    """
-    Delete a specific timed trigger script by trigger ID.
-
-    Args:
-        trigger_id: The unique trigger identifier
-
-    Returns:
-        True if deleted or didn't exist, False on error
+    Like start_timed_trigger, but logs and returns None instead of raising.
     """
     try:
-        scripts = search_script(f"trigger_{trigger_id}")
-        for script in scripts:
-            script.stop()
-            script.delete()
-            logger.info(f"Deleted timed trigger {trigger_id}")
-        return True
+        return start_timed_trigger(room, trigger_data)
     except Exception as e:
-        logger.exception(f"Failed to delete timed trigger {trigger_id}: {e}")
-        return False
+        logger.exception(f"Failed to create timed trigger {trigger_data.get('id')}: {e}")
+        return None
 
 
 def delete_timed_triggers_for_room(room) -> int:
@@ -115,11 +85,7 @@ def delete_timed_triggers_for_room(room) -> int:
 
         for script in scripts:
             # Only delete our trigger scripts
-            if (
-                hasattr(script, "db")
-                and hasattr(script.db, "trigger_id")
-                and script.db.trigger_id
-            ):
+            if hasattr(script, "db") and hasattr(script.db, "trigger_id") and script.db.trigger_id:
                 script.stop()
                 script.delete()
                 count += 1
@@ -133,7 +99,7 @@ def delete_timed_triggers_for_room(room) -> int:
         return count
 
 
-def sync_timed_triggers_for_room(room) -> Dict[str, Any]:
+def sync_timed_triggers_for_room(room) -> dict[str, Any]:
     """
     Synchronize timed triggers for a room based on room.db.triggers.
 
@@ -166,7 +132,9 @@ def sync_timed_triggers_for_room(room) -> Dict[str, Any]:
             timed_trigger_ids.add(trigger_id)
 
             # Check if script exists
-            existing = search_script(f"trigger_{trigger_id}")
+            from evennia.scripts.models import ScriptDB
+
+            existing = ScriptDB.objects.filter(db_obj=room, db_key=f"trigger_{trigger_id}").exists()
             if not existing:
                 # Create new script
                 if create_timed_trigger(room, trigger):

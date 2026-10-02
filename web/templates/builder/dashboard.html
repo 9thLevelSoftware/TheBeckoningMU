@@ -331,8 +331,13 @@
                     <i class="bi bi-send"></i> Submit
                 </button>
                 {% elif project.status == 'built' %}
-                <button class="btn-accent" style="flex:1;"
-                        onclick="event.stopPropagation(); promoteProject({{ project.id }}, '{{ project.name|escapejs }}')">
+                <button class="btn-ghost" style="flex:1;" data-cleanup-id="{{ project.id }}" data-name="{{ project.name }}">
+                    <i class="bi bi-trash"></i> Clean up
+                </button>
+                <button class="btn-accent" style="flex:1;" data-promote-id="{{ project.id }}" data-name="{{ project.name }}"
+                        data-connection-room="{{ project.approved_map_data.connection_room_id }}"
+                        data-connection-direction="{{ project.approved_map_data.connection_direction }}"
+                        data-entry-room="{{ project.approved_entry_room_name }}">
                     <i class="bi bi-rocket"></i> Promote
                 </button>
                 {% endif %}
@@ -470,28 +475,9 @@
                 <p>Promote <strong id="promote-project-name" class="text-accent"></strong> to the live game world?</p>
 
                 <div class="mb-3">
-                    <label for="connection-room" class="form-label">Connect to Room</label>
-                    <select class="form-select" id="connection-room">
-                        <option value="">Loading rooms...</option>
-                    </select>
-                    <div class="form-text">Select the live world room to connect your build to.</div>
-                </div>
-
-                <div class="mb-3">
-                    <label for="connection-direction" class="form-label">Direction from Live Room</label>
-                    <select class="form-select" id="connection-direction">
-                        <option value="n">North (n)</option>
-                        <option value="s">South (s)</option>
-                        <option value="e">East (e)</option>
-                        <option value="w">West (w)</option>
-                        <option value="ne">Northeast (ne)</option>
-                        <option value="nw">Northwest (nw)</option>
-                        <option value="se">Southeast (se)</option>
-                        <option value="sw">Southwest (sw)</option>
-                        <option value="u">Up (u)</option>
-                        <option value="d">Down (d)</option>
-                    </select>
-                    <div class="form-text">Players will use this direction to enter your build.</div>
+                    <div class="form-label">Connects to (as reviewed)</div>
+                    <div><strong id="promote-connection"></strong></div>
+                    <div class="form-text">Promotion uses the connection that was approved. To change it, resubmit the project.</div>
                 </div>
 
                 <div style="background: var(--crimson-faint); border: 1px solid rgba(139,26,26,0.3); border-left: 3px solid var(--crimson); border-radius: 2px; padding: 12px 14px; font-size: 13px; color: var(--text-crimson);">
@@ -608,16 +594,59 @@ document.getElementById('confirm-submit').addEventListener('click', async functi
 
 // ── Promote Modal ──────────────────────────────────
 let promoteProjectId = null;
+let promoteConnection = null;
 const promoteModal = new bootstrap.Modal(document.getElementById('promoteModal'));
 
-function promoteProject(id, name) {
-    promoteProjectId = id;
-    document.getElementById('promote-project-name').textContent = name;
-    document.getElementById('connection-room').innerHTML = '<option value="">Loading rooms...</option>';
-    document.getElementById('connection-direction').value = 'n';
+// Promotion uses the connection reviewed at approval; the modal shows it
+// and sends it back unchanged (the server refuses any other).
+async function promoteProject(btn) {
+    promoteProjectId = btn.dataset.promoteId;
+    promoteConnection = {
+        connection_room_id: parseInt(btn.dataset.connectionRoom, 10),
+        connection_direction: btn.dataset.connectionDirection,
+    };
+    document.getElementById('promote-project-name').textContent = btn.dataset.name;
+    const label = document.getElementById('promote-connection');
+    const entry = btn.dataset.entryRoom ? `, into ${btn.dataset.entryRoom}` : '';
+    label.textContent = `#${promoteConnection.connection_room_id}, going ${promoteConnection.connection_direction}${entry}`;
     promoteModal.show();
-    loadConnectionRooms('connection-room');
+    try {
+        const response = await fetch('/builder/api/connection-rooms/');
+        const data = await response.json();
+        const room = (data.rooms || []).find(r => r.id === promoteConnection.connection_room_id);
+        label.textContent = room
+            ? `${room.name} (#${room.id}), going ${promoteConnection.connection_direction}${entry}`
+            : `#${promoteConnection.connection_room_id} (no longer a live room), going ${promoteConnection.connection_direction}${entry}`;
+    } catch (error) { /* keep the dbref label */ }
 }
+
+document.querySelectorAll('[data-promote-id]').forEach(btn => btn.addEventListener('click', event => {
+    event.stopPropagation();
+    promoteProject(btn);
+}));
+
+document.querySelectorAll('[data-cleanup-id]').forEach(btn => btn.addEventListener('click', async event => {
+    event.stopPropagation();
+    if (!confirm(`Delete the sandbox rooms and exits of "${btn.dataset.name}"? The project is kept and can be built again.`)) return;
+    btn.disabled = true;
+    try {
+        const response = await fetch(`/builder/api/build/${btn.dataset.cleanupId}/cleanup/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        });
+        const data = await response.json();
+        if (data.status === 'success') {
+            alert(`Sandbox cleaned up: ${data.deleted.rooms} rooms, ${data.deleted.exits} exits deleted.`);
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Cleanup failed'));
+            btn.disabled = false;
+        }
+    } catch (error) {
+        alert('Error cleaning up: ' + error.message);
+        btn.disabled = false;
+    }
+}));
 
 async function loadConnectionRooms(selectId) {
     const select = document.getElementById(selectId);
@@ -660,16 +689,11 @@ document.getElementById('confirm-promote').addEventListener('click', async funct
     btn.disabled = true;
     btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Promoting...';
 
-    const roomId = document.getElementById('connection-room').value;
-    const direction = document.getElementById('connection-direction').value;
-
-    if (!roomId) { alert('Please select a connection room'); btn.disabled = false; btn.innerHTML = '<i class="bi bi-rocket"></i> Promote to Live'; return; }
-
     try {
         const response = await fetch(`/builder/api/build/${promoteProjectId}/promote/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
-            body: JSON.stringify({ connection_room_id: parseInt(roomId), connection_direction: direction })
+            body: JSON.stringify(promoteConnection)
         });
         const data = await response.json();
         if (data.status === 'success') {

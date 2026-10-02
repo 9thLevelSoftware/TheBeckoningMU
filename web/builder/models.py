@@ -81,8 +81,17 @@ class BuildProject(models.Model):
     submission_notes = models.TextField(
         blank=True, help_text="Builder's notes when submitting for review"
     )
-    # Link to in-game sandbox instance (if built)
+    # The sandbox's entry room (if built). There is no container room.
     sandbox_room_id = models.IntegerField(null=True, blank=True)
+    # Every object the sandbox build created: {"rooms": {web_id: dbid},
+    # "exits": {web_id: dbid}, "scripts": [dbid, ...], "entry": dbid}.
+    # Promotion and cleanup act only on these ids (never on tags alone,
+    # which any Builder can forge); promotion clears it.
+    built_object_ids = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Ids of the objects the sandbox build created",
+    )
     # Connection point for promotion to live world
     connection_room_id = models.IntegerField(
         null=True, blank=True, help_text="Live room dbref to connect this build to"
@@ -105,6 +114,21 @@ class BuildProject(models.Model):
     def __str__(self):
         status_display = self.get_status_display()
         return f"{self.name} ({status_display}) by {self.user.username}"
+
+    @property
+    def approved_entry_room_name(self):
+        """Name of the area room the reviewed connection lands in, or ''."""
+        from .validators import entry_room_key
+
+        try:
+            map_data = self.approved_map_data["map_data"]
+            return map_data["rooms"][entry_room_key(map_data)].get("name") or ""
+        except (KeyError, TypeError, StopIteration, AttributeError):
+            return ""
+
+    def has_sandbox(self):
+        """A built sandbox exists (its record must not be thrown away)."""
+        return self.status == "built" or bool(self.built_object_ids)
 
     def is_editable(self):
         """Map edits are allowed only before review (draft, which includes

@@ -6,10 +6,18 @@ to determine if a trigger should fire.
 """
 
 import logging
-from typing import Dict, Any, Optional, List
+import random
 from datetime import datetime
+from typing import Any
+
+from world.v5_data import CLANS
 
 logger = logging.getLogger(__name__)
+
+# The editor's room location types (editor.html "room-location-type").
+LOCATION_TYPES = ["haven", "elysium", "rack", "hostile", "neutral", "mortal", "supernatural"]
+# The editor's danger levels, in order; a condition compares their position.
+DANGER_LEVELS = ["safe", "low", "moderate", "high", "deadly"]
 
 
 # Condition type definitions for UI
@@ -20,28 +28,21 @@ CONDITION_TYPES = {
         "parameters": {
             "clan": {
                 "type": "select",
-                "options": [
-                    "brujah",
-                    "gangrel",
-                    "malkavian",
-                    "nosferatu",
-                    "toreador",
-                    "tremere",
-                    "ventrue",
-                    "caitiff",
-                    "thin_blood",
-                ],
+                "options": list(CLANS),
                 "required": True,
             }
         },
     },
     "character_splat": {
         "label": "Character Type",
-        "description": "Check if character is vampire, ghoul, etc.",
+        "description": "Check what the character is (Character.splat): vampire, ghoul or mortal",
         "parameters": {
             "splat": {
                 "type": "select",
-                "options": ["vampire", "ghoul", "mortal", "hunter"],
+                # Filled from typeclasses.characters.SPLATS by
+                # list_condition_types(), so it offers exactly what
+                # Character.splat can return.
+                "options": [],
                 "required": True,
             }
         },
@@ -64,17 +65,7 @@ CONDITION_TYPES = {
         "parameters": {
             "location_type": {
                 "type": "select",
-                "options": [
-                    "elysium",
-                    "haven",
-                    "rack",
-                    "neutral",
-                    "dangerous",
-                    "hunting_ground",
-                    "mystical",
-                    "street",
-                    "business",
-                ],
+                "options": LOCATION_TYPES,
                 "required": True,
             }
         },
@@ -82,40 +73,42 @@ CONDITION_TYPES = {
     "time_of_day": {
         "label": "Time of Day",
         "description": "Check current in-game time",
-        "parameters": {
-            "time": {"type": "select", "options": ["day", "night"], "required": True}
-        },
+        "parameters": {"time": {"type": "select", "options": ["day", "night"], "required": True}},
     },
     "room_danger": {
         "label": "Danger Level",
-        "description": "Check room's danger rating",
+        "description": "Check room's danger rating (0 safe, 1 low, 2 moderate, 3 high, 4 deadly)",
         "parameters": {
             "operator": {
                 "type": "select",
                 "options": ["eq", "lt", "lte", "gt", "gte"],
                 "required": True,
             },
-            "value": {"type": "number", "min": 0, "max": 5, "required": True},
+            "value": {"type": "number", "min": 0, "max": 4, "required": True},
         },
     },
     "probability": {
         "label": "Random Chance",
         "description": "Random chance for trigger to fire (percentage)",
-        "parameters": {
-            "chance": {"type": "number", "min": 1, "max": 100, "required": True}
-        },
+        "parameters": {"chance": {"type": "number", "min": 1, "max": 100, "required": True}},
     },
 }
 
 
-def list_condition_types() -> Dict[str, Any]:
+def splat_values() -> tuple[str, ...]:
+    """The values Character.splat can return (typeclasses.characters.SPLATS)."""
+    from typeclasses.characters import SPLATS
+
+    return tuple(SPLATS)
+
+
+def list_condition_types() -> dict[str, Any]:
     """Return condition type definitions for UI rendering."""
+    CONDITION_TYPES["character_splat"]["parameters"]["splat"]["options"] = list(splat_values())
     return CONDITION_TYPES
 
 
-def check_condition(
-    condition_type: str, parameters: Dict[str, Any], character=None, room=None
-) -> bool:
+def check_condition(condition_type: str, parameters: dict[str, Any], character=None, room=None) -> bool:
     """
     Check if a condition is met.
 
@@ -126,7 +119,8 @@ def check_condition(
         room: The room where trigger is firing
 
     Returns:
-        True if condition is met, False otherwise
+        True if condition is met, False otherwise. A condition that can't be
+        evaluated (bad parameters, an error) is logged and counts as not met.
     """
     try:
         if condition_type == "character_clan":
@@ -136,9 +130,7 @@ def check_condition(
             return _check_character_splat(character, parameters.get("splat"))
 
         elif condition_type == "character_hunger":
-            return _check_character_hunger(
-                character, parameters.get("operator"), parameters.get("value")
-            )
+            return _check_character_hunger(character, parameters.get("operator"), parameters.get("value"))
 
         elif condition_type == "room_type":
             return _check_room_type(room, parameters.get("location_type"))
@@ -147,9 +139,7 @@ def check_condition(
             return _check_time_of_day(parameters.get("time"))
 
         elif condition_type == "room_danger":
-            return _check_room_danger(
-                room, parameters.get("operator"), parameters.get("value")
-            )
+            return _check_room_danger(room, parameters.get("operator"), parameters.get("value"))
 
         elif condition_type == "probability":
             return _check_probability(parameters.get("chance", 100))
@@ -163,86 +153,131 @@ def check_condition(
         return False
 
 
-def _check_character_clan(character, clan: str) -> bool:
-    """Check if character is of specified clan."""
-    if not character or not clan:
-        return False
+def _norm(value) -> str:
+    """Compare names ignoring case and '-', '_' or space ("thin_blood" == "Thin-Blood")."""
+    return "".join(ch for ch in str(value).lower() if ch.isalnum())
 
+
+def _bad_parameter(condition_type, name, value) -> bool:
+    logger.warning("Condition %s has an invalid %s: %r", condition_type, name, value)
+    return False
+
+
+def _check_character_clan(character, clan: str) -> bool:
+    """Check the character's clan (Character.clan accessor)."""
+    if not clan:
+        return _bad_parameter("character_clan", "clan", clan)
+    if not character:
+        return False
     char_clan = getattr(character, "clan", None)
-    return bool(char_clan) and char_clan.lower() == clan.lower()
+    return bool(char_clan) and _norm(char_clan) == _norm(clan)
 
 
 def _check_character_splat(character, splat: str) -> bool:
-    """Check if character is of specified splat type.
-
-    Every player character is a vampire (web chargen makes only vampires);
-    a character with no clan (an NPC object, say) counts as mortal.
-    """
-    if not character or not splat:
+    """Check the character's splat (Character.splat: vampire, ghoul or mortal)."""
+    if not isinstance(splat, str) or splat.lower() not in splat_values():
+        return _bad_parameter("character_splat", "splat", splat)
+    if not character:
         return False
-    actual = "vampire" if getattr(character, "clan", None) else "mortal"
+    actual = getattr(character, "splat", None)
+    if actual is None:
+        logger.warning("Condition character_splat: %s has no splat", character)
+        return False
     return actual == splat.lower()
 
 
-def _check_character_hunger(character, operator: str, value: int) -> bool:
-    """Check character's hunger level."""
+def _check_character_hunger(character, operator: str, value) -> bool:
+    """Check the character's Hunger (Character.hunger accessor)."""
+    number = _as_number(value)
+    if operator not in _OPERATORS or number is None:
+        return _bad_parameter("character_hunger", "operator/value", (operator, value))
     if not character:
         return False
-
     hunger_value = getattr(character, "hunger", None)
     if hunger_value is None:
         return False
-    return _compare(hunger_value, operator, value)
+    return _compare(hunger_value, operator, number)
 
 
 def _check_room_type(room, location_type: str) -> bool:
-    """Check room's V5 location type."""
-    if not room or not location_type:
+    """Check the room's V5 location type."""
+    if not location_type:
+        return _bad_parameter("room_type", "location_type", location_type)
+    if not room:
         return False
-
-    room_type = getattr(room.db, "location_type", None)
-    return room_type and room_type.lower() == location_type.lower()
+    room_type = room.attributes.get("location_type", default=None)
+    return bool(room_type) and _norm(room_type) == _norm(location_type)
 
 
 def _check_time_of_day(time: str) -> bool:
     """Check current time of day."""
-    # Simple implementation - could be enhanced with in-game time system
+    if time not in ("day", "night"):
+        return _bad_parameter("time_of_day", "time", time)
     hour = datetime.now().hour
     is_night = hour < 6 or hour >= 18
-
-    if time == "night":
-        return is_night
-    elif time == "day":
-        return not is_night
-    return False
+    return is_night if time == "night" else not is_night
 
 
-def _check_room_danger(room, operator: str, value: int) -> bool:
-    """Check room's danger level."""
+def danger_rank(level) -> int | None:
+    """The editor's danger level as 0 (safe) .. 4 (deadly); None if unknown."""
+    if isinstance(level, bool):
+        return None
+    if isinstance(level, str) and level.lower() in DANGER_LEVELS:
+        return DANGER_LEVELS.index(level.lower())
+    number = _as_number(level)
+    return None if number is None else int(number)
+
+
+def _check_room_danger(room, operator: str, value) -> bool:
+    """Check the room's danger level against a 0-4 rank."""
+    number = _as_number(value)
+    if operator not in _OPERATORS or number is None:
+        return _bad_parameter("room_danger", "operator/value", (operator, value))
     if not room:
         return False
+    stored = room.attributes.get("danger_level", default="safe")
+    rank = danger_rank(stored)
+    if rank is None:
+        logger.warning("Room %s has an unknown danger_level %r", room, stored)
+        return False
+    return _compare(rank, operator, number)
 
-    danger = getattr(room.db, "danger_level", 0)
-    return _compare(danger, operator, value)
 
-
-def _check_probability(chance: int) -> bool:
+def _check_probability(chance) -> bool:
     """Random chance check."""
-    import random
+    number = _as_number(chance)
+    if number is None:
+        return _bad_parameter("probability", "chance", chance)
+    return random.randint(1, 100) <= number
 
-    return random.randint(1, 100) <= chance
+
+_OPERATORS = ("eq", "lt", "lte", "gt", "gte")
+
+
+def _as_number(value):
+    """A number, or a numeric string (the editor's inputs send text); else None."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        try:
+            return float(value) if "." in value else int(value)
+        except ValueError:
+            return None
+    return None
 
 
 def _compare(actual, operator: str, expected) -> bool:
     """Compare values with operator."""
     if operator == "eq":
         return actual == expected
-    elif operator == "lt":
+    if operator == "lt":
         return actual < expected
-    elif operator == "lte":
+    if operator == "lte":
         return actual <= expected
-    elif operator == "gt":
+    if operator == "gt":
         return actual > expected
-    elif operator == "gte":
+    if operator == "gte":
         return actual >= expected
     return False

@@ -1,4 +1,5 @@
 from django.urls import path
+
 from . import views
 
 app_name = "builder"
@@ -27,16 +28,17 @@ urlpatterns = [
         views.BuildSandboxView.as_view(),
         name="build_sandbox",
     ),
-    # api/build/<pk>/cleanup/ (CleanupSandboxView) is deliberately unrouted,
-    # like @cleanup_sandbox: its tag-based object selection can reach objects
-    # outside the sandbox. It returns once cleanup works from recorded ids.
+    # Cleanup deletes only the object ids recorded at build time.
+    path(
+        "api/build/<int:pk>/cleanup/",
+        views.CleanupSandboxView.as_view(),
+        name="cleanup_sandbox",
+    ),
     path("api/prototypes/", views.PrototypesView.as_view(), name="prototypes"),
     path("api/templates/", views.TemplatesView.as_view(), name="templates"),
     # Review endpoints (staff only)
     path("review/", views.BuildReviewDashboardView.as_view(), name="build_review"),
-    path(
-        "api/review/projects/", views.BuildReviewView.as_view(), name="review_projects"
-    ),
+    path("api/review/projects/", views.BuildReviewView.as_view(), name="review_projects"),
     path(
         "api/review/<int:pk>/approve/",
         views.ApproveRejectProjectView.as_view(),

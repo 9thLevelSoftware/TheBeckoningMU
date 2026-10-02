@@ -128,9 +128,9 @@ def _new_stats():
             },
         },
         "specialties": {},  # {"skill_key": ["Specialty name", ...]}
-        "disciplines": {},  # {"discipline_key": {"level": n, "powers": ["Power Name", ...]}}
-        "rituals": [],  # Blood Sorcery ritual names
-        "formulas": [],  # Thin-Blood Alchemy formula names
+        # {"discipline_key": {"level": n, "powers": [...]}}; Blood Sorcery and
+        # Thin-Blood Alchemy entries also hold "rituals" / "formulas" lists.
+        "disciplines": {},
     }
 
 
@@ -758,38 +758,27 @@ class Character(ObjectParent, DefaultCharacter):
         return str(self._advantage_notes(kind).get(canonical, ""))
 
     # Blood Sorcery rituals and Thin-Blood Alchemy formulas (v5_data
-    # DISCIPLINES[...]["rituals"/"formulas"]) are stored by name in
-    # db.stats["rituals"] / db.stats["formulas"].
+    # DISCIPLINES[...]["rituals"/"formulas"]) have one store: the learned
+    # lists on their discipline's entry, db.stats["disciplines"][<key>]
+    # ["rituals"/"formulas"] (LEARNED_LISTS). rituals/formulas and
+    # learn_ritual/learn_formula are the chargen-facing names for
+    # known_rituals/known_formulas and learn_ritual_or_formula.
 
     @property
     def rituals(self):
-        return self._learned_list("rituals")
+        return self.known_rituals
 
     @property
     def formulas(self):
-        return self._learned_list("formulas")
+        return self.known_formulas
 
     def learn_ritual(self, name):
         """Record a Blood Sorcery ritual (canonical name). Raises UnknownTrait."""
-        return self._learn_from("rituals", name, _all_rituals())
+        return self.learn_ritual_or_formula("ritual", name)
 
     def learn_formula(self, name):
         """Record a Thin-Blood Alchemy formula (canonical name). Raises UnknownTrait."""
-        return self._learn_from("formulas", name, _all_formulas())
-
-    def _learned_list(self, key):
-        stats = self.db.stats if isinstance(self.db.stats, Mapping) else {}
-        return [str(n) for n in deserialize(stats.get(key) or [])]
-
-    def _learn_from(self, key, name, table):
-        canonical = _canonical_name(name, table, key[:-1])
-        if canonical is None:
-            raise UnknownTrait(f"A {key[:-1]} name is required")
-        stats = self._store("stats", _new_stats)
-        learned = self._learned_list(key)
-        if canonical not in learned:
-            stats[key] = learned + [canonical]
-        return dict(table[canonical])
+        return self.learn_ritual_or_formula("formula", name)
 
     @property
     def discipline_levels(self):
@@ -1293,6 +1282,35 @@ class Character(ObjectParent, DefaultCharacter):
         return name
 
 
+def format_idle_seconds(seconds):
+    """Colour-coded idle time for the room display ("|g0s|n" when unknown or under 0.5s).
+
+    Green under 10 minutes, bright green from 11, yellow from 15, red from 20.
+    """
+    if not seconds:
+        return "|g0s|n"
+    total = int(round(seconds))
+    minutes, secs = divmod(total, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+
+    if days:
+        return f"|x{days}d|n"
+    if hours:
+        return f"|x{hours}h|n"
+    if minutes:
+        if minutes >= 20:
+            color = "|r"
+        elif minutes >= 15:
+            color = "|y"
+        elif minutes > 10:
+            color = "|G"
+        else:
+            color = "|g"
+        return f"{color}{minutes}m|n"
+    return f"|g{secs}s|n"
+
+
 def _canonical_name(value, table, label):
     """Match `value` case-insensitively to a key of `table`; None clears."""
     if value is None or value == "":
@@ -1364,43 +1382,3 @@ def _specialty_list(names):
     if isinstance(names, (list, tuple)):
         return [str(name) for name in names if name]
     return []
-
-
-def _all_rituals():
-    return {r["name"]: r for r in DISCIPLINES["Blood Sorcery"].get("rituals", [])}
-
-
-def _all_formulas():
-    return {
-        f["name"]: dict(f, level=level)
-        for level, formulas in DISCIPLINES["Thin-Blood Alchemy"].get("formulas", {}).items()
-        for f in formulas
-    }
-
-def format_idle_seconds(seconds):
-    """Colour-coded idle time for the room display ("|g0s|n" when unknown or under 0.5s).
-
-    Green under 10 minutes, bright green from 11, yellow from 15, red from 20.
-    """
-    if not seconds:
-        return "|g0s|n"
-    total = int(round(seconds))
-    minutes, secs = divmod(total, 60)
-    hours, minutes = divmod(minutes, 60)
-    days, hours = divmod(hours, 24)
-
-    if days:
-        return f"|x{days}d|n"
-    if hours:
-        return f"|x{hours}h|n"
-    if minutes:
-        if minutes >= 20:
-            color = "|r"
-        elif minutes >= 15:
-            color = "|y"
-        elif minutes > 10:
-            color = "|G"
-        else:
-            color = "|g"
-        return f"{color}{minutes}m|n"
-    return f"|g{secs}s|n"
