@@ -163,11 +163,6 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
 
         self.add(BloodCmdSet)
 
-        # Add News command
-        from commands.news import CmdNews
-
-        self.add(CmdNews)
-
         # Add Sandbox commands. @cleanup_sandbox deletes only the object ids
         # recorded at build time, never objects selected by (forgeable) tags.
         from commands.builder.sandbox import CmdCleanupSandbox, CmdGotoSandbox, CmdListSandboxes
@@ -199,6 +194,12 @@ class AccountCmdSet(default_cmds.AccountCmdSet):
         # Characters are created only through the website form
         # (/character-creation/), which records them for staff approval.
         self.remove(default_cmds.CmdCharCreate)
+
+        # News is on the account, so players can read it before they have
+        # an approved character to puppet (the welcome screens point there).
+        from commands.news import CmdNews
+
+        self.add(CmdNews)
 
 
 class UnloggedinCmdSet(default_cmds.UnloggedinCmdSet):
