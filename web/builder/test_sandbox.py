@@ -9,6 +9,7 @@ well as rows.
 """
 
 import json
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -282,11 +283,14 @@ class BuildUnitTests(SandboxTestBase):
         # F-050 measured ~6,000 queries for 50 rooms / 98 exits; the budget
         # is half that.
         project = self.approved_project(map_data=area_map(50, timed_rooms=(1, 25, 50)))
+        started = time.perf_counter()
         with CaptureQueriesContext(connection) as queries:
             ok, result = create_sandbox_from_project(project.pk)
+        elapsed = time.perf_counter() - started
         self.assertTrue(ok, result)
         self.assertEqual((result["room_count"], result["exit_count"]), (50, 98))
-        print(f"\n50-room build: {len(queries)} queries")
+        # The time is a manual benchmark: printed, not asserted.
+        print(f"\n50-room build: {len(queries)} queries, {elapsed:.2f} s")
         self.assertLessEqual(len(queries), 3000)
 
 
@@ -546,11 +550,13 @@ class CleanupTests(SandboxTestBase):
         odd_room = ObjectDB.objects.get(pk=record["rooms"]["r2"])
         odd_room.db_account = create.create_account("sodd", "sodd@example.com", "testpassword123")
         odd_room.save(update_fields=["db_account"])
+        objects_before = ObjectDB.objects.count()
         resp = self.post_json(self.client_for(self.owner), self.cleanup_url(project))
-        self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertEqual(resp.json()["skipped"], [odd_room.id])
-        self.assertTrue(ObjectDB.objects.filter(pk=odd_room.id).exists())
-        self.assertFalse(ObjectDB.objects.filter(pk=record["rooms"]["r1"]).exists())
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn(f"#{odd_room.id}", resp.json()["error"])
+        self.assertEqual(ObjectDB.objects.count(), objects_before)
+        project.refresh_from_db()
+        self.assertEqual(project.built_object_ids, record)
 
     def test_occupied_sandbox_is_refused_and_untouched(self):
         project = self.built_project()

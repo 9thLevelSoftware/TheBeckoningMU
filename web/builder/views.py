@@ -749,7 +749,6 @@ class CleanupSandboxView(BuilderRequiredMixin, View):
                         "exits": result["deleted_exits"],
                         "objects": result["deleted_objects"],
                     },
-                    "skipped": result.get("skipped", []),
                 }
             )
         return JsonResponse({"status": "error", "error": result.get("error", "Unknown")}, status=409)

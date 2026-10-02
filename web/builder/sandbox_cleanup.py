@@ -12,8 +12,10 @@ intersection (KD-7):
     ∩ objects with no account and no sessions
 
 and it refuses outright, deleting nothing, while a character is inside a
-sandbox room or an exit it didn't build leads into or out of one (deleting
-a room would otherwise move the character or delete that exit).
+sandbox room, an exit it didn't build leads into or out of one (deleting
+a room would otherwise move the character or delete that exit), or a
+recorded object no longer passes those checks (clearing the record would
+leave it with no trustworthy handle).
 
 `cleanup_unit(project_id)` is one unit of work that runs wholly on the
 reactor. Its three callers all go through it (or, for promotion, through
@@ -139,6 +141,13 @@ def cleanup_unit(project_id: int) -> dict[str, Any]:
         raise CleanupError("Project has no active sandbox")
 
     rooms, exits, skipped = recorded_objects(project)
+    if skipped:
+        # Clearing the record would leave these with no handle cleanup can
+        # trust, so refuse until staff sort them out.
+        raise CleanupError(
+            "Recorded sandbox objects no longer match the build (tags changed or an account "
+            "is attached): " + ", ".join(f"#{i}" for i in skipped) + ". Ask an Admin to check them."
+        )
     check_deletable(rooms, exits)
     deleted_rooms, deleted_exits, errors = delete_recorded(rooms, exits)
 
@@ -164,17 +173,10 @@ def cleanup_unit(project_id: int) -> dict[str, Any]:
             updated_at=timezone.now(),
         )
 
-    if skipped:
-        logger.warning(
-            "Cleanup of project %s left recorded objects that no longer pass the checks: %s",
-            project_id,
-            skipped,
-        )
     return {
         "deleted_rooms": deleted_rooms,
         "deleted_exits": deleted_exits,
         "deleted_objects": 0,
-        "skipped": skipped,
         "errors": errors,
     }
 
@@ -184,7 +186,7 @@ def cleanup_sandbox_for_project(project_id: int) -> tuple[bool, dict[str, Any]]:
     Clean up a project's sandbox from any thread.
 
     Returns (True, {"deleted_rooms", "deleted_exits", "deleted_objects",
-    "skipped", "errors"}) or (False, {"error": message}).
+    "errors"}) or (False, {"error": message}).
     """
     try:
         result = call_in_main_thread(cleanup_unit, project_id)

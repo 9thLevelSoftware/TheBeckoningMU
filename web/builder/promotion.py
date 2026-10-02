@@ -159,9 +159,9 @@ def promote_unit(
     flipped, created = [], []
     try:
         for obj in rooms + exits:
+            flipped.append(obj)
             obj.tags.remove("sandbox")
             obj.tags.remove(project_tag)
-            flipped.append(obj)
         created.append(_create_connection_exit(direction, live_room, entry))
         created.append(_create_connection_exit(back, entry, live_room))
 
