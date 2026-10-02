@@ -25,7 +25,7 @@ def apply_effect(character, power_dict: Dict[str, Any], duration: str,
         Dict containing the created effect
     """
     # Initialize active_effects if needed
-    if not hasattr(character.db, 'active_effects') or character.db.active_effects is None:
+    if character.db.active_effects is None:
         character.db.active_effects = []
 
     # Don't track instant effects
@@ -60,7 +60,7 @@ def remove_effect(character, effect_id: str) -> bool:
     Returns:
         bool: True if effect was removed, False if not found
     """
-    if not hasattr(character.db, 'active_effects') or not character.db.active_effects:
+    if not character.db.active_effects:
         return False
 
     initial_count = len(character.db.active_effects)
@@ -82,7 +82,7 @@ def get_active_effects(character, filter_discipline: Optional[str] = None) -> Li
     Returns:
         List of effect dicts
     """
-    if not hasattr(character.db, 'active_effects') or not character.db.active_effects:
+    if not character.db.active_effects:
         return []
 
     effects = character.db.active_effects
@@ -103,7 +103,7 @@ def tick_effects(character) -> List[Dict[str, Any]]:
     Returns:
         List of expired effects that were removed
     """
-    if not hasattr(character.db, 'active_effects') or not character.db.active_effects:
+    if not character.db.active_effects:
         return []
 
     expired = []
@@ -182,7 +182,7 @@ def clear_all_effects(character) -> int:
     Returns:
         int: Number of effects removed
     """
-    if not hasattr(character.db, 'active_effects') or not character.db.active_effects:
+    if not character.db.active_effects:
         return 0
 
     count = len(character.db.active_effects)
@@ -426,7 +426,7 @@ def perform_ritual(character, ritual_name: str, ingredients: Optional[List[str]]
         Dict with success status and message
     """
     # Check if character has Blood Sorcery
-    blood_sorcery_level = character.db.disciplines.get('Blood Sorcery', 0)
+    blood_sorcery_level = character.get_trait('Blood Sorcery')
 
     if blood_sorcery_level == 0:
         return {

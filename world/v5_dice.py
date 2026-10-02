@@ -152,7 +152,7 @@ def rouse_check(character) -> Tuple[bool, int, int]:
 
     rerolls_available = 0
     if not success:
-        blood_potency = character.db.blood_potency or 0
+        blood_potency = character.blood_potency
         if blood_potency in BLOOD_POTENCY:
             bp_data = BLOOD_POTENCY[blood_potency]
             rerolls_available = bp_data.get('rouse_reroll', 0)
@@ -286,19 +286,18 @@ def apply_discipline_modifiers(pool: int, character, discipline_name: str = None
     # Active Effects (e.g., Prowess, Draughts)
     # Assumes character.db.active_effects is a list of power names
     active_effects = character.db.active_effects or []
-    disciplines = character.db.disciplines or {}
 
-    if "Prowess" in active_effects and "potence" in disciplines:
-        pool += disciplines["potence"]
-    if "Draught of Elegance" in active_effects and "celerity" in disciplines:
-        pool += disciplines["celerity"]
-    if "Draught of Endurance" in active_effects and "fortitude" in disciplines:
-        pool += disciplines["fortitude"]
+    if "Prowess" in active_effects:
+        pool += character.get_trait("potence")
+    if "Draught of Elegance" in active_effects:
+        pool += character.get_trait("celerity")
+    if "Draught of Endurance" in active_effects:
+        pool += character.get_trait("fortitude")
 
     # Resonance Bonuses
-    resonance = character.db.resonance
+    resonance = character.resonance
     if resonance and discipline_name:
-        resonance_data = RESONANCES.get(resonance)
+        resonance_data = RESONANCES.get(resonance["type"])
         if resonance_data and discipline_name in resonance_data.get("disciplines", []):
             pool += 1  # Add 1 die for matching resonance
 
@@ -324,25 +323,25 @@ def check_frenzy(character, trigger_type: str) -> Tuple[bool, Optional[str]]:
     compulsion = trigger_data["compulsion"]
 
     # Hunger 5 is an automatic hunger frenzy
-    if trigger_type == "hunger" and (character.db.hunger or 0) >= 5:
+    if trigger_type == "hunger" and character.hunger >= 5:
         return (False, compulsion)
 
     # Pool is Resolve + Composure
-    pool = (character.db.resolve or 1) + (character.db.composure or 1)
+    pool = character.get_trait("resolve") + character.get_trait("composure")
 
     # Humanity can limit the pool
-    humanity = character.db.humanity or 7
+    humanity = character.humanity
     if humanity < 3:
         pool = min(pool, humanity)
 
     # Brujah bane
-    if character.db.clan == "Brujah" and compulsion == "Fight":
+    if character.clan == "Brujah" and compulsion == "Fight":
         difficulty += 2
 
     if pool <= 0:
         return (False, compulsion)
 
-    result = roll_pool(pool, character.db.hunger or 0, difficulty)
+    result = roll_pool(pool, character.hunger, difficulty)
 
     if result.is_success():
         return (True, None)

@@ -4,8 +4,11 @@ XP System Utility Functions for V5
 Handles experience point costs, spending, and tracking.
 """
 
-from .trait_utils import get_trait_value, set_trait_value
-from .clan_utils import get_clan, get_inclan_disciplines
+from collections.abc import Mapping
+
+from world.v5_data import MERITS, UnknownTrait, WrongCategory, resolve_trait
+
+from .clan_utils import get_inclan_disciplines
 
 
 def get_xp_cost_attribute(character, attribute_name):
@@ -21,7 +24,7 @@ def get_xp_cost_attribute(character, attribute_name):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    current = get_trait_value(character, attribute_name, category='attributes')
+    current = character.get_trait(attribute_name, 'attributes')
     new_rating = current + 1
 
     if new_rating > 5:
@@ -44,7 +47,7 @@ def get_xp_cost_skill(character, skill_name):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    current = get_trait_value(character, skill_name, category='skills')
+    current = character.get_trait(skill_name, 'skills')
     new_rating = current + 1
 
     if new_rating > 5:
@@ -54,7 +57,7 @@ def get_xp_cost_skill(character, skill_name):
     return (cost, new_rating)
 
 
-def get_xp_cost_specialty(character, skill_name):
+def get_xp_cost_specialty(character, skill_name, specialty_name=None):
     """
     Calculate XP cost for a specialty.
 
@@ -63,19 +66,23 @@ def get_xp_cost_specialty(character, skill_name):
     Args:
         character: Character object
         skill_name (str): Skill to add specialty to
+        specialty_name (str, optional): The specialty; if the skill already
+            has it, the cost is None
 
     Returns:
         int: Cost (3 XP or None if invalid)
     """
+    ref = resolve_trait(skill_name, 'skills')
+
     # Check if skill is at least 1
-    skill_value = get_trait_value(character, skill_name, category='skills')
-    if skill_value < 1:
+    if character.get_trait(ref.key) < 1:
         return None
 
-    # Check if already has specialty
-    specialties = character.db.stats.get('specialties', {})
-    if skill_name in specialties:
-        return None  # Already has specialty
+    # A skill may hold several specialties, but not the same one twice
+    if specialty_name is not None:
+        existing = [name.lower() for name in character.specialties.get(ref.key, [])]
+        if str(specialty_name).strip().lower() in existing:
+            return None
 
     return 3
 
@@ -96,8 +103,7 @@ def get_xp_cost_discipline(character, discipline_name):
         tuple: (cost: int, new_rating: int, is_in_clan: bool)
     """
     # Get current level
-    disciplines = character.db.stats.get('disciplines', {})
-    current = disciplines.get(discipline_name, {}).get('level', 0)
+    current = character.get_trait(discipline_name, 'disciplines')
     new_rating = current + 1
 
     if new_rating > 5:
@@ -129,10 +135,7 @@ def get_xp_cost_background(character, background_name):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    advantages = character.db.advantages if hasattr(character.db, 'advantages') else {}
-    backgrounds = advantages.get('backgrounds', {})
-
-    current = backgrounds.get(background_name, 0)
+    current = character.get_trait(background_name, 'backgrounds')
     new_rating = current + 1
 
     if new_rating > 5:
@@ -155,10 +158,10 @@ def get_xp_cost_merit(character, merit_name):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    advantages = character.db.advantages if hasattr(character.db, 'advantages') else {}
-    merits = advantages.get('merits', {})
-
-    current = merits.get(merit_name, 0)
+    canonical = next((name for name in MERITS if name.lower() == str(merit_name).strip().lower()), None)
+    if canonical is None:
+        raise UnknownTrait(f"Unknown merit: {merit_name}")
+    current = character.advantages['merits'].get(canonical, 0)
     new_rating = current + 1
 
     if new_rating > 5:
@@ -180,8 +183,7 @@ def get_xp_cost_humanity(character):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    vamp = character.db.vampire if hasattr(character.db, 'vampire') else {}
-    current = vamp.get('humanity', 7)
+    current = character.humanity
     new_rating = current + 1
 
     if new_rating > 10:
@@ -203,8 +205,7 @@ def get_xp_cost_willpower(character):
     Returns:
         tuple: (cost: int, new_rating: int)
     """
-    pools = character.db.pools if hasattr(character.db, 'pools') else {}
-    current = pools.get('willpower', 0)
+    current = character.willpower_max
     new_rating = current + 1
 
     if new_rating > 10:
@@ -224,8 +225,7 @@ def get_current_xp(character):
     Returns:
         int: Current XP
     """
-    exp = character.db.experience if hasattr(character.db, 'experience') else {}
-    return exp.get('current', 0)
+    return character.xp
 
 
 def get_total_earned_xp(character):
@@ -238,8 +238,7 @@ def get_total_earned_xp(character):
     Returns:
         int: Total earned XP
     """
-    exp = character.db.experience if hasattr(character.db, 'experience') else {}
-    return exp.get('total_earned', 0)
+    return character.xp_earned
 
 
 def get_total_spent_xp(character):
@@ -252,8 +251,7 @@ def get_total_spent_xp(character):
     Returns:
         int: Total spent XP
     """
-    exp = character.db.experience if hasattr(character.db, 'experience') else {}
-    return exp.get('total_spent', 0)
+    return character.xp_spent
 
 
 def award_xp(character, amount, reason="", awarded_by=None):
@@ -272,19 +270,17 @@ def award_xp(character, amount, reason="", awarded_by=None):
     if amount <= 0:
         return (False, "XP amount must be positive.")
 
-    if not hasattr(character.db, 'experience'):
+    if not isinstance(character.db.experience, Mapping):
         character.db.experience = {
             'total_earned': 0,
             'total_spent': 0,
-            'current': 0,
             'log': []
         }
 
     exp = character.db.experience
 
-    # Update totals
-    exp['current'] += amount
-    exp['total_earned'] += amount
+    # Update totals (unspent XP is derived: earned - spent)
+    exp['total_earned'] = exp.get('total_earned', 0) + amount
 
     # Log the award
     from datetime import datetime
@@ -294,7 +290,7 @@ def award_xp(character, amount, reason="", awarded_by=None):
         'reason': reason,
         'awarded_by': str(awarded_by) if awarded_by else 'System',
         'date': datetime.now().isoformat(),
-        'balance': exp['current']
+        'balance': character.xp
     }
 
     if 'log' not in exp:
@@ -303,7 +299,7 @@ def award_xp(character, amount, reason="", awarded_by=None):
 
     character.db.experience = exp
 
-    return (True, f"Awarded {amount} XP. Current XP: {exp['current']}")
+    return (True, f"Awarded {amount} XP. Current XP: {character.xp}")
 
 
 def spend_xp_on_attribute(character, attribute_name, reason=""):
@@ -318,7 +314,10 @@ def spend_xp_on_attribute(character, attribute_name, reason=""):
     Returns:
         tuple: (success: bool, message: str)
     """
-    cost, new_rating = get_xp_cost_attribute(character, attribute_name)
+    try:
+        cost, new_rating = get_xp_cost_attribute(character, attribute_name)
+    except (UnknownTrait, WrongCategory) as err:
+        return (False, f"{err}.")
 
     if cost is None:
         return (False, f"Cannot raise {attribute_name} further (max 5).")
@@ -328,14 +327,10 @@ def spend_xp_on_attribute(character, attribute_name, reason=""):
         return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
 
     # Raise attribute
-    set_trait_value(character, attribute_name, new_rating, category='attributes')
+    character.set_trait(attribute_name, new_rating, 'attributes')
 
     # Deduct XP
     _deduct_xp(character, cost, f"Raised {attribute_name} to {new_rating}" + (f" - {reason}" if reason else ""))
-
-    # Update derived stats
-    if hasattr(character, 'update_derived_stats'):
-        character.update_derived_stats()
 
     return (True, f"Raised {attribute_name} to {new_rating} for {cost} XP.")
 
@@ -352,7 +347,10 @@ def spend_xp_on_skill(character, skill_name, reason=""):
     Returns:
         tuple: (success: bool, message: str)
     """
-    cost, new_rating = get_xp_cost_skill(character, skill_name)
+    try:
+        cost, new_rating = get_xp_cost_skill(character, skill_name)
+    except (UnknownTrait, WrongCategory) as err:
+        return (False, f"{err}.")
 
     if cost is None:
         return (False, f"Cannot raise {skill_name} further (max 5).")
@@ -362,7 +360,7 @@ def spend_xp_on_skill(character, skill_name, reason=""):
         return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
 
     # Raise skill
-    set_trait_value(character, skill_name, new_rating, category='skills')
+    character.set_trait(skill_name, new_rating, 'skills')
 
     # Deduct XP
     _deduct_xp(character, cost, f"Raised {skill_name} to {new_rating}" + (f" - {reason}" if reason else ""))
@@ -383,23 +381,20 @@ def spend_xp_on_specialty(character, skill_name, specialty_name, reason=""):
     Returns:
         tuple: (success: bool, message: str)
     """
-    cost = get_xp_cost_specialty(character, skill_name)
+    try:
+        cost = get_xp_cost_specialty(character, skill_name, specialty_name)
+    except (UnknownTrait, WrongCategory) as err:
+        return (False, f"{err}.")
 
     if cost is None:
-        return (False, f"Cannot add specialty to {skill_name}. Skill must be at least 1 and not already have a specialty.")
+        return (False, f"Cannot add specialty {specialty_name} to {skill_name}. The skill needs at least 1 dot and can't already have that specialty.")
 
     current_xp = get_current_xp(character)
     if current_xp < cost:
         return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
 
     # Add specialty
-    if not hasattr(character.db, 'stats'):
-        return (False, "Character stats not initialized.")
-
-    if 'specialties' not in character.db.stats:
-        character.db.stats['specialties'] = {}
-
-    character.db.stats['specialties'][skill_name] = specialty_name
+    character.add_specialty(skill_name, specialty_name)
 
     # Deduct XP
     _deduct_xp(character, cost, f"Added specialty: {skill_name} ({specialty_name})" + (f" - {reason}" if reason else ""))
@@ -419,7 +414,10 @@ def spend_xp_on_discipline(character, discipline_name, reason=""):
     Returns:
         tuple: (success: bool, message: str)
     """
-    cost, new_rating, is_in_clan = get_xp_cost_discipline(character, discipline_name)
+    try:
+        cost, new_rating, is_in_clan = get_xp_cost_discipline(character, discipline_name)
+    except (UnknownTrait, WrongCategory) as err:
+        return (False, f"{err}.")
 
     if cost is None:
         return (False, f"Cannot raise {discipline_name} further (max 5).")
@@ -429,16 +427,7 @@ def spend_xp_on_discipline(character, discipline_name, reason=""):
         return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
 
     # Raise discipline
-    if not hasattr(character.db, 'stats'):
-        return (False, "Character stats not initialized.")
-
-    if 'disciplines' not in character.db.stats:
-        character.db.stats['disciplines'] = {}
-
-    if discipline_name not in character.db.stats['disciplines']:
-        character.db.stats['disciplines'][discipline_name] = {'level': 0, 'powers': []}
-
-    character.db.stats['disciplines'][discipline_name]['level'] = new_rating
+    character.set_trait(discipline_name, new_rating, 'disciplines')
 
     # Deduct XP
     clan_str = " (in-clan)" if is_in_clan else " (out-of-clan)"
@@ -468,10 +457,7 @@ def spend_xp_on_humanity(character, reason=""):
         return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
 
     # Raise Humanity
-    if not hasattr(character.db, 'vampire'):
-        return (False, "Character vampire data not initialized.")
-
-    character.db.vampire['humanity'] = new_rating
+    character.humanity = new_rating
 
     # Deduct XP
     _deduct_xp(character, cost, f"Raised Humanity to {new_rating}" + (f" - {reason}" if reason else ""))
@@ -481,35 +467,18 @@ def spend_xp_on_humanity(character, reason=""):
 
 def spend_xp_on_willpower(character, reason=""):
     """
-    Spend XP to raise permanent Willpower.
+    Refuse: Willpower is Composure + Resolve and is never bought directly.
+
+    Raise Composure or Resolve instead.
 
     Args:
         character: Character object
-        reason (str): Reason for purchase
+        reason (str): Unused
 
     Returns:
-        tuple: (success: bool, message: str)
+        tuple: (False, message)
     """
-    cost, new_rating = get_xp_cost_willpower(character)
-
-    if cost is None:
-        return (False, "Cannot raise Willpower further (max 10).")
-
-    current_xp = get_current_xp(character)
-    if current_xp < cost:
-        return (False, f"Insufficient XP. Need {cost}, have {current_xp}.")
-
-    # Raise Willpower
-    if not hasattr(character.db, 'pools'):
-        return (False, "Character pools not initialized.")
-
-    character.db.pools['willpower'] = new_rating
-    character.db.pools['current_willpower'] = new_rating  # Also restore to full
-
-    # Deduct XP
-    _deduct_xp(character, cost, f"Raised permanent Willpower to {new_rating}" + (f" - {reason}" if reason else ""))
-
-    return (True, f"Raised permanent Willpower to {new_rating} for {cost} XP.")
+    return (False, "Willpower is Composure + Resolve. Raise one of those attributes instead.")
 
 
 def _deduct_xp(character, amount, reason):
@@ -523,8 +492,7 @@ def _deduct_xp(character, amount, reason):
     """
     exp = character.db.experience
 
-    exp['current'] -= amount
-    exp['total_spent'] += amount
+    exp['total_spent'] = exp.get('total_spent', 0) + amount
 
     # Log the expenditure
     from datetime import datetime
@@ -533,7 +501,7 @@ def _deduct_xp(character, amount, reason):
         'amount': -amount,
         'reason': reason,
         'date': datetime.now().isoformat(),
-        'balance': exp['current']
+        'balance': character.xp
     }
 
     if 'log' not in exp:
@@ -554,7 +522,7 @@ def get_xp_log(character, limit=10):
     Returns:
         list: XP log entries
     """
-    exp = character.db.experience if hasattr(character.db, 'experience') else {}
+    exp = character.db.experience if isinstance(character.db.experience, Mapping) else {}
     log = exp.get('log', [])
 
     return log[-limit:] if limit else log

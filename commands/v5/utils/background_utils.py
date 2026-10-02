@@ -4,8 +4,15 @@ Background Utility Functions
 Helper functions for Background mechanics and benefits.
 """
 
-from world.v5_data import BACKGROUNDS
+from world.v5_data import BACKGROUNDS, TRAIT_REGISTRY, UnknownTrait
 import random
+
+
+def _background_uses(character):
+    """The per-session background use counters, created if missing."""
+    if character.db.background_uses is None:
+        character.db.background_uses = {}
+    return character.db.background_uses
 
 
 def get_background_level(character, background_name):
@@ -18,10 +25,10 @@ def get_background_level(character, background_name):
     Returns:
         int: Level (0-5)
     """
-    if not hasattr(character.db, "backgrounds"):
-        character.db.backgrounds = {}
-
-    return character.db.backgrounds.get(background_name.lower(), 0)
+    try:
+        return character.get_trait(background_name, "backgrounds")
+    except UnknownTrait:
+        return 0
 
 
 def get_all_backgrounds(character):
@@ -31,12 +38,14 @@ def get_all_backgrounds(character):
         character: The character object
 
     Returns:
-        dict: {"background_name": level}
+        dict: {"background_key": level}; an instanced background (Allies,
+        Contacts, ...) rates as the total of its instances
     """
-    if not hasattr(character.db, "backgrounds"):
-        character.db.backgrounds = {}
-
-    return character.db.backgrounds.copy()
+    return {
+        key: character.get_trait(key)
+        for key in character.advantages["backgrounds"]
+        if key in TRAIT_REGISTRY
+    }
 
 
 def get_background_benefits(character, background_name):
@@ -85,8 +94,7 @@ def get_background_uses_remaining(character, background_name):
     Returns:
         int: Remaining uses (-1 for unlimited)
     """
-    if not hasattr(character.db, "background_uses"):
-        character.db.background_uses = {}
+    uses = _background_uses(character)
 
     level = get_background_level(character, background_name)
     bg_data = BACKGROUNDS.get(background_name, {})
@@ -102,14 +110,14 @@ def get_background_uses_remaining(character, background_name):
         max_uses = level * 2
     elif uses_per_session == "1 per week":
         # Check if used this week
-        if background_name.lower() in character.db.background_uses:
+        if background_name.lower() in uses:
             return 0
         return 1
     else:
         max_uses = level
 
     # Get current uses
-    used = character.db.background_uses.get(background_name.lower(), 0)
+    used = uses.get(background_name.lower(), 0)
     return max(0, max_uses - used)
 
 
@@ -144,11 +152,8 @@ def use_background(character, background_name, task_description):
 
     # Consume a use (if limited)
     if uses_remaining > 0:
-        if not hasattr(character.db, "background_uses"):
-            character.db.background_uses = {}
-
-        used = character.db.background_uses.get(background_name.lower(), 0)
-        character.db.background_uses[background_name.lower()] = used + 1
+        uses = _background_uses(character)
+        uses[background_name.lower()] = uses.get(background_name.lower(), 0) + 1
 
     # Calculate bonus based on background type
     bonus = calculate_background_bonus(character, background_name, task_description)
@@ -205,21 +210,15 @@ def use_herd_to_feed(character):
             "hunger_reduced": 0
         }
 
-    # Ensure vampire attribute exists
-    if not hasattr(character.db, 'vampire'):
-        character.db.vampire = {"hunger": 1}
-
     # Reduce Hunger by level (max to 1)
-    current_hunger = character.db.vampire.get("hunger", 1)
+    current_hunger = character.hunger
     reduction = min(level, current_hunger - 1)
 
     if reduction > 0:
-        character.db.vampire["hunger"] = current_hunger - reduction
+        character.hunger = current_hunger - reduction
 
         # Mark as used
-        if not hasattr(character.db, "background_uses"):
-            character.db.background_uses = {}
-        character.db.background_uses["herd"] = 1
+        _background_uses(character)["herd"] = 1
 
         return {
             "success": True,
@@ -268,11 +267,8 @@ def use_resources_to_acquire(character, item_description, item_rating):
         }
 
     # Consume use
-    if not hasattr(character.db, "background_uses"):
-        character.db.background_uses = {}
-
-    used = character.db.background_uses.get("resources", 0)
-    character.db.background_uses["resources"] = used + 1
+    uses = _background_uses(character)
+    uses["resources"] = uses.get("resources", 0) + 1
 
     return {
         "success": True,
