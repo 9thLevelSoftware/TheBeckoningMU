@@ -5,26 +5,102 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+# The gated Character locks, frozen here (typeclasses.characters.CHARACTER_LOCKS
+# may change later; a migration must not).
+CHARACTER_LOCKS = (
+    "puppet:(char_owner() and char_approved()) or perm(Admin);"
+    "delete:char_owner() or perm(Admin);"
+    "edit:perm(Admin)"
+)
+GATED_ACCESS_TYPES = ("puppet", "delete", "edit")
+PACKED = "__packed_dbobj__"
+
+
+def _gated(storage):
+    kept = [
+        part
+        for part in str(storage or "").split(";")
+        if part.strip() and part.split(":", 1)[0].strip() not in GATED_ACCESS_TYPES
+    ]
+    return ";".join(kept + [CHARACTER_LOCKS])
+
+
+def _packed_ids(value):
+    """Object ids inside an Evennia-serialized Attribute value."""
+    if isinstance(value, (list, tuple)):
+        if len(value) == 4 and value[0] == PACKED and isinstance(value[3], int):
+            yield value[3]
+            return
+        for item in value:
+            yield from _packed_ids(item)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _packed_ids(item)
+
+
+def _attribute(obj, key):
+    attr = obj.db_attributes.filter(db_key=key, db_category__isnull=True).first()
+    return attr.db_value if attr else None
+
+
 def backfill_owners(apps, schema_editor):
-    """Applications made before this migration recorded the owner only as the
-    character's db_account; copy it into CharacterBio.account. A leftover
-    'draft' status becomes 'submitted'."""
+    """Give every application made before this migration its owner.
+
+    Older applications recorded the owner only as the character's db_account,
+    which Evennia clears when the character is unpuppeted. Look in order at:
+    db_account, the character's creator_id Attribute (Character.create sets
+    it), then the accounts whose _playable_characters list holds it. Print the
+    applications no source resolves, for staff to fix by hand. A leftover
+    'draft' status becomes 'submitted'.
+    """
     CharacterBio = apps.get_model("traits", "CharacterBio")
+    AccountDB = apps.get_model("accounts", "AccountDB")
+    playable = {}
+    for account in AccountDB.objects.all():
+        for object_id in _packed_ids(_attribute(account, "_playable_characters")):
+            playable.setdefault(object_id, account.id)
+    unresolved = []
     for bio in CharacterBio.objects.select_related("character").filter(account__isnull=True):
-        if bio.character.db_account_id:
-            bio.account_id = bio.character.db_account_id
+        character = bio.character
+        owner = character.db_account_id
+        if not owner:
+            creator = _attribute(character, "creator_id")
+            if isinstance(creator, int) and AccountDB.objects.filter(id=creator).exists():
+                owner = creator
+        owner = owner or playable.get(character.id)
+        if owner:
+            bio.account_id = owner
             bio.save(update_fields=["account"])
+        else:
+            unresolved.append(f"#{character.id} {character.db_key}")
     CharacterBio.objects.filter(status="draft").update(status="submitted")
+    if unresolved:
+        print(f"\n  traits 0003: no owner found for {', '.join(unresolved)}; set CharacterBio.account by hand.")
+
+
+def relock_characters(apps, schema_editor):
+    """Put the gated puppet/delete/edit locks on every existing Character.
+
+    New characters get them at creation. Staff NPCs made earlier need
+    `lock <obj> = puppet:perm(Builder)` again afterwards.
+    """
+    ObjectDB = apps.get_model("objects", "ObjectDB")
+    for obj in ObjectDB.objects.filter(db_typeclass_path__startswith="typeclasses.characters."):
+        obj.db_lock_storage = _gated(obj.db_lock_storage)
+        obj.save(update_fields=["db_lock_storage"])
 
 
 # Hand-edited after `evennia makemigrations traits`: the traitvalue
 # unique_together change is moved before the removal of its field (the
-# generated order fails with KeyError 'trait'), and backfill_owners added.
+# generated order fails with KeyError 'trait'); backfill_owners and
+# relock_characters added; the applicant_ip/reviewer_ip/job_id fields added.
 class Migration(migrations.Migration):
 
     dependencies = [
         ('traits', '0002_characterbio_status_background'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        ('objects', '0013_defaultobject_alter_objectdb_id_defaultcharacter_and_more'),
+        ('typeclasses', '0017_use_index_instead_of_index_together_in_tags'),
     ]
 
     operations = [
@@ -132,7 +208,23 @@ class Migration(migrations.Migration):
             name='submission',
             field=models.JSONField(blank=True, default=dict),
         ),
+        migrations.AddField(
+            model_name='characterbio',
+            name='applicant_ip',
+            field=models.GenericIPAddressField(blank=True, help_text='Address the application came from', null=True),
+        ),
+        migrations.AddField(
+            model_name='characterbio',
+            name='reviewer_ip',
+            field=models.GenericIPAddressField(blank=True, help_text='Address of the last review decision', null=True),
+        ),
+        migrations.AddField(
+            model_name='characterbio',
+            name='job_id',
+            field=models.PositiveIntegerField(blank=True, help_text="The application's Approval job", null=True),
+        ),
         migrations.RunPython(backfill_owners, migrations.RunPython.noop),
+        migrations.RunPython(relock_characters, migrations.RunPython.noop),
         migrations.AlterField(
             model_name='characterbio',
             name='status',

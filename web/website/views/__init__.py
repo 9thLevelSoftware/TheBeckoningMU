@@ -51,7 +51,7 @@ class CharacterCreationView(TemplateView):
         context = super().get_context_data(**kwargs)
         context["page_title"] = "Create Character"
         edit_id = self.request.GET.get("edit")
-        if edit_id and edit_id.isdigit():
+        if edit_id and edit_id.isascii() and edit_id.isdigit():
             context["edit_character_id"] = int(edit_id)
         return context
 

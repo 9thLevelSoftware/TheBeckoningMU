@@ -91,3 +91,22 @@ class ClientHasNoNonCoreClansTests(unittest.TestCase):
         for clan in v5_data.NON_CORE_CLANS:
             self.assertNotIn(clan, template, clan)
             self.assertNotIn(clan, script, clan)
+
+
+@unittest.skipUnless(shutil.which("node"), "Node.js is not installed")
+class ApprovalPageScriptTests(unittest.TestCase):
+    def test_inline_script_parses(self):
+        """The staff page's inline script is edited by hand; make sure it still parses."""
+        import re
+        import tempfile
+
+        page = (SCRIPT.parent.parent.parent / "templates" / "character_approval.html").read_text(encoding="utf-8")
+        body = page[page.index("{% block extra_js %}") :]
+        script = "\n".join(re.findall(r"<script>(.*?)</script>", body, re.S))
+        script = script.replace("{{ csrf_token }}", "x").replace('{{ can_revoke|yesno:"true,false" }}', "true")
+        self.assertNotIn("{{", script)
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as handle:
+            handle.write(script)
+        result = subprocess.run(["node", "--check", handle.name], capture_output=True, text=True, timeout=60)
+        Path(handle.name).unlink()
+        self.assertEqual(result.returncode, 0, result.stderr)

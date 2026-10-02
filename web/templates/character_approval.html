@@ -410,6 +410,7 @@
                     <p class="mb-1"><strong>Player:</strong> ${escapeHtml(char.player_name)}</p>
                     <p class="mb-1"><strong>Clan:</strong> ${escapeHtml(char.clan || 'Not set')}</p>
                     <p class="mb-1"><strong>Concept:</strong> ${escapeHtml(char.concept || 'Not set')}</p>
+                    ${char.same_origin_as_you ? '<p class="mb-1" style="color: var(--text-crimson);"><strong>Applied from your address</strong></p>' : ''}
                     <small>${formatDate(char.submitted_date)}</small>
                 </div>
             `;
@@ -503,8 +504,11 @@
 
         // Review record and the actions this reviewer may take
         let reviewHTML = '';
+        if (data.bio.applicant_ip) {
+            reviewHTML += `<p style="color: var(--text-secondary);"><strong style="color: var(--text-gold);">Applied from:</strong> ${escapeHtml(data.bio.applicant_ip)}${data.same_origin_as_you ? ' <strong style="color: var(--text-crimson);">(same address as you: is this your own alt? Alt-account self-approval is forbidden)</strong>' : ''}</p>`;
+        }
         if (data.bio.reviewed_by) {
-            reviewHTML = `<p style="color: var(--text-secondary);"><strong style="color: var(--text-gold);">Last reviewed by:</strong> ${escapeHtml(data.bio.reviewed_by)}${data.bio.self_reviewed ? ' (self-approved)' : ''} ${data.bio.reviewed_at ? 'on ' + escapeHtml(formatDate(data.bio.reviewed_at)) : ''}</p>`;
+            reviewHTML += `<p style="color: var(--text-secondary);"><strong style="color: var(--text-gold);">Last reviewed by:</strong> ${escapeHtml(data.bio.reviewed_by)}${data.bio.self_reviewed ? ' (self-approved)' : ''}${data.bio.reviewed_same_origin ? ' (from the applicant&#39;s address)' : ''} ${data.bio.reviewed_at ? 'on ' + escapeHtml(formatDate(data.bio.reviewed_at)) : ''}</p>`;
         }
         let actionsHTML = '';
         if (data.bio.status === 'submitted' && data.can_review) {
@@ -747,7 +751,7 @@
             <div class="toast align-items-center text-white bg-${type} border-0" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="true" data-bs-delay="3000">
                 <div class="d-flex">
                     <div class="toast-body">
-                        ${message}
+                        ${escapeHtml(message)}
                     </div>
                     <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
                 </div>

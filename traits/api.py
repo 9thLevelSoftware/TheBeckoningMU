@@ -17,7 +17,6 @@ validate and read before the hand-off.
 
 import json
 
-from django.conf import settings
 from django.http import JsonResponse
 from django.views import View
 from evennia.utils import logger
@@ -25,18 +24,26 @@ from evennia.utils import logger
 from traits.models import CharacterBio
 from traits.utils import (
     ChargenError,
-    active_application_count,
     approve_unit,
     create_character_unit,
-    name_taken,
+    name_problem,
+    over_character_limit,
     reject_unit,
+    resubmit_revoked_unit,
     resubmit_unit,
     revoke_unit,
 )
 from web.main_thread import call_in_main_thread
 from web.permissions import has_perm
 from world import v5_data
-from world.rules_chargen import CONVICTION_RANGE, SubmissionError, parse_submission, validate_v5_creation
+from world.rules_chargen import (
+    CONVICTION_RANGE,
+    REQUIRED_TEXT,
+    TEXT_LIMITS,
+    SubmissionError,
+    parse_submission,
+    validate_v5_creation,
+)
 
 REVIEW_ACTIONS = {"approve": "approved", "reject": "rejected", "revoke": "revoked"}
 
@@ -64,6 +71,11 @@ class BaseAPIView(View):
                 return error("The request body must be a JSON object", 400)
             request.json = body
         return super().dispatch(request, *args, **kwargs)
+
+
+def client_ip(request):
+    """The request's REMOTE_ADDR (what Evennia itself records), or None."""
+    return request.META.get("REMOTE_ADDR") or None
 
 
 def _bio_or_404(character_id):
@@ -440,12 +452,17 @@ def _bio_data(bio, character):
         "clan": character.clan,
         "generation": character.generation,
         "predator_type": character.predator_type,
-        "age": (bio.submission or {}).get("age"),
+        "age": character.age_category,
         "status": bio.status,
         "approved": bio.status == "approved",
         "reviewed_by": bio.reviewed_by.username if bio.reviewed_by else None,
         "reviewed_at": bio.reviewed_at.isoformat() if bio.reviewed_at else None,
         "self_reviewed": bool(bio.reviewed_by_id and bio.reviewed_by_id == bio.account_id),
+        "applicant_ip": bio.applicant_ip,
+        "reviewer_ip": bio.reviewer_ip,
+        # A review made from the address the application came from: possibly
+        # an alt account approving its own character (forbidden by policy).
+        "reviewed_same_origin": bool(bio.applicant_ip and bio.applicant_ip == bio.reviewer_ip),
         "created_at": bio.created_at.isoformat() if bio.created_at else None,
         "rejection_notes": bio.rejection_notes,
         "rejection_count": bio.rejection_count,
@@ -462,8 +479,9 @@ class CharacterValidationAPI(BaseAPIView):
 
     def post(self, request):
         sub, errors = _parse_and_validate(request.json)
-        if sub and not errors and name_taken(sub.name):
-            errors = [f"A character named '{sub.name}' already exists"]
+        if sub and not errors:
+            problem = name_problem(sub.name, request.user)
+            errors = [problem] if problem else []
         return JsonResponse({"valid": not errors, "errors": errors})
 
 
@@ -474,13 +492,14 @@ class CharacterCreateAPI(BaseAPIView):
         sub, errors = _parse_and_validate(request.json)
         if errors:
             return error(errors, 400)
-        if name_taken(sub.name):
-            return error(f"A character named '{sub.name}' already exists", 400)
-        limit = settings.MAX_NR_CHARACTERS
-        if limit is not None and active_application_count(request.user) >= limit:
+        problem = name_problem(sub.name, request.user)
+        if problem:
+            return error(problem, 400)
+        limit = over_character_limit(request.user)
+        if limit is not None:
             return error(f"You may have at most {limit} pending or approved characters", 400)
         try:
-            character = call_in_main_thread(create_character_unit, request.user, sub)
+            character = call_in_main_thread(create_character_unit, request.user, sub, client_ip(request))
         except ChargenError as err:
             return error(err.errors, err.status)
         except Exception:
@@ -529,9 +548,22 @@ class CharacterEditDataAPI(BaseAPIView):
             return error("Permission denied", 403)
         if not bio.can_transition("submitted"):
             return error("Only rejected or revoked characters can be edited and resubmitted", 409)
+        if bio.status == "revoked":
+            # Revoking pauses play; the played sheet goes back for review as it is.
+            return JsonResponse(
+                {
+                    "character_id": bio.character_id,
+                    "mode": "revoked",
+                    "narrative": _narrative(bio, bio.character),
+                    "sheet": export_character(bio.character),
+                    "rejection_notes": bio.rejection_notes,
+                    "rejection_count": bio.rejection_count,
+                }
+            )
         return JsonResponse(
             {
                 "character_id": bio.character_id,
+                "mode": "rejected",
                 "character_data": bio.submission,
                 "rejection_notes": bio.rejection_notes,
                 "rejection_count": bio.rejection_count,
@@ -550,13 +582,22 @@ class CharacterResubmitAPI(BaseAPIView):
             return error("Permission denied", 403)
         if not bio.can_transition("submitted"):
             return error("Only rejected or revoked characters can be resubmitted", 409)
-        sub, errors = _parse_and_validate(request.json)
-        if errors:
-            return error(errors, 400)
-        if name_taken(sub.name, exclude_id=bio.character_id):
-            return error(f"A character named '{sub.name}' already exists", 400)
+        if bio.status == "revoked":
+            narrative, errors = _parse_narrative(request.json, bio)
+            if errors:
+                return error(errors, 400)
+            unit, args = resubmit_revoked_unit, (bio.pk, request.user, narrative)
+        else:
+            sub, errors = _parse_and_validate(request.json)
+            if errors:
+                return error(errors, 400)
+            if sub.name.lower() != bio.character.db_key.lower():
+                problem = name_problem(sub.name, request.user, exclude_id=bio.character_id)
+                if problem:
+                    return error(problem, 400)
+            unit, args = resubmit_unit, (bio.pk, request.user, sub)
         try:
-            call_in_main_thread(resubmit_unit, bio.pk, request.user, sub)
+            call_in_main_thread(unit, *args)
         except ChargenError as err:
             return error(err.errors, err.status)
         except CharacterBio.TransitionError as err:
@@ -567,6 +608,34 @@ class CharacterResubmitAPI(BaseAPIView):
         return JsonResponse(
             {"success": True, "character_id": bio.character_id, "message": "Character resubmitted for approval"}
         )
+
+
+NARRATIVE_KEYS = ("concept", "sire", "ambition", "desire", "background")
+
+
+def _narrative(bio, character):
+    return {"name": character.db_key, **{key: getattr(bio, key) for key in NARRATIVE_KEYS}}
+
+
+def _parse_narrative(data, bio):
+    """A revoked character's resubmission: only narrative text may change."""
+    unknown = sorted(str(key) for key in data if key not in NARRATIVE_KEYS)
+    if unknown:
+        return None, [f"A revoked character keeps its sheet; only {', '.join(NARRATIVE_KEYS)} can change "
+                      f"(unknown key(s): {', '.join(unknown)})"]  # fmt: skip
+    narrative, errors = {}, []
+    for key in NARRATIVE_KEYS:
+        value = data.get(key, getattr(bio, key))
+        if not isinstance(value, str):
+            errors.append(f"{key}: must be text")
+            continue
+        value = value.strip()
+        if key in REQUIRED_TEXT and not value:
+            errors.append(f"{key}: is required")
+        if len(value) > TEXT_LIMITS[key]:
+            errors.append(f"{key}: at most {TEXT_LIMITS[key]} characters")
+        narrative[key] = value
+    return narrative, errors
 
 
 class CharacterExportAPI(BaseAPIView):
@@ -611,6 +680,7 @@ class PendingCharactersAPI(BaseAPIView):
                     "submitted_date": bio.created_at.isoformat() if bio.created_at else None,
                     "reviewed_by": bio.reviewed_by.username if bio.reviewed_by else None,
                     "can_review": _can_review(request.user, bio),
+                    "same_origin_as_you": bool(bio.applicant_ip and bio.applicant_ip == client_ip(request)),
                 }
             )
         return JsonResponse({"pending_characters": data})
@@ -649,6 +719,7 @@ class CharacterDetailAPI(BaseAPIView):
                 "powers": powers,
                 "can_review": _can_review(request.user, bio),
                 "can_revoke": has_perm(request.user, "Admin"),
+                "same_origin_as_you": bool(bio.applicant_ip and bio.applicant_ip == client_ip(request)),
             }
         )
 
@@ -679,7 +750,7 @@ class CharacterApprovalAPI(BaseAPIView):
 
         unit = {"approve": approve_unit, "reject": reject_unit, "revoke": revoke_unit}[action]
         try:
-            bio = call_in_main_thread(unit, bio.pk, request.user, notes.strip())
+            bio = call_in_main_thread(unit, bio.pk, request.user, notes.strip(), client_ip(request))
         except ChargenError as err:
             return error(err.errors, err.status)
         except CharacterBio.TransitionError as err:
@@ -696,5 +767,6 @@ class CharacterApprovalAPI(BaseAPIView):
                 "reviewed_by": request.user.username,
                 "reviewed_at": bio.reviewed_at.isoformat() if bio.reviewed_at else None,
                 "self_reviewed": bio.account_id == request.user.id,
+                "same_origin": bool(bio.applicant_ip and bio.applicant_ip == bio.reviewer_ip),
             }
         )

@@ -71,6 +71,41 @@ class MainThreadDirectCallTests(SimpleTestCase):
         self.assertEqual(calls, ["direct", "handoff", "direct"])
 
 
+class FakeReactor:
+    """Runs callFromThread work at once, standing in for the running reactor."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def callFromThread(self, f, *args, **kwargs):  # noqa: N802 - Twisted's API name
+        self.calls += 1
+        f(*args, **kwargs)
+
+
+class RealHandOffTests(SimpleTestCase):
+    """R-19: the wrapper and Twisted's real blockingCallFromThread, not a patch."""
+
+    def test_result_and_exceptions_cross_the_hand_off(self):
+        from traits.utils import ChargenError
+
+        fake = FakeReactor()
+
+        def ok(a, b=0):
+            return ("ran on reactor", a + b)
+
+        def refuse():
+            raise ChargenError("nope", status=409)
+
+        with mock.patch.object(main_thread, "reactor", fake):
+            result, error = run_in_thread(lambda: main_thread.call_in_main_thread(ok, 2, b=3))
+            self.assertIsNone(error)
+            self.assertEqual(result, ("ran on reactor", 5))
+            _, error = run_in_thread(lambda: main_thread.call_in_main_thread(refuse))
+        self.assertIsInstance(error, ChargenError)
+        self.assertEqual((error.status, error.errors), (409, ["nope"]))
+        self.assertEqual(fake.calls, 2)
+
+
 class MainThreadTransactionTests(TransactionTestCase):
     def test_worker_thread_inside_atomic_raises(self):
         def worker():

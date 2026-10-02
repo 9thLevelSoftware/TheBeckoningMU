@@ -22,7 +22,7 @@ class CharacterBio(models.Model):
     Character accessors, not here.
     """
 
-    character = models.OneToOneField(ObjectDB, on_delete=models.CASCADE, related_name='vtm_bio')
+    character = models.OneToOneField(ObjectDB, on_delete=models.CASCADE, related_name="vtm_bio")
 
     # Core VtM 5e background
     full_name = models.CharField(max_length=200, blank=True, help_text="Character's full name")
@@ -36,51 +36,49 @@ class CharacterBio(models.Model):
     # one ownership fact (the char_owner() lockfunc reads it); it is never
     # the character's current puppeteer (db_account).
     account = models.ForeignKey(
-        'accounts.AccountDB',
+        "accounts.AccountDB",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='character_bios',
+        related_name="character_bios",
         help_text="Account that owns this character",
     )
 
     # Status lifecycle
     STATUS_CHOICES = [
-        ('submitted', 'Submitted'),
-        ('rejected', 'Rejected'),
-        ('approved', 'Approved'),
-        ('revoked', 'Revoked'),
+        ("submitted", "Submitted"),
+        ("rejected", "Rejected"),
+        ("approved", "Approved"),
+        ("revoked", "Revoked"),
     ]
     status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default='submitted',
-        help_text="Current approval status"
+        max_length=20, choices=STATUS_CHOICES, default="submitted", help_text="Current approval status"
     )
-    background = models.TextField(
-        blank=True,
-        help_text="Character's backstory/background narrative"
-    )
-    rejection_notes = models.TextField(
-        blank=True,
-        help_text="Staff feedback on why character was rejected"
-    )
+    background = models.TextField(blank=True, help_text="Character's backstory/background narrative")
+    rejection_notes = models.TextField(blank=True, help_text="Staff feedback on why character was rejected")
     rejection_count = models.PositiveIntegerField(
-        default=0,
-        help_text="Number of times this character has been rejected"
+        default=0, help_text="Number of times this character has been rejected"
     )
 
     # Review record: the staff member who made the last approve, reject or
     # revoke decision, and when.
     reviewed_by = models.ForeignKey(
-        'accounts.AccountDB',
+        "accounts.AccountDB",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='reviewed_character_bios',
+        related_name="reviewed_character_bios",
         help_text="Staff account that made the last review decision",
     )
     reviewed_at = models.DateTimeField(blank=True, null=True, help_text="When the last review decision was made")
+
+    # Where the application and the last review came from (REMOTE_ADDR), so
+    # staff can spot a reviewer approving an alt account's character.
+    applicant_ip = models.GenericIPAddressField(null=True, blank=True, help_text="Address the application came from")
+    reviewer_ip = models.GenericIPAddressField(null=True, blank=True, help_text="Address of the last review decision")
+
+    # The Approval-bucket job opened for this application (jobs.Job id).
+    job_id = models.PositiveIntegerField(null=True, blank=True, help_text="The application's Approval job")
 
     # The application as last submitted (world.rules_chargen.Submission.as_dict()).
     # It prefills the edit form after a rejection and shows staff what was
@@ -95,19 +93,19 @@ class CharacterBio(models.Model):
     # Allowed status changes: {(from, to): permission the actor needs}.
     # "owner" means the owning account; the others are Evennia permissions.
     TRANSITIONS = {
-        ('submitted', 'approved'): 'Builder',
-        ('submitted', 'rejected'): 'Builder',
-        ('rejected', 'submitted'): 'owner',
-        ('approved', 'revoked'): 'Admin',
-        ('revoked', 'submitted'): 'owner',
+        ("submitted", "approved"): "Builder",
+        ("submitted", "rejected"): "Builder",
+        ("rejected", "submitted"): "owner",
+        ("approved", "revoked"): "Admin",
+        ("revoked", "submitted"): "owner",
     }
-    REVIEW_STATUSES = ('approved', 'rejected', 'revoked')
+    REVIEW_STATUSES = ("approved", "rejected", "revoked")
 
     class TransitionError(Exception):
         """The status change isn't allowed from the current status (or it changed meanwhile)."""
 
     class Meta:
-        app_label = 'traits'
+        app_label = "traits"
 
     def __str__(self):
         return f"{self.character.db_key}'s Bio ({self.status})"

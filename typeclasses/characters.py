@@ -215,6 +215,13 @@ class Character(ObjectParent, DefaultCharacter):
         super().basetype_setup()
         self.locks.replace(gated_lockstring(str(self.locks)))
 
+    def at_object_delete(self):
+        """Close the character's application job (traits.utils) before it goes."""
+        from traits.utils import close_job_for_deleted_character
+
+        close_job_for_deleted_character(self)
+        return super().at_object_delete()
+
     def at_object_creation(self):
         """Initialize every V5 store that is not already present."""
         super().at_object_creation()
@@ -881,9 +888,7 @@ class Character(ObjectParent, DefaultCharacter):
                 time_str = f"|G{minutes}m|n"
             elif minutes > 15 and minutes < 20:
                 time_str = f"|y{minutes}m|n"
-            elif minutes > 20 and minutes < 30:
-                time_str = f"|r{minutes}m|n"
-            elif minutes >= 30:
+            elif minutes > 20 and minutes < 30 or minutes >= 30:
                 time_str = f"|r{minutes}m|n"
             else:
                 time_str = f"|g{minutes}m|n"
