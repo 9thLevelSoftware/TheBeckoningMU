@@ -8,31 +8,39 @@
 |c1. CHARACTER APPROVAL PROCESS|n
 
 |yApproval Required|n
-- ALL characters must be approved by staff before play
-- Create and submit your character on the game website (|w/character-creation/|n)
-- Approval typically within 24-48 hours
+- Characters are created only on the game website (|w/character-creation/|n)
+- A character can't be played (|wic|n), roll or spend XP until staff approve it
+- The website checks every V5 creation rule before it accepts a character
 
 |yWhat Staff Reviews|n
 - Concept fits V5 Vampire theme
-- Mechanical stats are legal and balanced
 - Background is realistic and grounded
 - Character doesn't break game continuity
 - No "special snowflake" concepts without approval
+- A staff member never approves their own character (Admins excepted,
+  and every approval records who made it). Approving a character made on
+  your own second account counts as approving your own: it is forbidden.
+  The approval page shows the address each application came from and
+  flags one that matches the reviewer's.
 
 |yRevisions|n
-- Staff may request changes before approval
-- Check your |w+jobs|n for staff feedback
-- Resubmit after making requested changes
-- Usually approved within 1-2 revision rounds
+- Staff may reject a character with notes saying what to change
+- You are told in game; edit and resubmit it on the website
+- Until it is approved you can delete it with |wchardelete <name>|n
+- Staff can revoke an approval; the character is taken out of play.
+  Revoking only pauses play: your sheet, XP and everything bought in play
+  are kept. Resubmit it on the website (you may update the concept,
+  sire, ambition, desire and background) and staff review it as it stands
 
 |w═══════════════════════════════════════════════════════════════════|n
 
 |c2. CHARACTER CONCEPT GUIDELINES|n
 
 |yAppropriate Concepts|n
-- Newly-Embraced vampires (neonates)
-- Thin-Bloods (Duskborn)
-- Ancillae (100-300 years old, with strong justification)
+- Childer: Embraced within the last 15 years (12th-13th generation),
+  or thin-bloods (14th-16th generation)
+- Neonates: Embraced between 1940 and a decade ago (12th-13th generation)
+- Ancillae: Embraced between 1780 and 1940 (10th-11th generation)
 - Characters who fit the V5 modern nights setting
 - Concepts that create RP opportunities for others
 
@@ -56,40 +64,59 @@
 
 |c3. MECHANICAL GUIDELINES|n
 
-|yStarting Character Stats|n
+These are the V5 core-book creation rules; the website enforces them.
+
+|wAge (Sea of Time):|n
+- Childer: Blood Potency 1 (thin-bloods 0), no XP; a predator type is
+  optional (thin-bloods take none)
+- Neonate: Blood Potency 1, 15 XP to spend after approval
+- Ancilla: Blood Potency 2, 35 XP, +2 advantage dots, +2 flaw dots,
+  Humanity -1
 
 |wAttributes:|n
-- 1 dot in all attributes for free
-- Assign 7/5/3 dots across Physical/Social/Mental
-- No attribute above 3 at character creation (rare exceptions)
+- One at 4, three at 3, four at 2, one at 1
 
-|wSkills:|n
-- Assign 13/9/5 dots across Talents/Skills/Knowledges
-- No skill above 3 at character creation (without justification)
-- At least one specialty (dot represents specialized training)
+|wSkills (pick one distribution; every other Skill is 0):|n
+- Jack-of-all-Trades: one at 3, eight at 2, ten at 1
+- Balanced: three at 3, five at 2, seven at 1
+- Specialist: one at 4, three at 3, three at 2, three at 1
+
+|wSpecialties:|n
+- A free specialty in each of Academics, Craft, Performance and Science
+  you have dots in, plus one more, plus your predator type's
+- A specialty needs at least one dot in its Skill
 
 |wDisciplines:|n
-- 2 dots in-clan disciplines (e.g., 2/0/0 or 1/1/0)
-- Caitiff: 2 dots in any disciplines (with justification)
-- Thin-Bloods: Thin-Blood Alchemy instead
-- Out-of-clan disciplines require strong IC justification
+- 2 dots in one in-clan Discipline and 1 in another
+- Caitiff: 2 dots in any Discipline and 1 in another
+- Thin-bloods: none (the Thin-blood Alchemist merit gives Thin-Blood
+  Alchemy 1; Discipline Affinity gives one dot in one Discipline)
+- Plus 1 dot from your predator type
+- One power per dot, each at or below the Discipline's rating;
+  amalgam powers need their second Discipline
+- With Blood Sorcery you also know one level-1 ritual, free (core p.272)
+- Thin-blood Alchemist gives one formula, free (core p.282)
 
-|wBackgrounds:|n
-- 3 dots total to distribute
-- Resources 3+ requires justification (you're rich!)
-- Herd 3+ means significant mortal blood supply
-- Allies/Contacts: Define who they are
+|wAdvantages & Flaws:|n
+- Up to 7 dots of backgrounds and merits, and exactly 2 dots of flaws
+  (Ancillae: 9 and 4)
+- Your predator type's backgrounds, merits and flaws are added on top
+- Nosferatu take Repulsive and can't take Looks merits; Caitiff take
+  Suspect (added for you) and can't buy Status at creation
+- Thin-bloods take 1-3 thin-blood merits and the same number of
+  thin-blood flaws, which cost nothing; nobody else may take them,
+  Caitiff included. A Clan Curse names the clan whose Bane you carry
+- Instanced backgrounds (Allies, Contacts, Influence, Mawla, Retainers,
+  Status) need a note saying who or what they are
 
-|wAdvantages:|n
-- Humanity starts at 7 (adjust with merits/flaws if desired)
-- Willpower = Composure + Resolve (max 10)
-- Health levels standard for vampires
-- Blood Potency 0-1 for neonates
+|wConvictions, Ambition and Desire:|n
+- 1-3 Convictions, each with one Touchstone (core p.172-173)
+- An Ambition and a Desire (core p.173)
 
-|wMerits & Flaws:|n
-- Balanced - don't min-max
-- Must have RP justification
-- Some require staff approval (check merit descriptions)
+|wStarting Values:|n
+- Humanity 7, changed by age and predator type
+- Hunger 1
+- Health = Stamina + 3; Willpower = Composure + Resolve
 
 |w═══════════════════════════════════════════════════════════════════|n
 
@@ -127,12 +154,13 @@
 |c5. CLAN SELECTION|n
 
 |yAvailable Clans|n
-All 13 V5 core clans are available:
+The V5 core book's clans:
 
-|wCamarilla:|n Ventrue, Toreador, Tremere, Malkavian, Nosferatu, Brujah
-|wIndependent:|n Banu Haqim, Gangrel, Ravnos, Hecata, Lasombra
-|wAnarch:|n Ministry, Tzimisce
-|wClanless:|n Caitiff, Thin-Bloods
+|wClans:|n Brujah, Gangrel, Malkavian, Nosferatu, Toreador, Tremere, Ventrue
+|wClanless:|n Caitiff, Thin-Blood
+
+Clans from later books (Banu Haqim, Ministry, Lasombra, Hecata,
+Tzimisce, Ravnos, Salubri) are not available.
 
 |yConsider Before Choosing|n
 - Clan banes and how they affect RP
@@ -142,9 +170,8 @@ All 13 V5 core clans are available:
 
 |yDifficult Clans for New Players|n
 - |yMalkavian|n: Requires maturity to play mental illness well
-- |yNosferatu|n: Social penalty (Hideous) limits some RP
-- |yTzimisce|n: Complex mechanics and alien mindset
-- |yHecata|n: Death-focused, niche roleplay
+- |yNosferatu|n: Repulsive flaw and no Looks merits limit some RP
+- |yThin-Blood|n: Fragile, distrusted, and built from merit/flaw pairs
 
 |yGood Starter Clans|n
 - |gVentrue|n: Leadership, political play
@@ -157,21 +184,22 @@ All 13 V5 core clans are available:
 |c6. PREDATOR TYPE|n
 
 |yRequired Choice|n
-- ALL characters must choose a Predator Type
-- Defines how you feed and your relationship with Hunger
-- Affects starting dots in certain skills/disciplines
+- Every character takes a Predator Type, except thin-bloods (none) and
+  Childer (optional)
+- It gives a specialty, a Discipline dot, and fixed backgrounds,
+  merits or flaws; some change Humanity or Blood Potency
 
 |yAvailable Predator Types|n
-- |wAlleycat|n - Street predator, opportunistic feeding
-- |wBagger|n - Feed on blood bags, hospitals
+- |wAlleycat|n - Take blood by force or threat
+- |wBagger|n - Blood bags, corpses and other preserved blood (not Ventrue)
 - |wBlood Leech|n - Feed on other vampires
-- |wClercestory|n - Feed on your herd, sustainable
-- |wConsensusalist|n - Feed only with permission
-- |wFarmer|n - Feed on animals
-- |wOsmosis|n - Feed during sex
-- |wSandman|n - Break into homes, sleeping victims
-- |wSiren|n - Seduction and willing victims
-- |wScene Queen|n - Feed at clubs and parties
+- |wCleaver|n - Feed covertly on your own mortal family or friends
+- |wConsensualist|n - Feed only with consent
+- |wFarmer|n - Feed on animals only (not Ventrue, Blood Potency 2 or lower)
+- |wOsiris|n - Feed on the followers of your cult, band or fandom
+- |wSandman|n - Feed on sleeping victims
+- |wScene Queen|n - Feed within a subculture where you have status
+- |wSiren|n - Feed under the guise of sex or seduction
 
 |yConsiderations|n
 - How does this fit your Humanity?
@@ -211,7 +239,7 @@ All 13 V5 core clans are available:
 - What do you value most?
 - Examples: "Never harm children", "Protect the weak", "Always repay debts"
 
-|yTouchstones (Max = Humanity ÷ 2)|n
+|yTouchstones (one per Conviction)|n
 - Mortals who anchor your Humanity
 - People you care about
 - Connections to mortal world
@@ -281,7 +309,8 @@ All 13 V5 core clans are available:
 
 |yWeb Resources|n
 - Web chargen: the game website's |y/character-creation/|n page
-- Character approval status: Check your |w+jobs|n
+- Character approval status: the website's character creation page
+  lists your characters, and you are told in game when staff decide
 
 |yStaff Assistance|n
 - |w+job/create chargen=<question>|n for help
@@ -311,4 +340,4 @@ All 13 V5 core clans are available:
 
 |rWelcome to the night. Welcome to the Masquerade.|n
 
-|rLast Updated: November 2025|n
+|rLast Updated: October 2026|n
