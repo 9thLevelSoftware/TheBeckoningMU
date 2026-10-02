@@ -35,6 +35,11 @@ die). You Rouse to:
   - |ybloodsurge|n
   - rise for the night, mend damage, or show the Blush of Life
 
+The Hunger a Rouse costs is added after the action it fuels, so the
+action's own roll uses your Hunger from before. Hunger never goes past
+5: a failure that would take it higher means an immediate hunger frenzy
+test (Difficulty 4).
+
 Blood Potency lets you re-roll a failed Rouse check for discipline
 powers up to a level set by the Blood Potency table (|yhelp blood_commands|n).
 

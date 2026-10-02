@@ -55,8 +55,9 @@ re-roll a 10. Hunger dice can't be re-rolled.
 
 |WBLOOD SURGE:|n
 
-|ybloodsurge <trait>|n makes a Rouse check and adds the Blood Potency
-table's surge dice to your next |yroll|n (see |yhelp bloodsurge|n).
+|ybloodsurge <trait>|n adds the Blood Potency table's surge dice to your
+next |yroll|n or |ypower|n roll. Its Rouse check is made with that roll, and
+any Hunger it costs is added after the roll (see |yhelp bloodsurge|n).
 
 |WCOMMANDS:|n
 

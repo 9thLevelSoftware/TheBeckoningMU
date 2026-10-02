@@ -49,11 +49,18 @@ The command:
   - Refuses a power you haven't learned or lack the rating for
   - Refuses a power that needs a Rouse check at Hunger 5
   - Builds the pool from your traits, plus the Blood Potency power
-    bonus and a die from a matching Intense or Acute resonance
-  - Rolls with your current Hunger, then makes the power's Rouse
-    checks (some powers cost 2 or 3; free powers cost none)
+    bonus, a die from a matching Intense or Acute resonance and a
+    readied Blood Surge
+  - Rolls with your current Hunger; the power's Rouse checks (some
+    powers cost 2 or 3; free powers cost none) are rolled with it and
+    the Hunger they cost is added afterwards. If that would take Hunger
+    past 5, it stops at 5 and you must test for hunger frenzy
+    (Difficulty 4); the power still works
+  - Against a named target you need at least their successes (a tie
+    goes to you); without one, the Storyteller adjudicates
   - Uses powers that have no dice roll without rolling
-  - Starts the power's tracked effect, if it has one
+  - Starts the power's tracked effect if it succeeds; a Willpower
+    re-roll that changes the result starts or ends it
 
 Staff only: |ypower/norouse|n skips the Rouse checks.
 

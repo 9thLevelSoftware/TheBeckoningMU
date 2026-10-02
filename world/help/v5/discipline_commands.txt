@@ -36,9 +36,11 @@ Using a power will:
   2. Refuse it at Hunger 5 if it needs a |WRouse check|n
   3. Roll its pool, if it has one, with your current Hunger, adding the
      Blood Potency bonus and a die from a matching Intense or Acute
-     resonance; a named target rolls its resistance pool
-  4. Make its |WRouse checks|n (0-3) after the roll
-  5. Apply effects (viewable with +effects)
+     resonance (and a readied Blood Surge); a named target rolls its
+     resistance pool, and a tie goes to you
+  4. Roll its |WRouse checks|n (0-3) with it, adding the Hunger they
+     cost after the roll
+  5. Apply effects if it succeeds (viewable with +effects)
 
 See |yhelp dice_commands|n for details.
 
@@ -88,8 +90,10 @@ Effects may last for:
 
 |WHUNGER RESTRICTIONS:|n
 
-At |[RHunger 5|n, you cannot activate most discipline powers.
-Feed before attempting to use your vampiric abilities.
+At |[RHunger 5|n, you cannot use a power that needs a Rouse check.
+Feed first. Below Hunger 5 you can start any power; if its failed
+checks would take Hunger past 5, Hunger stops at 5 and you must test
+for hunger frenzy (Difficulty 4).
 
 |WRELATED TOPICS:|n
 
