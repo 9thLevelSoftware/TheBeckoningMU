@@ -361,6 +361,12 @@ class CmdsetSurvivalTests(SimpleTestCase):
             for cmd_class in classes:
                 self.assertIn(cmd_class, present, f"{cmdset_name}: {cmd_class.__name__} was shadowed")
 
+    def test_news_is_readable_before_puppeting(self):
+        """New players have no approved character yet; the welcome text sends them to news."""
+        account = AccountCmdSet()
+        account.at_cmdset_creation()
+        self.assertIn("news", account.get_all_cmd_keys_and_aliases())
+
     def test_game_commands_do_not_shadow_each_other_across_sets(self):
         """A puppeting player has both sets; a game command must not hide another."""
         names = {}
