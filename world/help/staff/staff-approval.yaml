@@ -78,8 +78,8 @@ text: |
     2. Submit it with a live room to connect to and a direction. Submit
        checks the map: at most 100 rooms, 200 exits, 10 triggers per room,
        30 timed triggers per project, timed intervals of at least 60
-       seconds, exit locks limited to traverse/view, and no MXP link
-       markup (||lc, ||lu, ||lt, ||le) anywhere in builder text.
+       seconds, exit locks limited to traverse/view, and no clickable
+       (MXP) link markup anywhere in builder text.
     3. Another Builder reviews it on |y/builder/review/|n. You can't
        approve or reject your own project (Admins may). A rejection sends
        it back to draft with notes; edit and resubmit.
