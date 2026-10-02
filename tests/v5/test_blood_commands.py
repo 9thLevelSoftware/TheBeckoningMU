@@ -11,7 +11,6 @@ tagged with their finding id, or are left to the PR that rebuilds them.
 """
 
 import time
-import unittest
 from unittest.mock import patch
 
 from evennia.utils.test_resources import EvenniaCommandTest
@@ -135,10 +134,7 @@ class CmdBloodSurgeTestCase(BloodCommandTestBase):
     def test_bloodsurge_requires_character(self):
         self.call(CmdBloodSurge(), "strength", "You must be in character", caller=self.account)
 
-    # F-017, fixed in PR 5: activate_blood_surge calls
-    # roll_rouse_check(character, reason=...), which takes no arguments, so
-    # every bloodsurge raises TypeError.
-    @unittest.expectedFailure
+    # F-017: bloodsurge makes one Rouse check.
     def test_bloodsurge_costs_a_rouse_check(self):
         """A failed Rouse (die 1-5) raises Hunger by 1 and the surge activates."""
         self.char.hunger = 2

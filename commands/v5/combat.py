@@ -130,7 +130,7 @@ class CmdAttack(Command):
 
         # Notify target
         target_msg = f"\n{BLOOD_RED}{caller.name} attacks you!{RESET}\n"
-        target_msg += f"Their attack roll: {dice_result.successes} successes vs your defense of {result['defense']}\n"
+        target_msg += f"Their attack roll: {dice_result.total_successes} successes vs your defense of {result['defense']}\n"
         if result['success']:
             target_msg += f"{DARK_RED}The attack succeeds!{RESET} Margin: {result['margin']}\n"
         else:

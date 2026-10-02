@@ -5,6 +5,10 @@ Handles hunting mechanics, prey selection, resonance determination, and complica
 """
 
 import random
+
+from dice.dice_roller import MAX_POOL, roll_v5_pool
+from world.v5_data import RESONANCE_INTENSITIES
+
 from .blood_utils import get_blood_potency_bonus, get_hunger_level, reduce_hunger, set_resonance
 from .clan_utils import get_clan
 
@@ -20,27 +24,24 @@ HUNTING_DIFFICULTIES = {
     "default": 4        # Default difficulty
 }
 
-# Resonance types and their emotional states
+# Flavour text for prey of each resonance. The humours' disciplines and
+# intensity effects are world.v5_data.RESONANCES / RESONANCE_INTENSITIES.
 RESONANCE_TYPES = {
     "Choleric": {
         "emotions": ["angry", "violent", "passionate", "envious", "competitive"],
-        "prey_types": ["bar fighter", "road rager", "abusive partner", "gang member", "sports fanatic"],
-        "disciplines": ["Celerity", "Potence"]
+        "prey_types": ["bar fighter", "road rager", "abusive partner", "gang member", "sports fanatic"]
     },
     "Melancholy": {
         "emotions": ["sad", "depressed", "intellectual", "contemplative", "grieving"],
-        "prey_types": ["mourner", "depressed artist", "struggling student", "lonely academic", "heartbroken lover"],
-        "disciplines": ["Fortitude", "Obfuscate"]
+        "prey_types": ["mourner", "depressed artist", "struggling student", "lonely academic", "heartbroken lover"]
     },
     "Phlegmatic": {
         "emotions": ["calm", "lazy", "apathetic", "controlling", "medicated"],
-        "prey_types": ["bureaucrat", "security guard", "exhausted worker", "stoner", "meditation practitioner"],
-        "disciplines": ["Auspex", "Dominate"]
+        "prey_types": ["bureaucrat", "security guard", "exhausted worker", "stoner", "meditation practitioner"]
     },
     "Sanguine": {
         "emotions": ["happy", "lustful", "enthusiastic", "high", "flirty"],
-        "prey_types": ["partygoer", "lover", "drug user", "optimist", "seducer"],
-        "disciplines": ["Presence", "Blood Sorcery"]
+        "prey_types": ["partygoer", "lover", "drug user", "optimist", "seducer"]
     }
 }
 
@@ -67,7 +68,7 @@ def determine_resonance(prey_description=None, location="street"):
     Returns:
         dict: Resonance information
             - type: Resonance type
-            - intensity: 1-3 (fleeting, intense, dyscrasia)
+            - intensity: 1-3 (Fleeting, Intense, Acute)
             - description: Narrative description
     """
     # Location-based resonance tendencies
@@ -88,22 +89,22 @@ def determine_resonance(prey_description=None, location="street"):
         weights=list(weights.values())
     )[0]
 
-    # Determine intensity (fleeting=1, intense=2, dyscrasia=3)
-    # Base: 70% fleeting, 25% intense, 5% dyscrasia
+    # Determine intensity (Fleeting=1, Intense=2, Acute=3)
+    # Base: 70% Fleeting, 25% Intense, 5% Acute
     intensity_roll = random.randint(1, 100)
     if intensity_roll <= 70:
         intensity = 1  # Fleeting
     elif intensity_roll <= 95:
         intensity = 2  # Intense
     else:
-        intensity = 3  # Dyscrasia
+        intensity = 3  # Acute
 
     # Generate prey description
     prey_list = RESONANCE_TYPES[res_type]["prey_types"]
     if not prey_description:
         prey_description = random.choice(prey_list)
 
-    intensity_names = {1: "Fleeting", 2: "Intense", 3: "Dyscrasia"}
+    intensity_names = {level: data["name"] for level, data in RESONANCE_INTENSITIES.items()}
 
     return {
         "type": res_type,
@@ -132,8 +133,6 @@ def roll_hunting(character, location="street", skill_bonus=0, predator_bonus=0):
             - complications: List of complications (if any)
             - message: Narrative message
     """
-    from world.v5_dice import V5DiceRoller
-
     # Get hunting difficulty
     difficulty = HUNTING_DIFFICULTIES.get(location, HUNTING_DIFFICULTIES["default"])
 
@@ -143,8 +142,14 @@ def roll_hunting(character, location="street", skill_bonus=0, predator_bonus=0):
 
     # Roll dice
     hunger = get_hunger_level(character)
-    roller = V5DiceRoller(pool, hunger, difficulty)
-    result = roller.roll()
+    roll = roll_v5_pool(min(MAX_POOL, max(1, pool)), hunger, difficulty)
+    result = {
+        "success": roll.is_success,
+        "total_successes": roll.total_successes,
+        "messy_critical": roll.is_messy_critical,
+        "bestial_failure": roll.is_bestial_failure,
+        "roll_result": roll,
+    }
 
     # Check for complications (messy critical or bestial failure)
     complications = []

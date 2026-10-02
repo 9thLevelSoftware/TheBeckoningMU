@@ -8,23 +8,10 @@ Hunger, feeding, Blood Surge, and resonance.
 from typing import Dict, Any, Optional
 import time
 
-from world.v5_data import BLOOD_POTENCY
+from world.v5_data import BLOOD_POTENCY, RESONANCE_INTENSITIES, RESONANCES
 
-
-# Constants
-
-RESONANCE_DISCIPLINES = {
-    'Choleric': ['Potence', 'Celerity'],
-    'Melancholy': ['Fortitude', 'Obfuscate'],
-    'Phlegmatic': ['Auspex', 'Dominate'],
-    'Sanguine': ['Presence', 'Blood Sorcery']
-}
-
-RESONANCE_INTENSITY = {
-    1: 'Fleeting',
-    2: 'Intense',
-    3: 'Dyscrasia'
-}
+# Resonance names, matching disciplines and intensity effects come from
+# world.v5_data.RESONANCES and RESONANCE_INTENSITIES; this module keeps no copy.
 
 
 def get_hunger_level(character) -> int:
@@ -178,13 +165,13 @@ def set_resonance(character, resonance_type: str, intensity: int = 1, duration: 
     """
     Set character's blood resonance from feeding.
 
-    Resonance types: Choleric, Melancholy, Phlegmatic, Sanguine
-    Intensity: 1 (Fleeting), 2 (Intense), 3 (Dyscrasia)
+    Resonance types: the keys of world.v5_data.RESONANCES
+    Intensity: 1 (Fleeting), 2 (Intense), 3 (Acute); see RESONANCE_INTENSITIES
 
     Args:
         character: Character object
         resonance_type: Type of resonance (Choleric, Melancholy, Phlegmatic, Sanguine)
-        intensity: Intensity level (1-3, default 1)
+        intensity: 1 Fleeting, 2 Intense, 3 Acute (default 1)
         duration: Duration in seconds (default 3600 = 1 hour)
 
     Returns:
@@ -212,106 +199,70 @@ def clear_resonance(character):
     character.resonance = None
 
 
-def get_resonance_bonus(character, discipline_name: str) -> int:
-    """
-    Get resonance bonus dice for a discipline based on current resonance.
-
-    Resonance provides bonus dice to matching disciplines:
-    - Choleric → Potence, Celerity
-    - Melancholy → Fortitude, Obfuscate
-    - Phlegmatic → Auspex, Dominate
-    - Sanguine → Presence, Blood Sorcery
-
-    Intensity determines bonus:
-    - Fleeting (1): +1 die
-    - Intense (2): +1 die
-    - Dyscrasia (3): +2 dice
-
-    Args:
-        character: Character object
-        discipline_name: Name of discipline being used
-
-    Returns:
-        int: Bonus dice (0, 1, or 2)
-
-    Examples:
-        >>> # Character has Choleric resonance (Intense)
-        >>> get_resonance_bonus(character, 'Potence')
-        1
-        >>> get_resonance_bonus(character, 'Auspex')
-        0
-    """
+def _active_resonance(character) -> dict[str, Any] | None:
+    """The character's resonance, or None if there is none or it has expired."""
     resonance = get_resonance(character)
-
     if not resonance:
-        return 0
-
-    # Check if expired
+        return None
     if resonance.get('expires') is not None and resonance['expires'] < time.time():
         clear_resonance(character)
-        return 0
+        return None
+    return resonance
 
-    # Check if discipline matches resonance type
-    resonance_type = resonance.get('type')
-    matching_disciplines = RESONANCE_DISCIPLINES.get(resonance_type, [])
 
-    if discipline_name not in matching_disciplines:
-        return 0
+def get_resonance_bonus(character, discipline_name: str) -> int:
+    """
+    Resonance dice for a Discipline roll (core p.226-231).
 
-    # Calculate bonus based on intensity
-    intensity = resonance.get('intensity', 0)
-    if intensity >= 3:  # Dyscrasia
-        return 2
-    elif intensity >= 1:  # Fleeting or Intense
-        return 1
-    else:
+    A resonance adds the dice in RESONANCE_INTENSITIES for its intensity
+    (Fleeting 0, Intense 1, Acute 1) to rolls of the disciplines its humour
+    matches in RESONANCES. This is the one place that rule is applied.
+
+    Returns:
+        int: Bonus dice (0 or 1)
+    """
+    resonance = _active_resonance(character)
+    if not resonance:
         return 0
+    humour = RESONANCES.get(resonance.get('type'))
+    if not humour or discipline_name not in humour["disciplines"]:
+        return 0
+    intensity = RESONANCE_INTENSITIES.get(resonance.get('intensity'))
+    return intensity["discipline_dice"] if intensity else 0
 
 
 def format_resonance_display(character) -> Optional[str]:
     """
     Format character's resonance for display with matching disciplines.
 
-    Args:
-        character: Character object
-
     Returns:
-        str or None: Formatted resonance string or None if no resonance
-
-    Examples:
-        >>> format_resonance_display(character)
-        "Resonance: Choleric (Intense) - +1 to Potence, Celerity"
+        str or None: e.g. "Resonance: Choleric (Intense) - +1 die to Celerity, Potence",
+        or None if there is no resonance
     """
-    resonance = get_resonance(character)
-
+    resonance = _active_resonance(character)
     if not resonance:
         return None
 
-    # Check if expired
-    if resonance.get('expires') is not None and resonance['expires'] < time.time():
-        clear_resonance(character)
-        return None
+    intensity = RESONANCE_INTENSITIES.get(resonance['intensity'])
+    intensity_str = intensity["name"] if intensity else 'Unknown'
 
-    # Format intensity using constants
-    intensity_str = RESONANCE_INTENSITY.get(resonance['intensity'], 'Unknown')
-
-    # Color code by resonance type
     color_map = {
-        'Choleric': '|r',    # Red
-        'Melancholy': '|c',  # Cyan
-        'Phlegmatic': '|g',   # Green
-        'Sanguine': '|y'      # Yellow
+        'Choleric': '|r',
+        'Melancholy': '|c',
+        'Phlegmatic': '|g',
+        'Sanguine': '|y'
     }
     color = color_map.get(resonance['type'], '|w')
 
-    # Get matching disciplines
-    matching_disciplines = RESONANCE_DISCIPLINES.get(resonance['type'], [])
-    disciplines_str = ', '.join(matching_disciplines)
+    humour = RESONANCES.get(resonance['type'], {})
+    disciplines_str = ', '.join(humour.get("disciplines", []))
 
-    # Calculate bonus
-    bonus = 2 if resonance['intensity'] >= 3 else 1
+    dice = intensity["discipline_dice"] if intensity else 0
+    effect = f"|g+{dice}|n die to {disciplines_str}" if dice else f"no extra dice (matches {disciplines_str})"
+    if intensity and intensity["dyscrasia"]:
+        effect += "; may carry a dyscrasia"
 
-    return f"|wResonance:|n {color}{resonance['type']}|n ({intensity_str}) - |g+{bonus}|n to {disciplines_str}"
+    return f"|wResonance:|n {color}{resonance['type']}|n ({intensity_str}) - {effect}"
 
 
 # Blood Surge Management
@@ -345,49 +296,57 @@ def get_blood_potency_bonus(character) -> int:
 
 def activate_blood_surge(character, trait_type: str, trait_name: str) -> Dict[str, Any]:
     """
-    Activate Blood Surge to boost a trait.
+    Blood Surge (QR p.4): one Rouse check, then the Blood Potency table's
+    surge dice are added to the character's next roll, once.
 
-    Blood Surge adds the Blood Potency table's surge dice to a specified trait
-    for one scene (1 hour). Requires a Rouse check.
+    At Hunger 5 the surge is refused: nothing is rolled or charged.
 
     Args:
         character: Character object
-        trait_type: Type of trait ('attribute' or 'physical_skill')
-        trait_name: Name of trait to boost
+        trait_type: 'attribute' or 'physical_skill' (for display)
+        trait_name: The trait the player means to surge (for display)
 
     Returns:
-        dict: {
-            'success': bool,
-            'bonus': int (BP bonus),
-            'trait': str,
-            'expires': float (timestamp),
-            'rouse_result': dict
-        }
+        dict: {'success': bool, 'bonus': int, 'trait': str,
+               'rouse_result': RouseResult, 'message': str}
     """
-    from dice.dice_roller import roll_rouse_check
+    from dice.rouse_checker import perform_rouse_check
 
-    # Perform Rouse check (using roll_rouse_check with character and reason)
-    rouse_result = roll_rouse_check(character, reason=f"Blood Surge ({trait_name})")
+    rouse_result = perform_rouse_check(character, reason=f"Blood Surge ({trait_name})")
+    if rouse_result.refused:
+        return {
+            'success': False,
+            'bonus': 0,
+            'trait': trait_name,
+            'rouse_result': rouse_result,
+            'message': rouse_result.message,
+        }
 
-    # Get Blood Potency bonus
     bonus = get_blood_potency_bonus(character)
-
-    # Set Blood Surge status (expires in 1 hour)
-    expires = time.time() + 3600
     character.ndb.blood_surge = {
         'trait': trait_name,
         'trait_type': trait_type,
         'bonus': bonus,
-        'expires': expires
+        # Unused surges lapse after a scene (one hour).
+        'expires': time.time() + 3600,
     }
 
     return {
         'success': True,
         'bonus': bonus,
         'trait': trait_name,
-        'expires': expires,
-        'rouse_result': rouse_result
+        'rouse_result': rouse_result,
+        'message': rouse_result.message,
     }
+
+
+def consume_blood_surge(character) -> int:
+    """Use up an active Blood Surge: return its bonus dice (0 if none) and clear it."""
+    surge = get_blood_surge(character)
+    if not surge:
+        return 0
+    deactivate_blood_surge(character)
+    return surge.get('bonus', 0)
 
 
 def get_blood_surge(character) -> Optional[Dict[str, Any]]:
@@ -423,13 +382,6 @@ def get_blood_surge_bonus(character, trait_name: Optional[str] = None) -> int:
 
     Returns:
         int: Bonus dice from active Blood Surge (0 if no surge active)
-
-    Examples:
-        >>> # Character has Blood Surge active on Strength
-        >>> get_blood_surge_bonus(character, 'Strength')
-        3  # (Blood Potency 3)
-        >>> get_blood_surge_bonus(character, 'Brawl')
-        0  # (surge not on Brawl)
     """
     surge = get_blood_surge(character)
 

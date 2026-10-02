@@ -62,12 +62,10 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         # Add V5 Discipline commands
         from commands.v5.disciplines import (
             CmdDisciplines,
-            CmdActivatePower,
             CmdDisciplineInfo,
         )
 
         self.add(CmdDisciplines)
-        self.add(CmdActivatePower)
         self.add(CmdDisciplineInfo)
 
         # Add V5 Effects command

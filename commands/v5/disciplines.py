@@ -1,7 +1,8 @@
 """
 V5 Discipline Commands
 
-Commands for viewing and activating discipline powers.
+Commands for viewing discipline powers. Using a power is the `power`
+command (alias `+power`) in dice/commands.py.
 """
 
 from evennia import Command
@@ -9,7 +10,6 @@ from .utils.discipline_utils import (
     get_character_disciplines,
     get_discipline_powers,
     get_all_discipline_powers_summary,
-    activate_discipline_power,
     get_power_by_name,
     can_use_power
 )
@@ -113,129 +113,6 @@ class CmdDisciplines(Command):
         """Format a footer."""
         width = 78
         return f"\n{SHADOW_GREY}{BOX_H * width}{RESET}\n"
-
-
-class CmdActivatePower(Command):
-    """
-    Activate a discipline power.
-
-    Usage:
-        +power <discipline>/<power name>
-        +activate <discipline>/<power name>
-
-    Activates a discipline power, performing a Rouse check if required.
-
-    Examples:
-        +power animalism/bond famulus
-        +power celerity/cat's grace
-        +activate dominate/compel
-    """
-
-    key = "+power"
-    aliases = ["+activate", "+use"]
-    locks = "cmd:all()"
-    help_category = "V5 - Disciplines"
-
-    def func(self):
-        """Execute the command."""
-        caller = self.caller
-
-        if not self.args.strip():
-            caller.msg(f"{BLOOD_RED}Usage:{RESET} +power <discipline>/<power name>")
-            caller.msg(f"Example: +power animalism/bond famulus")
-            return
-
-        # Parse discipline and power name
-        if "/" not in self.args:
-            caller.msg(f"{BLOOD_RED}Error:{RESET} You must specify both discipline and power.")
-            caller.msg(f"Format: +power <discipline>/<power name>")
-            return
-
-        parts = self.args.split("/", 1)
-        disc_name = parts[0].strip().title()
-        power_name = parts[1].strip()
-
-        # Try to find matching discipline (case-insensitive)
-        matched_disc = None
-        for key in DISCIPLINES.keys():
-            if key.lower() == disc_name.lower():
-                matched_disc = key
-                break
-
-        if not matched_disc:
-            caller.msg(f"{BLOOD_RED}Error:{RESET} Unknown discipline '{disc_name}'.")
-            return
-
-        # Activate the power
-        result = activate_discipline_power(caller, matched_disc, power_name)
-
-        if not result["success"]:
-            caller.msg(f"{BLOOD_RED}Error:{RESET} {result['message']}")
-            return
-
-        # Format success message
-        power = result["power"]
-        output = []
-
-        output.append(f"{GOLD}═══════════════════════════════════════════════════════════════════════{RESET}")
-        output.append(f"{BLOOD_RED}Discipline Power Activated{RESET}\n")
-
-        output.append(f"{PALE_IVORY}{power['name']}{RESET}")
-        output.append(f"{SHADOW_GREY}{power['description']}{RESET}\n")
-
-        # Show Rouse check result if performed
-        if result["rouse_result"]:
-            rouse = result["rouse_result"]
-            output.append(f"{DARK_RED}Rouse Check:{RESET}")
-
-            if rouse.get("result") == "success":
-                output.append(f"  {PALE_IVORY}Hunger remains at {rouse['new_hunger']}{RESET}")
-            elif rouse.get("result") == "failure":
-                output.append(f"  {BLOOD_RED}Hunger increases to {rouse['new_hunger']}!{RESET}")
-
-            if rouse.get("bestial_failure"):
-                output.append(f"  {BLOOD_RED}BESTIAL FAILURE! Your Beast stirs...{RESET}")
-
-            output.append("")
-
-        # Show resonance bonus if applicable
-        if result.get("resonance_bonus"):
-            bonus = result["resonance_bonus"]
-            output.append(f"{GOLD}Resonance Bonus:{RESET} +{bonus['bonus']} die from {bonus['resonance']} resonance\n")
-
-        # Show dice pool if applicable
-        if power.get("dice_pool"):
-            dice_pool = power["dice_pool"]
-            bonus_text = ""
-            if result.get("resonance_bonus"):
-                bonus_text = f" {GOLD}(+1 resonance){RESET}"
-            output.append(f"{SHADOW_GREY}Roll:{RESET} {dice_pool}{bonus_text}")
-
-        # Show effect information if applied
-        if result.get("effect_applied"):
-            effect = result.get("effect")
-            duration = result.get("duration", "unknown")
-
-            output.append("")
-            if duration == "scene":
-                output.append(f"{PALE_IVORY}Effect Duration:{RESET} Active until end of scene")
-            elif duration == "turn":
-                turns = effect.get("turns_remaining", 0) if effect else 0
-                output.append(f"{PALE_IVORY}Effect Duration:{RESET} {turns} turn{'s' if turns != 1 else ''}")
-            elif duration == "permanent":
-                output.append(f"{PALE_IVORY}Effect Duration:{RESET} Permanent")
-
-            if effect:
-                output.append(f"{SHADOW_GREY}Effect ID:{RESET} {effect.get('id', 'unknown')} {SHADOW_GREY}(Use +effects to view){RESET}")
-
-        output.append(f"{GOLD}═══════════════════════════════════════════════════════════════════════{RESET}")
-
-        # Announce to room
-        caller.msg("\n".join(output))
-        caller.location.msg_contents(
-            f"{caller.name}'s eyes flash with supernatural power as they activate {power['name']}.",
-            exclude=[caller]
-        )
 
 
 class CmdDisciplineInfo(Command):

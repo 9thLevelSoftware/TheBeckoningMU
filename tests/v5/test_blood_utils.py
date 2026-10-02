@@ -6,7 +6,6 @@ and Blood Surge mechanics.
 """
 
 import time
-import unittest
 from unittest.mock import patch
 
 from evennia.utils.test_resources import EvenniaTest
@@ -277,10 +276,8 @@ class ResonanceDisplayTests(EvenniaTest):
         self.assertIn('Melancholy', display)
         self.assertIn('Intense', display)
 
-    # F-096, fixed in PR 5: intensity 3 is labelled "Dyscrasia". In V5 the
-    # third intensity is Acute; a Dyscrasia is something an Acute resonance
-    # may carry.
-    @unittest.expectedFailure
+    # F-096: in V5 the third intensity is Acute; a Dyscrasia is something an
+    # Acute resonance may carry.
     def test_format_resonance_display_acute(self):
         """Test resonance display for acute intensity."""
         blood_utils.set_resonance(self.char, 'Phlegmatic', intensity=3)
@@ -328,10 +325,7 @@ class BloodSurgeManagementTests(EvenniaTest):
         super().setUp()
         self.char = self.char1
 
-    # F-017, fixed in PR 5: activate_blood_surge calls
-    # roll_rouse_check(character, reason=...), which takes no arguments, so
-    # every Blood Surge raises TypeError.
-    @unittest.expectedFailure
+    # F-017: Blood Surge makes one Rouse check.
     def test_activate_blood_surge_rouses(self):
         """Blood Surge costs a Rouse check: a die of 1-5 raises Hunger by 1."""
         self.char.hunger = 2

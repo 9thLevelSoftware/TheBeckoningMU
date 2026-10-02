@@ -138,19 +138,22 @@ class CmdFeed(default_cmds.MuxCommand):
 
 class CmdBloodSurge(Command):
     """
-    Surge your blood to temporarily enhance a trait.
+    Surge your blood to add dice to your next roll.
 
     Usage:
       bloodsurge <attribute or physical skill>
 
     Examples:
-      bloodsurge strength         # Boost Strength by Blood Potency
-      bloodsurge brawl            # Boost Brawl by Blood Potency
+      bloodsurge strength
+      bloodsurge brawl
 
-    Blood Surge adds dice equal to your Blood Potency to the
-    specified trait for one scene (1 hour). Requires a Rouse check.
+    Blood Surge costs one Rouse check (a 1-5 raises your Hunger by 1). Your
+    next `roll` gets the Blood Surge dice from the Blood Potency table
+    (BP 0: +1, BP 1-2: +2, BP 3-4: +3, and so on), then the surge is used
+    up. It doesn't apply to `power` rolls. An unused surge lapses after a
+    scene (one hour).
 
-    Can only surge Attributes or Physical Skills (Athletics, Brawl, etc.).
+    At Hunger 5 you can't Rouse the Blood, so you can't surge.
     """
 
     key = "bloodsurge"
@@ -197,19 +200,25 @@ class CmdBloodSurge(Command):
             )
             return
 
-        # 4. Activate Blood Surge
+        # 4. A Rouse check is impossible at Hunger 5 (QR p.4).
         from commands.v5.utils import blood_utils
+        from dice.rouse_checker import HUNGER_5_REFUSAL, MAX_HUNGER
 
+        if self.caller.hunger >= MAX_HUNGER:
+            self.caller.msg(f"|r{HUNGER_5_REFUSAL}|n")
+            return
+
+        # 5. Activate Blood Surge
         result = blood_utils.activate_blood_surge(self.caller, trait_type, trait_name)
 
         if result['success']:
-            message = f"|yBlood Surge activated!|n\n\n"
-            message += result['rouse_result']['message']
-            message += f"\n\n|g{trait_name} boosted by +{result['bonus']} dice for one scene.|n"
-            message += f"\n|x(Blood Surge expires in 1 hour)|n"
+            message = "|yBlood Surge activated!|n\n\n"
+            message += result['message']
+            message += f"\n\n|g+{result['bonus']} dice to your next roll ({trait_name}).|n"
+            message += "\n|x(Used up by your next roll; lapses after one hour.)|n"
             self.caller.msg(message)
         else:
-            self.caller.msg("|rBlood Surge activation failed.|n")
+            self.caller.msg(f"|rBlood Surge failed.|n\n{result['message']}")
 
 
 class CmdHunger(Command):
@@ -274,7 +283,7 @@ class CmdHunger(Command):
         surge = blood_utils.get_blood_surge(self.caller)
         if surge:
             import time
-            lines.append(f"|yBlood Surge Active:|n +{surge['bonus']} dice to {surge['trait']}")
+            lines.append(f"|yBlood Surge Active:|n +{surge['bonus']} dice to {surge['trait']}, on your next roll")
             remaining = int((surge['expires'] - time.time()) / 60)
             lines.append(f"|x({remaining} minutes remaining)|n")
 

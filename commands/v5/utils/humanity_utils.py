@@ -4,7 +4,7 @@ Humanity System Utility Functions for V5
 Handles Stains, Remorse rolls, Humanity tracking, Convictions, and Touchstones.
 """
 
-from world.v5_dice import roll_pool
+from dice.dice_roller import roll_v5_pool
 
 
 def get_humanity(character):
@@ -118,7 +118,7 @@ def remorse_roll(character):
     Returns:
         dict: {
             'success': bool,
-            'roll_result': DiceResult object,
+            'roll_result': RollResult object,
             'humanity_lost': bool,
             'old_humanity': int,
             'new_humanity': int,
@@ -141,17 +141,17 @@ def remorse_roll(character):
         }
 
     # Roll Humanity pool (no Hunger dice for Remorse rolls)
-    result = roll_pool(humanity, difficulty=0, hunger=0)
+    result = roll_v5_pool(max(1, humanity), 0, 0)
 
     # Success if you get more successes than Stains
-    success = result.successes > stains
+    success = result.total_successes > stains
 
     # Clear stains regardless of outcome
     stains_cleared = clear_stains(character)
 
     if success:
         message = (
-            f"You roll {humanity} dice for Remorse and get {result.successes} successes. "
+            f"You roll {humanity} dice for Remorse and get {result.total_successes} successes. "
             f"This exceeds your {stains} Stains. You maintain your Humanity at {humanity}. "
             f"All Stains are cleared."
         )
@@ -168,7 +168,7 @@ def remorse_roll(character):
         # Lose 1 Humanity
         new_humanity = set_humanity(character, humanity - 1)
         message = (
-            f"You roll {humanity} dice for Remorse and get {result.successes} successes. "
+            f"You roll {humanity} dice for Remorse and get {result.total_successes} successes. "
             f"This does not exceed your {stains} Stains. You lose 1 Humanity "
             f"(from {humanity} to {new_humanity}). All Stains are cleared. "
             f"The Beast draws closer."
@@ -502,7 +502,7 @@ def resist_frenzy(character, difficulty):
     Returns:
         dict: {
             'success': bool,
-            'roll_result': DiceResult object,
+            'roll_result': RollResult object,
             'message': narrative message
         }
     """
@@ -516,15 +516,15 @@ def resist_frenzy(character, difficulty):
     hunger = get_hunger(character)
 
     # Roll pool with Hunger dice
-    result = roll_pool(pool, difficulty=difficulty, hunger=hunger)
+    result = roll_v5_pool(max(1, pool), hunger, difficulty)
 
-    if result.is_success():
+    if result.is_success:
         message = (
             f"You roll {pool} dice (Willpower {willpower} + Composure {composure}) "
-            f"with {hunger} Hunger dice and get {result.successes} successes "
+            f"with {hunger} Hunger dice and get {result.total_successes} successes "
             f"against difficulty {difficulty}. You resist the frenzy!"
         )
-        if result.is_messy:
+        if result.is_messy_critical:
             message += " However, the struggle was messy - you may have revealed your nature."
 
         return {
@@ -535,11 +535,11 @@ def resist_frenzy(character, difficulty):
     else:
         message = (
             f"You roll {pool} dice (Willpower {willpower} + Composure {composure}) "
-            f"with {hunger} Hunger dice and get {result.successes} successes "
+            f"with {hunger} Hunger dice and get {result.total_successes} successes "
             f"against difficulty {difficulty}. You FAIL to resist! "
             f"The Beast takes over..."
         )
-        if result.is_bestial:
+        if result.is_bestial_failure:
             message += " A Bestial Failure - your frenzy is particularly savage!"
 
         return {

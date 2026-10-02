@@ -15,7 +15,6 @@ from commands.v5.utils.display_utils import (
     BLOOD_RED, VAMPIRE_GOLD, RESET, SHADOW_GREY,
     BOX_H, BOX_V, BOX_TL, BOX_TR, BOX_BL, BOX_BR
 )
-from world.v5_dice import format_dice_result
 
 
 class CmdHumanity(default_cmds.MuxCommand):
@@ -289,7 +288,7 @@ class CmdRemorse(Command):
 
         if result['roll_result']:
             # Format dice results
-            dice_display = format_dice_result(result['roll_result'], caller.name)
+            dice_display = result['roll_result'].format_result(show_details=True)
             lines.append(dice_display)
             lines.append("")
 
@@ -372,18 +371,18 @@ class CmdFrenzy(default_cmds.MuxCommand):
 
             # Show dice results
             if result['roll_result']:
-                dice_display = format_dice_result(result['roll_result'], caller.name)
+                dice_display = result['roll_result'].format_result(show_details=True)
                 lines.append(dice_display)
                 lines.append("")
 
             # Outcome
             if result['success']:
                 lines.append(f"  {VAMPIRE_GOLD}SUCCESS:{RESET} You resist the frenzy!")
-                if result['roll_result'] and result['roll_result'].is_messy:
+                if result['roll_result'] and result['roll_result'].is_messy_critical:
                     lines.append(f"  {BLOOD_RED}(Messy Critical - you may have revealed your vampiric nature){RESET}")
             else:
                 lines.append(f"  {BLOOD_RED}FAILURE:{RESET} The Beast takes over!")
-                if result['roll_result'] and result['roll_result'].is_bestial:
+                if result['roll_result'] and result['roll_result'].is_bestial_failure:
                     lines.append(f"  {BLOOD_RED}(Bestial Failure - your frenzy is particularly savage!){RESET}")
 
             lines.append(f"\n{BLOOD_RED}{BOX_H * 78}{RESET}")

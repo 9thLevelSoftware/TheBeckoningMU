@@ -4,9 +4,8 @@ Discipline Utility Functions
 Helper functions for managing and using discipline powers.
 """
 
-from world.v5_data import DISCIPLINES
-from dice.dice_roller import roll_rouse_check
-from .blood_utils import get_blood_potency, increase_hunger
+from world.v5_data import DISCIPLINES, find_power
+from dice import discipline_roller
 from .discipline_effects import (
     apply_effect,
     get_power_duration,
@@ -103,115 +102,98 @@ def get_power_by_name(discipline_name, power_name):
 
 def can_use_power(character, discipline_name, power_name):
     """
-    Check if a character can use a specific discipline power.
+    Check whether a character may use a discipline power.
 
-    Args:
-        character: The character object
-        discipline_name: Name of the discipline
-        power_name: Name of the power
+    The rule is dice.discipline_roller.can_use_power (the power must be
+    known, with the discipline and any amalgam at the required rating); this
+    wrapper also checks the power belongs to ``discipline_name``.
 
     Returns:
         tuple: (can_use: bool, reason: str)
     """
-    # Check if discipline exists
     if discipline_name not in DISCIPLINES:
         return False, f"Unknown discipline: {discipline_name}"
 
-    # Get the power
-    power, power_level = get_power_by_name(discipline_name, power_name)
+    power, _ = get_power_by_name(discipline_name, power_name)
     if not power:
         return False, f"Unknown power: {power_name}"
 
-    # Check character's discipline level
-    char_level = character.get_trait(discipline_name)
-    if char_level < power_level:
-        return False, f"You need {discipline_name} {power_level} to use {power_name} (you have {char_level})"
-
-    # Check amalgam prerequisites
-    if power.get("amalgam"):
-        amalgam_req = power["amalgam"]
-        # Parse amalgam requirement (e.g., "Obfuscate 2" or "Dominate 3")
-        parts = amalgam_req.split()
-        if len(parts) >= 2:
-            req_disc = " ".join(parts[:-1])
-            req_level = int(parts[-1])
-
-            char_amalgam_level = character.get_trait(req_disc)
-            if char_amalgam_level < req_level:
-                return False, f"{power_name} requires {amalgam_req} (you have {req_disc} {char_amalgam_level})"
-
-    return True, "OK"
+    return discipline_roller.can_use_power(character, power["name"])
 
 
-def activate_discipline_power(character, discipline_name, power_name):
+def activate_discipline_power(character, discipline_name, power_name, difficulty=0, target=None, with_rouse=True):
     """
-    Activate a discipline power, handling Rouse checks and effects.
+    Use a discipline power: check it, roll it if it has a dice pool, make its
+    Rouse checks and track its effect.
+
+    A power with a dice pool goes through dice.discipline_roller
+    .roll_discipline_power, which rolls with the pre-Rouse Hunger and then
+    makes ``power["rouse"]`` Rouse checks. A power without one is used
+    without a roll and makes the same Rouse checks. Either way it is refused,
+    with nothing rolled or charged, if the character can't use it, if it
+    needs a Rouse at Hunger 5, or if the roll is invalid.
 
     Args:
         character: The character object
-        discipline_name: Name of the discipline
-        power_name: Name of the power
+        discipline_name: Name of the discipline, or None to take it from the power
+        power_name: Name of the power (any case)
+        difficulty: Successes needed (ignored for a contested roll against ``target``)
+        target: Defender for a contested power (one with ``opposed_by``)
+        with_rouse: False skips the Rouse checks (staff only, enforced by the command)
 
     Returns:
         dict: {
-            "success": bool,
+            "success": bool (False means refused; nothing changed),
             "message": str,
-            "rouse_result": dict or None (if Rouse check was needed)
+            "power": dict or None,
+            "roll": dict or None (roll_discipline_power's result),
+            "rouse_results": list of RouseResult,
+            "duration": str or None,
+            "effect_applied": bool,
+            "effect": dict or None,
         }
     """
-    # Check if character can use the power
-    can_use, reason = can_use_power(character, discipline_name, power_name)
-    if not can_use:
+    def refused(message, power=None):
         return {
             "success": False,
-            "message": reason,
-            "rouse_result": None
+            "message": message,
+            "power": power,
+            "roll": None,
+            "rouse_results": [],
+            "duration": None,
+            "effect_applied": False,
+            "effect": None,
         }
 
-    # Get the power
-    power, power_level = get_power_by_name(discipline_name, power_name)
+    power = find_power(power_name)
+    if power is None or (discipline_name and power["discipline"].lower() != discipline_name.lower()):
+        return refused(f"Unknown power: {power_name}")
 
-    # Handle Rouse check if required
-    rouse_success = True
-    rouse_die = None
-    if power["rouse"]:
-        # Perform Rouse check
-        rouse_result = roll_rouse_check(character, reason=f"Activating {power['name']}")
-        rouse_success = not rouse_result.get('hunger_increased', False)
-        rouse_die = rouse_result.get('die', None)
+    try:
+        if power.get("dice_pool"):
+            roll = discipline_roller.roll_discipline_power(
+                character, power["name"], difficulty=difficulty, with_rouse=with_rouse, target=target
+            )
+            rouse_results = roll["rouse_results"]
+        else:
+            discipline_roller.check_power_use(character, power, with_rouse=with_rouse)
+            roll = None
+            rouse_results = discipline_roller.pay_rouse_cost(character, power) if with_rouse else []
+    except ValueError as err:
+        return refused(str(err), power)
 
-        # If Rouse check fails, Hunger increases
-        if not rouse_success:
-            new_hunger = increase_hunger(character, 1)
-            return {
-                "success": True,
-                "message": f"You activate {power['name']}, but your Beast stirs... (Hunger increased to {new_hunger})",
-                "rouse_result": {"success": False, "die": rouse_die, "hunger_increased": True},
-                "power": power
-            }
-
-    # Check for Resonance bonus
-    resonance_bonus = check_resonance_bonus(character, discipline_name)
-
-    # Apply effect tracking if power has duration
-    power_copy = power.copy()
-    power_copy['discipline'] = discipline_name
-
-    duration = get_power_duration(power_copy)
+    duration = get_power_duration(power)
     effect_applied = False
     applied_effect = None
 
-    if duration and duration != 'instant':
-        # Apply generic effect
+    # A power whose roll failed has no effect to track; its Rouse is still paid.
+    if duration and duration != 'instant' and (roll is None or roll["success"]):
         # A "turn" power lasts one turn unless an effect handler says otherwise.
         parameters = {"turns": 1} if duration == "turn" else {}
-        applied_effect = apply_effect(character, power_copy, duration, parameters)
+        applied_effect = apply_effect(character, power, duration, parameters)
         effect_applied = True
 
-        # Apply discipline-specific effects
-        discipline_lower = discipline_name.lower()
-        power_name_lower = power['name'].lower()
-
+        discipline_lower = power["discipline"].lower()
         if discipline_lower == 'obfuscate':
             apply_obfuscate_effect(character, power['name'])
         elif discipline_lower == 'dominate':
@@ -227,62 +209,16 @@ def activate_discipline_power(character, discipline_name, power_name):
         elif discipline_lower == 'protean':
             apply_protean_effect(character, power['name'])
 
-    # Build rouse_result dictionary if a Rouse check was performed
-    rouse_result_dict = None
-    if power["rouse"]:
-        rouse_result_dict = {
-            "success": rouse_success,
-            "die": rouse_die,
-            "hunger_increased": not rouse_success
-        }
-
-    result = {
+    return {
         "success": True,
-        "message": f"You successfully activate {power['name']}.",
-        "rouse_result": rouse_result_dict,
+        "message": f"You activate {power['name']}.",
         "power": power,
-        "resonance_bonus": resonance_bonus,
+        "roll": roll,
+        "rouse_results": rouse_results,
         "duration": duration,
         "effect_applied": effect_applied,
-        "effect": applied_effect
+        "effect": applied_effect,
     }
-
-    return result
-
-
-def check_resonance_bonus(character, discipline_name):
-    """
-    Check if character gets a Resonance bonus for using this discipline.
-
-    In V5, matching Resonance adds a die to a discipline's pool. The
-    humour-to-discipline mapping is world.v5_data.RESONANCES (QR p.12).
-
-    Args:
-        character: The character object
-        discipline_name: Name of the discipline
-
-    Returns:
-        dict: {"bonus": int, "resonance": str} or None
-    """
-    from world.v5_data import RESONANCES
-
-    resonance = character.resonance
-    current_resonance = resonance["type"] if resonance else ""
-
-    resonance_map = {}
-    for humour, data in RESONANCES.items():
-        for discipline in data["disciplines"]:
-            resonance_map.setdefault(discipline, []).append(humour.lower())
-
-    matching_resonances = resonance_map.get(discipline_name, [])
-
-    if current_resonance.lower() in matching_resonances:
-        return {
-            "bonus": 1,
-            "resonance": current_resonance
-        }
-
-    return None
 
 
 def format_power_display(power, level, include_level=True):
@@ -300,7 +236,11 @@ def format_power_display(power, level, include_level=True):
     from world.ansi_theme import BLOOD_RED, PALE_IVORY, SHADOW_GREY, RESET
 
     level_str = f"{BLOOD_RED}●{RESET}" * level if include_level else ""
-    rouse_str = f"{BLOOD_RED}[Rouse]{RESET}" if power["rouse"] else f"{SHADOW_GREY}[No Rouse]{RESET}"
+    rouse = power.get("rouse", 0)
+    if rouse:
+        rouse_str = f"{BLOOD_RED}[Rouse x{rouse}]{RESET}" if rouse > 1 else f"{BLOOD_RED}[Rouse]{RESET}"
+    else:
+        rouse_str = f"{SHADOW_GREY}[Free]{RESET}"
 
     output = f"{level_str} {PALE_IVORY}{power['name']}{RESET} {rouse_str}\n"
     output += f"   {power['description']}\n"
