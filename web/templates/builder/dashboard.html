@@ -236,7 +236,6 @@
         </a>
     </div>
 
-    {% if user.is_staff %}
     <!-- Staff Review Banner -->
     <div class="review-banner">
         <div class="review-banner-text">
@@ -247,7 +246,6 @@
             Review Submissions <i class="bi bi-arrow-right" style="font-size: 11px;"></i>
         </a>
     </div>
-    {% endif %}
 
     <!-- Stats Overview -->
     {% if my_projects %}
@@ -328,7 +326,7 @@
                     <i class="bi bi-pencil"></i> Edit
                 </a>
                 {% if project.status == 'draft' %}
-                <button class="btn-accent" style="flex:1;"
+                <button class="btn-accent" style="flex:1;" data-submit-id="{{ project.id }}"
                         onclick="event.stopPropagation(); submitProject({{ project.id }}, '{{ project.name|escapejs }}')">
                     <i class="bi bi-send"></i> Submit
                 </button>
@@ -422,6 +420,28 @@
             <div class="modal-body">
                 <p>Submit <strong id="submit-project-name" class="text-accent"></strong> for staff review?</p>
                 <p class="text-builder-muted" style="font-size: 13px;">Your project will be locked while under review.</p>
+                <div class="mb-3">
+                    <label for="submit-connection-room" class="form-label">Connect to Room</label>
+                    <select class="form-select" id="submit-connection-room">
+                        <option value="">Loading rooms...</option>
+                    </select>
+                    <div class="form-text">The live room your area will hang off. Reviewers approve this too.</div>
+                </div>
+                <div class="mb-3">
+                    <label for="submit-connection-direction" class="form-label">Direction from Live Room</label>
+                    <select class="form-select" id="submit-connection-direction">
+                        <option value="n">North (n)</option>
+                        <option value="s">South (s)</option>
+                        <option value="e">East (e)</option>
+                        <option value="w">West (w)</option>
+                        <option value="ne">Northeast (ne)</option>
+                        <option value="nw">Northwest (nw)</option>
+                        <option value="se">Southeast (se)</option>
+                        <option value="sw">Southwest (sw)</option>
+                        <option value="u">Up (u)</option>
+                        <option value="d">Down (d)</option>
+                    </select>
+                </div>
                 <div class="mb-3">
                     <label for="submission-notes" class="form-label">Notes for staff <span class="text-builder-muted">(optional)</span></label>
                     <textarea class="form-control" id="submission-notes" rows="3"
@@ -538,7 +558,9 @@ function submitProject(id, name) {
     currentProjectId = id;
     document.getElementById('submit-project-name').textContent = name;
     document.getElementById('submission-notes').value = '';
+    document.getElementById('submit-connection-direction').value = 'n';
     submitModal.show();
+    loadConnectionRooms('submit-connection-room');
 }
 
 document.getElementById('confirm-submit').addEventListener('click', async function() {
@@ -548,12 +570,25 @@ document.getElementById('confirm-submit').addEventListener('click', async functi
     btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Submitting...';
 
     const notes = document.getElementById('submission-notes').value;
+    const roomId = document.getElementById('submit-connection-room').value;
+    const direction = document.getElementById('submit-connection-direction').value;
+
+    if (!roomId) {
+        alert('Please select the live room this area connects to');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-send"></i> Submit';
+        return;
+    }
 
     try {
         const response = await fetch(`/builder/api/project/${currentProjectId}/submit/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
-            body: JSON.stringify({ notes: notes })
+            body: JSON.stringify({
+                notes: notes,
+                connection_room_id: parseInt(roomId),
+                connection_direction: direction
+            })
         });
         const data = await response.json();
         if (data.status === 'success') {
@@ -581,16 +616,17 @@ function promoteProject(id, name) {
     document.getElementById('connection-room').innerHTML = '<option value="">Loading rooms...</option>';
     document.getElementById('connection-direction').value = 'n';
     promoteModal.show();
-    loadConnectionRooms();
+    loadConnectionRooms('connection-room');
 }
 
-async function loadConnectionRooms() {
+async function loadConnectionRooms(selectId) {
+    const select = document.getElementById(selectId);
+    select.innerHTML = '<option value="">Loading rooms...</option>';
     try {
         const response = await fetch('/builder/api/connection-rooms/');
         const data = await response.json();
 
         if (data.status === 'success') {
-            const select = document.getElementById('connection-room');
             select.innerHTML = '';
             if (data.rooms.length === 0) {
                 select.innerHTML = '<option value="">No available rooms</option>';
@@ -603,12 +639,20 @@ async function loadConnectionRooms() {
                 });
             }
         } else {
-            document.getElementById('connection-room').innerHTML = '<option value="">Error loading rooms</option>';
+            select.innerHTML = '<option value="">Error loading rooms</option>';
         }
     } catch (error) {
-        document.getElementById('connection-room').innerHTML = '<option value="">Error loading rooms</option>';
+        select.innerHTML = '<option value="">Error loading rooms</option>';
     }
 }
+
+// The editor's "Submit for Review" sends the builder here with ?submit=<id>.
+(function() {
+    const id = new URLSearchParams(window.location.search).get('submit');
+    if (!id) return;
+    const btn = document.querySelector(`[data-submit-id="${CSS.escape(id)}"]`);
+    if (btn) btn.click();
+})();
 
 document.getElementById('confirm-promote').addEventListener('click', async function() {
     if (!promoteProjectId) return;
@@ -648,7 +692,6 @@ document.getElementById('confirm-promote').addEventListener('click', async funct
 document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
 
 // ── Staff: load pending count ──────────────────────
-{% if user.is_staff %}
 (async function() {
     try {
         const response = await fetch('/builder/api/review/projects/');
@@ -658,6 +701,5 @@ document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootst
         }
     } catch (e) {}
 })();
-{% endif %}
 </script>
 {% endblock %}
