@@ -1,20 +1,50 @@
 """
-Promotion engine for moving sandbox builds to live world.
+Promotion: make a built sandbox part of the live world.
 
-This module handles the promotion of tested sandbox areas into the live game world,
-creating connection exits and cleaning up the sandbox container.
+`promote_unit(project_id, ...)` is one unit of work that runs wholly on the
+reactor (KD-6), validate-then-mutate (KD-7):
+
+1. Validate, with no mutations: the project is built and has an approval
+   snapshot; any connection in the request matches the reviewed one
+   (`approved_map_data`) exactly; the reviewed connection room still exists
+   and is a live Room; every recorded room and exit still passes the
+   cleanup checks (recorded id, `project_N` + `sandbox`, right typeclass, no
+   account); and the direction is free at both ends (exit keys and aliases,
+   short and long forms).
+2. Mutate: remove `sandbox` and `project_N` from the recorded rooms and
+   exits, create the two connecting exits last, sweep any recorded object
+   that is still a sandbox object (none, normally; the same recorded-id rule
+   as cleanup), and record the project as live with an empty
+   `built_object_ids`.
+3. On any error: delete the connecting exits it created, put the tags back,
+   and re-raise. No DB rollback is relied on.
 """
 
 import logging
-import threading
-from typing import Dict, Any, Tuple, Optional
+from typing import Any
 
-from evennia.utils.utils import run_in_main_thread
-from evennia.utils import search
+from django.utils import timezone
+from evennia.utils.create import create_object
+
+from web.main_thread import call_in_main_thread
+
+from .sandbox_cleanup import delete_recorded, recorded_objects
+from .validators import is_live_room
 
 logger = logging.getLogger(__name__)
 
-# Direction opposites for bidirectional exit creation
+DIRECTION_NAMES = {
+    "n": "north",
+    "s": "south",
+    "e": "east",
+    "w": "west",
+    "ne": "northeast",
+    "nw": "northwest",
+    "se": "southeast",
+    "sw": "southwest",
+    "u": "up",
+    "d": "down",
+}
 DIRECTION_OPPOSITES = {
     "n": "s",
     "s": "n",
@@ -29,286 +59,171 @@ DIRECTION_OPPOSITES = {
 }
 
 
-def _get_opposite_direction(direction: str) -> Optional[str]:
-    """
-    Get the opposite direction for bidirectional exit creation.
+class PromotionError(Exception):
+    """Promotion was refused; nothing changed. Safe to show the builder."""
 
-    Args:
-        direction: The direction string (n, s, e, w, ne, nw, se, sw, u, d)
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
 
-    Returns:
-        The opposite direction string, or None if direction is invalid
-    """
+
+def _get_opposite_direction(direction: str) -> str | None:
     return DIRECTION_OPPOSITES.get(direction.lower())
 
 
-def _do_promotion_in_main_thread(
-    project_id: int, connection_room_id: int, connection_direction: str
-) -> Tuple[bool, Dict[str, Any]]:
-    """
-    Actually perform promotion in Evennia's main thread.
+def _exit_names(obj):
+    return {obj.key.lower(), *(alias.lower() for alias in obj.aliases.all())}
 
-    This function:
-    1. Finds all rooms tagged with project_{project_id} and 'sandbox'
-    2. Finds the connection room by dbref
-    3. Validates no exit exists in the specified direction from connection room
-    4. Removes 'sandbox' tag from all project rooms (moves them to live world)
-    5. Creates exit from connection room to project's entry room
-    6. Creates return exit from project entry room back to connection room
 
-    Args:
-        project_id: The BuildProject ID
-        connection_room_id: The dbref of the live room to connect to
-        connection_direction: Direction from live room into the build
+def _direction_taken(room, direction):
+    """Does `room` already have an exit called n/north (key or alias)?"""
+    wanted = {direction, DIRECTION_NAMES[direction]}
+    return any(obj.destination and _exit_names(obj) & wanted for obj in room.contents)
 
-    Returns:
-        Tuple of (success: bool, result: dict)
-        result contains: promoted_rooms, created_exits, entry_room_id, errors
-    """
-    try:
-        from typeclasses.rooms import Room
-        from typeclasses.exits import Exit
-        from evennia.utils.create import create_object
 
-        errors = []
+def _create_connection_exit(direction, location, destination):
+    exit_obj = create_object(
+        typeclass="typeclasses.exits.Exit",
+        key=DIRECTION_NAMES[direction],
+        aliases=[direction],
+        location=location,
+        destination=destination,
+        home=location,
+        tags=["web_builder"],
+    )
+    if exit_obj is None:
+        raise RuntimeError(f"Evennia refused to create the {direction} exit")
+    return exit_obj
 
-        # Find all project rooms with sandbox tag
-        project_tag = f"project_{project_id}"
-        sandbox_rooms = search.search_object(
-            "",
-            typeclass="typeclasses.rooms.Room",
-            tags=[project_tag, "sandbox"],
+
+def _reviewed_connection(project, connection_room_id, connection_direction):
+    snapshot = project.approved_map_data or {}
+    room_id = snapshot.get("connection_room_id")
+    direction = snapshot.get("connection_direction")
+    if not snapshot.get("map_data") or room_id is None or direction not in DIRECTION_NAMES:
+        raise PromotionError("Project has no reviewed connection to promote with")
+    if connection_room_id is not None or connection_direction is not None:
+        try:
+            requested_room = int(connection_room_id)
+        except (TypeError, ValueError):
+            requested_room = None
+        requested_direction = connection_direction.lower() if isinstance(connection_direction, str) else None
+        if requested_room != room_id or requested_direction != direction:
+            raise PromotionError(
+                f"The connection was reviewed as #{room_id} going {direction}; "
+                "promotion can't use a different one. Resubmit the project to change it.",
+                status=409,
+            )
+    return room_id, direction
+
+
+def promote_unit(
+    project_id: int, connection_room_id: int | None = None, connection_direction: str | None = None
+) -> dict[str, Any]:
+    """Promote a built project into the live world. Runs on the reactor."""
+    from evennia.objects.models import ObjectDB
+
+    from .models import BuildProject
+
+    # 1. Validate (no mutations).
+    project = BuildProject.objects.filter(pk=project_id).first()
+    if project is None:
+        raise PromotionError("Project not found", status=404)
+    if project.status != "built" or not project.built_object_ids:
+        raise PromotionError(f"Project must be in 'built' status (current: {project.status})")
+    room_id, direction = _reviewed_connection(project, connection_room_id, connection_direction)
+
+    live_room = ObjectDB.objects.filter(pk=room_id).first()
+    if live_room is None or not is_live_room(live_room):
+        raise PromotionError(f"The reviewed connection room #{room_id} is no longer a live room", status=409)
+
+    rooms, exits, skipped = recorded_objects(project)
+    if skipped:
+        raise PromotionError(
+            "Recorded sandbox objects no longer match the build (tags changed or a player "
+            "owns them): " + ", ".join(f"#{i}" for i in skipped)
         )
+    entry_id = project.built_object_ids.get("entry")
+    entry = next((room for room in rooms if room.id == entry_id), None)
+    if entry is None:
+        raise PromotionError("The sandbox entry room is missing")
 
-        if not sandbox_rooms:
-            return False, {"error": "No sandbox rooms found for this project"}
+    back = _get_opposite_direction(direction)
+    if _direction_taken(live_room, direction):
+        raise PromotionError(f"{live_room.key} (#{live_room.id}) already has an exit {direction}", status=409)
+    if _direction_taken(entry, back):
+        raise PromotionError(f"The entry room {entry.key} already has an exit {back}", status=409)
 
-        # Find the connection room
-        connection_room = None
-        try:
-            # Search by dbref (id)
-            found = search.search_object(f"#{connection_room_id}")
-            if found:
-                connection_room = found[0]
-        except Exception as e:
-            logger.warning(
-                f"Error searching for connection room #{connection_room_id}: {e}"
-            )
+    # 2. Mutate; 3. compensate on any error.
+    project_tag = f"project_{project_id}"
+    flipped, created = [], []
+    try:
+        for obj in rooms + exits:
+            obj.tags.remove("sandbox")
+            obj.tags.remove(project_tag)
+            flipped.append(obj)
+        created.append(_create_connection_exit(direction, live_room, entry))
+        created.append(_create_connection_exit(back, entry, live_room))
 
-        if not connection_room:
-            return False, {"error": f"Connection room #{connection_room_id} not found"}
+        # Promotion's cleanup: anything recorded that is still a sandbox
+        # object. Promoted objects no longer carry the tags, and nothing
+        # unrecorded is ever considered.
+        leftover_rooms, leftover_exits, _ = recorded_objects(project)
+        delete_recorded(leftover_rooms, leftover_exits)
 
-        # Validate connection room is not a sandbox room
-        if connection_room.tags.get("sandbox"):
-            return False, {"error": "Cannot connect to another sandbox room"}
-
-        # Check if exit already exists in that direction from connection room
-        for exit_obj in connection_room.contents:
-            if (
-                hasattr(exit_obj, "destination")
-                and exit_obj.destination
-                and exit_obj.name.lower() == connection_direction.lower()
-            ):
-                return False, {
-                    "error": f"Exit '{connection_direction}' already exists from connection room"
-                }
-
-        # Determine entry room (room with lowest ID, or first in list)
-        entry_room = min(sandbox_rooms, key=lambda r: r.id)
-
-        # Remove 'sandbox' tag from all project rooms (moves them to live world)
-        promoted_count = 0
-        for room in sandbox_rooms:
+        updated = BuildProject.objects.filter(pk=project_id, status="built").update(
+            status="live",
+            promoted_at=timezone.now(),
+            sandbox_room_id=None,
+            built_object_ids={},
+            updated_at=timezone.now(),
+        )
+        if not updated:
+            raise PromotionError("Project changed while it was being promoted", status=409)
+    except BaseException:
+        for exit_obj in created:
             try:
-                room.tags.remove("sandbox")
-                promoted_count += 1
-            except Exception as e:
-                logger.warning(f"Failed to remove sandbox tag from room {room.id}: {e}")
-                errors.append(f"Room {room.id}: {e}")
-
-        # Create exit from connection room to project entry room
-        created_exits = []
-        try:
-            forward_exit = create_object(
-                typeclass="typeclasses.exits.Exit",
-                key=connection_direction,
-                aliases=[connection_direction.lower()],
-                location=connection_room,
-                destination=entry_room,
-            )
-            # Add tags to track this as a web builder exit
-            forward_exit.tags.add("web_builder")
-            forward_exit.tags.add(project_tag)
-            created_exits.append(
-                {
-                    "id": forward_exit.id,
-                    "name": forward_exit.name,
-                    "source": connection_room.id,
-                    "destination": entry_room.id,
-                }
-            )
-            logger.info(
-                f"Created exit from room {connection_room.id} to {entry_room.id} "
-                f"({connection_direction})"
-            )
-        except Exception as e:
-            error_msg = f"Failed to create forward exit: {e}"
-            logger.exception(error_msg)
-            errors.append(error_msg)
-
-        # Create return exit from project entry room back to connection room
-        opposite_direction = _get_opposite_direction(connection_direction)
-        if opposite_direction:
+                exit_obj.delete()
+            except Exception:
+                logger.exception("Promotion undo: could not delete exit %s", exit_obj)
+        for obj in flipped:
             try:
-                return_exit = create_object(
-                    typeclass="typeclasses.exits.Exit",
-                    key=opposite_direction,
-                    aliases=[opposite_direction.lower()],
-                    location=entry_room,
-                    destination=connection_room,
-                )
-                # Add tags to track this as a web builder exit
-                return_exit.tags.add("web_builder")
-                return_exit.tags.add(project_tag)
-                created_exits.append(
-                    {
-                        "id": return_exit.id,
-                        "name": return_exit.name,
-                        "source": entry_room.id,
-                        "destination": connection_room.id,
-                    }
-                )
-                logger.info(
-                    f"Created return exit from room {entry_room.id} to {connection_room.id} "
-                    f"({opposite_direction})"
-                )
-            except Exception as e:
-                error_msg = f"Failed to create return exit: {e}"
-                logger.exception(error_msg)
-                errors.append(error_msg)
+                obj.tags.add("sandbox")
+                obj.tags.add(project_tag)
+            except Exception:
+                logger.exception("Promotion undo: could not restore tags on %s", obj)
+        raise
 
-        return True, {
-            "promoted_rooms": promoted_count,
-            "created_exits": created_exits,
-            "entry_room_id": entry_room.id,
-            "errors": errors if errors else None,
-        }
-
-    except Exception as e:
-        logger.exception(f"Promotion failed for project {project_id}")
-        return False, {"error": str(e)}
+    logger.info(
+        "Promoted project %s: %s rooms, %s exits, connected to #%s going %s",
+        project_id,
+        len(rooms),
+        len(exits),
+        live_room.id,
+        direction,
+    )
+    return {
+        "promoted_rooms": len(rooms),
+        "promoted_exits": len(exits),
+        "created_exits": [
+            {"id": e.id, "name": e.key, "source": e.location.id, "destination": e.destination.id} for e in created
+        ],
+        "entry_room_id": entry.id,
+    }
 
 
 def promote_project_to_live(
-    project_id: int, connection_room_id: int, connection_direction: str
-) -> Tuple[bool, Dict[str, Any]]:
+    project_id: int, connection_room_id: int | None = None, connection_direction: str | None = None
+) -> tuple[bool, dict[str, Any]]:
     """
-    Promote a built project from sandbox to live world.
+    Promote a built project from any thread.
 
-    This function:
-    1. Validates the project exists and is in 'built' status
-    2. Validates the project has an active sandbox
-    3. Calls _do_promotion_in_main_thread to move rooms and create exits
-    4. On success: cleans up sandbox container, updates project status to 'live'
-
-    Args:
-        project_id: The BuildProject ID
-        connection_room_id: The dbref of the live room to connect to
-        connection_direction: Direction from live room into the build (n/s/e/w/etc)
-
-    Returns:
-        Tuple of (success: bool, result: dict)
-        On success: result contains promoted_rooms, created_exits, entry_room_id
-        On failure: result contains error message
+    Returns (True, result) or (False, {"error": message, "status": http}).
     """
-    from django.utils import timezone
-    from web.builder.models import BuildProject
-    from web.builder.sandbox_cleanup import cleanup_sandbox_for_project
-
     try:
-        # Load and validate project
-        try:
-            project = BuildProject.objects.get(id=project_id)
-        except BuildProject.DoesNotExist:
-            return False, {"error": "Project not found"}
-
-        # Validate project status
-        if project.status != "built":
-            return False, {
-                "error": f"Project must be in 'built' status (current: {project.status})"
-            }
-
-        # Validate project has active sandbox
-        if not project.sandbox_room_id:
-            return False, {"error": "Project has no active sandbox"}
-
-        # Validate direction
-        if connection_direction.lower() not in DIRECTION_OPPOSITES:
-            valid_directions = ", ".join(DIRECTION_OPPOSITES.keys())
-            return False, {
-                "error": f"Invalid direction '{connection_direction}'. "
-                f"Valid directions: {valid_directions}"
-            }
-
-        logger.info(
-            f"Starting promotion for project {project_id}: "
-            f"connecting to room #{connection_room_id} via {connection_direction}"
-        )
-
-        # Run promotion in main thread
-        result = None
-        error = None
-        event = threading.Event()
-
-        def wrapper():
-            nonlocal result, error
-            try:
-                success, result = _do_promotion_in_main_thread(
-                    project_id, connection_room_id, connection_direction
-                )
-                if not success:
-                    error = result.get("error")
-            except Exception as e:
-                error = str(e)
-                logger.exception(f"Promotion wrapper error for project {project_id}")
-            finally:
-                event.set()
-
-        run_in_main_thread(wrapper)
-        event.wait(timeout=30)
-
-        if error:
-            return False, {"error": error}
-
-        if not result:
-            return False, {"error": "Promotion timed out"}
-
-        # Promotion succeeded - clean up and update project
-        logger.info(f"Promotion successful for project {project_id}: {result}")
-
-        # Clean up the sandbox container room
-        cleanup_success, cleanup_result = cleanup_sandbox_for_project(project_id)
-        if not cleanup_success:
-            logger.warning(
-                f"Sandbox cleanup failed after promotion for project {project_id}: "
-                f"{cleanup_result.get('error', 'Unknown error')}"
-            )
-            # Don't fail the promotion if cleanup fails - rooms are already live
-
-        # Update project status to live
-        try:
-            project.mark_live()
-        except ValueError as e:
-            logger.error(f"Failed to mark project {project_id} as live: {e}")
-            # Don't fail - promotion succeeded even if status update failed
-
-        # Update promotion timestamp and clear sandbox reference
-        project.promoted_at = timezone.now()
-        project.sandbox_room_id = None
-        project.save(update_fields=["promoted_at", "sandbox_room_id"])
-
-        return True, result
-
+        return True, call_in_main_thread(promote_unit, project_id, connection_room_id, connection_direction)
+    except PromotionError as e:
+        return False, {"error": str(e), "status": e.status}
     except Exception as e:
-        logger.exception(f"Unexpected error promoting project {project_id}")
-        return False, {"error": f"Unexpected error: {str(e)}"}
+        logger.exception("Promotion failed for project %s", project_id)
+        return False, {"error": f"Promotion failed: {e}", "status": 500}

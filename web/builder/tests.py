@@ -320,8 +320,9 @@ class AuthorityTests(BuilderGateTestBase):
         self.assertEqual(resp.status_code, 400)
 
     def test_cleanup_is_owner_or_admin(self):
-        # The route is unrouted until PR 8, so call the view directly.
-        project = self.make_project(self.owner, status="built", sandbox_room_id=1)
+        project = self.make_project(
+            self.owner, status="built", sandbox_room_id=1, built_object_ids={"rooms": {"r1": 1}, "exits": {}}
+        )
         factory = RequestFactory()
 
         def call(user):

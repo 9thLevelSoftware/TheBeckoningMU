@@ -8,7 +8,6 @@ Commands:
 """
 
 from evennia.commands.command import Command
-from evennia.utils import search
 
 
 class CmdGotoSandbox(Command):
@@ -34,9 +33,7 @@ class CmdGotoSandbox(Command):
 
         if not self.args:
             # List user's sandboxes
-            projects = BuildProject.objects.filter(
-                user=self.caller.account, sandbox_room_id__isnull=False
-            )
+            projects = BuildProject.objects.filter(user=self.caller.account, sandbox_room_id__isnull=False)
             if not projects:
                 self.caller.msg("You have no active sandboxes.")
                 return
@@ -50,23 +47,20 @@ class CmdGotoSandbox(Command):
 
         try:
             project_id = int(self.args.strip())
-            project = BuildProject.objects.get(
-                id=project_id, user=self.caller.account, sandbox_room_id__isnull=False
-            )
+            project = BuildProject.objects.get(id=project_id, user=self.caller.account, sandbox_room_id__isnull=False)
         except (ValueError, BuildProject.DoesNotExist):
             self.caller.msg("Sandbox not found or you don't have access.")
             return
 
-        # Find the sandbox entry room using the project tag
-        project_tag = f"project_{project.id}"
-        rooms = search.search_object(
-            "", typeclass="typeclasses.rooms.Room", tags=[project_tag]
-        )
-        if rooms:
-            self.caller.move_to(rooms[0])
+        # The project records its entry room at build time.
+        from evennia.objects.models import ObjectDB
+
+        room = ObjectDB.objects.filter(pk=project.sandbox_room_id).first()
+        if room and room.tags.has("sandbox") and room.is_typeclass("typeclasses.rooms.Room", exact=False):
+            self.caller.move_to(room)
             self.caller.msg(f"Teleported to sandbox: {project.name}")
         else:
-            self.caller.msg("Sandbox rooms not found. May need cleanup.")
+            self.caller.msg("Sandbox entry room not found. It may need cleanup.")
 
 
 class CmdListSandboxes(Command):
@@ -88,9 +82,7 @@ class CmdListSandboxes(Command):
     def func(self):
         from web.builder.models import BuildProject
 
-        projects = BuildProject.objects.filter(
-            sandbox_room_id__isnull=False
-        ).select_related("user")
+        projects = BuildProject.objects.filter(sandbox_room_id__isnull=False).select_related("user")
 
         if not projects:
             self.caller.msg("No active sandboxes.")
@@ -105,15 +97,17 @@ class CmdListSandboxes(Command):
 
 class CmdCleanupSandbox(Command):
     """
-    Clean up a sandbox by deleting all rooms/exits.
+    Delete a project's sandbox rooms and exits.
 
     Usage:
         @cleanup_sandbox <project_id>
         @csb <project_id>
 
-    Deletes all sandbox rooms and exits for the specified project.
-    Resets the project status to 'approved'.
-    Only the builder who owns the sandbox or staff can cleanup.
+    Deletes the rooms and exits the sandbox build created for the project
+    (only those: it goes by the object ids recorded at build time, not by
+    tags) and returns the project to 'approved' so it can be rebuilt. The
+    project itself is kept. Refused while a character is inside the sandbox.
+    Only the project's owner or an Admin can clean up.
     """
 
     key = "@cleanup_sandbox"
@@ -136,25 +130,22 @@ class CmdCleanupSandbox(Command):
             return
 
         # Permission check: staff or owner
-        if not (
-            self.caller.check_permstring("Admin") or project.user == self.caller.account
-        ):
+        if not (self.caller.check_permstring("Admin") or project.user == self.caller.account):
             self.caller.msg("You don't have permission to cleanup this sandbox.")
             return
 
-        if not project.sandbox_room_id:
+        if project.status != "built" or not project.built_object_ids:
             self.caller.msg("This project has no active sandbox.")
             return
 
-        # Import and call cleanup
+        # The same unit the web endpoint uses (recorded ids only).
         from web.builder.sandbox_cleanup import cleanup_sandbox_for_project
 
         success, result = cleanup_sandbox_for_project(project_id)
 
         if success:
             self.caller.msg(
-                f"Sandbox cleaned: {result['deleted_rooms']} rooms, "
-                f"{result['deleted_exits']} exits deleted."
+                f"Sandbox cleaned: {result['deleted_rooms']} rooms, {result['deleted_exits']} exits deleted."
             )
         else:
             self.caller.msg(f"Cleanup failed: {result.get('error', 'Unknown error')}")

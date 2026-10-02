@@ -170,12 +170,13 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
 
         self.add(CmdNews)
 
-        # Add Sandbox commands. @cleanup_sandbox stays unregistered until its
-        # cleanup selects objects by recorded ids instead of forgeable tags.
-        from commands.builder.sandbox import CmdGotoSandbox, CmdListSandboxes
+        # Add Sandbox commands. @cleanup_sandbox deletes only the object ids
+        # recorded at build time, never objects selected by (forgeable) tags.
+        from commands.builder.sandbox import CmdCleanupSandbox, CmdGotoSandbox, CmdListSandboxes
 
         self.add(CmdGotoSandbox)
         self.add(CmdListSandboxes)
+        self.add(CmdCleanupSandbox)
 
 
 class AccountCmdSet(default_cmds.AccountCmdSet):

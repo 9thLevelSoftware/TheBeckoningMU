@@ -20,10 +20,13 @@ from evennia.objects.models import ObjectDB
 from evennia.scripts.models import ScriptDB
 from evennia.utils import create
 
+from commands.builder.sandbox import CmdCleanupSandbox
 from web import main_thread
-from web.builder import sandbox_builder
+from web.builder import promotion, sandbox_builder, sandbox_cleanup
 from web.builder.models import BuildProject
+from web.builder.promotion import promote_project_to_live
 from web.builder.sandbox_bridge import create_sandbox_from_project
+from web.builder.sandbox_cleanup import cleanup_sandbox_for_project
 
 
 def area_map(n_rooms=2, timed_rooms=(), entry=None):
@@ -295,10 +298,25 @@ class ThreadDisciplineTests(SandboxTestBase):
         self.assertTrue(ok)
         self.assertEqual(spy.call_args.args, (sandbox_builder.build_unit, project.pk))
 
+    def test_promote_and_cleanup_run_through_call_in_main_thread(self):
+        project = self.built_project()
+        with mock.patch(
+            "web.builder.sandbox_cleanup.call_in_main_thread", wraps=main_thread.call_in_main_thread
+        ) as spy:
+            ok, _ = cleanup_sandbox_for_project(project.pk)
+        self.assertTrue(ok)
+        self.assertEqual(spy.call_args.args, (sandbox_cleanup.cleanup_unit, project.pk))
+
+        project = self.built_project()
+        with mock.patch("web.builder.promotion.call_in_main_thread", wraps=main_thread.call_in_main_thread) as spy:
+            ok, result = promote_project_to_live(project.pk)
+        self.assertTrue(ok, result)
+        self.assertEqual(spy.call_args.args, (promotion.promote_unit, project.pk, None, None))
+
     def test_no_threading_event_wrappers_remain(self):
         import web.builder.sandbox_bridge as bridge
 
-        for module in (bridge,):
+        for module in (bridge, promotion, sandbox_cleanup):
             source = Path(module.__file__).read_text(encoding="utf-8")
             self.assertNotIn("run_in_main_thread", source.replace("call_in_main_thread", ""), module)
             self.assertNotIn("threading.Event", source, module)
@@ -309,3 +327,249 @@ class ThreadDisciplineTests(SandboxTestBase):
         self.assertEqual(resp.status_code, 200, resp.content)
         project.refresh_from_db()
         self.assertEqual(resp.json()["sandbox_id"], project.sandbox_room_id)
+
+
+def _exits_of(room):
+    return [obj for obj in room.contents if obj.destination]
+
+
+class PromoteTests(SandboxTestBase):
+    def promote(self, project, data=None, user=None):
+        url = reverse("builder:promote_project", args=[project.pk])
+        return self.post_json(self.client_for(user or self.owner), url, data)
+
+    def test_build_promote_cleanup_happy_path(self):
+        project = self.built_project(map_data=area_map(3, timed_rooms=(2,)))
+        record = project.built_object_ids
+        recorded = self.recorded_objects(project)
+        entry = ObjectDB.objects.get(pk=record["entry"])
+
+        resp = self.promote(project, {"connection_room_id": self.plaza.id, "connection_direction": "n"})
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        # The live room's new exit leads to the entry room, which has the
+        # area's own exits plus the way back.
+        north = [e for e in _exits_of(self.plaza) if e.key == "north"]
+        self.assertEqual(len(north), 1)
+        self.assertEqual(north[0].destination, entry)
+        self.assertIn("n", north[0].aliases.all())
+        entry_exits = {e.key: e.destination for e in _exits_of(entry)}
+        self.assertEqual(entry_exits["south"], self.plaza)
+        self.assertIn("east", entry_exits)
+        # Nothing of the project is still a sandbox object.
+        for obj in recorded:
+            self.assertFalse(obj.tags.has("sandbox"), obj)
+            self.assertFalse(obj.tags.has(f"project_{project.pk}"), obj)
+        self.assertEqual(list(ObjectDB.objects.get_by_tag("sandbox")), [])
+        project.refresh_from_db()
+        self.assertEqual((project.status, project.built_object_ids, project.sandbox_room_id), ("live", {}, None))
+        self.assertIsNotNone(project.promoted_at)
+        # The timed trigger keeps running on the promoted room.
+        script = ScriptDB.objects.get(pk=record["scripts"][0])
+        self.assertTrue(_timer_running(script))
+
+        # Cleanup afterwards deletes nothing live.
+        objects_before = ObjectDB.objects.count()
+        url = reverse("builder:cleanup_sandbox", args=[project.pk])
+        self.assertEqual(self.post_json(self.client_for(self.owner), url).status_code, 400)
+        with self.assertRaises(sandbox_cleanup.CleanupError):
+            sandbox_cleanup.cleanup_unit(project.pk)
+        self.assertEqual(ObjectDB.objects.count(), objects_before)
+
+    def test_promote_without_a_body_uses_the_reviewed_connection(self):
+        project = self.built_project(direction="e")
+        resp = self.promote(project)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual([e.key for e in _exits_of(self.plaza)], ["east"])
+
+    def test_connection_different_from_snapshot_is_refused(self):
+        project = self.built_project()
+        other = create.create_object("typeclasses.rooms.Room", key="Docks", nohome=True)
+        objects_before = ObjectDB.objects.count()
+        for data in (
+            {"connection_room_id": other.id, "connection_direction": "n"},
+            {"connection_room_id": self.plaza.id, "connection_direction": "s"},
+            {"connection_room_id": other.id},
+        ):
+            resp = self.promote(project, data)
+            self.assertEqual(resp.status_code, 409, data)
+        self.assertEqual(ObjectDB.objects.count(), objects_before)
+        self.assertEqual(_exits_of(other), [])
+        project.refresh_from_db()
+        self.assertEqual(project.status, "built")
+        for obj in self.recorded_objects(project):
+            self.assertTrue(obj.tags.has("sandbox"))
+
+    def test_direction_in_use_is_refused_by_alias_or_long_name(self):
+        project = self.built_project()
+        create.create_object(
+            "typeclasses.exits.Exit", key="north", aliases=["n"], location=self.plaza, destination=self.plaza
+        )
+        resp = self.promote(project)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn("already has an exit", resp.json()["error"])
+
+    def test_connection_room_gone_is_refused(self):
+        project = self.built_project()
+        self.plaza.delete()
+        resp = self.promote(project)
+        self.assertEqual(resp.status_code, 409)
+
+    def test_injected_failure_after_first_connecting_exit(self):
+        project = self.built_project()
+        recorded = self.recorded_objects(project)
+        objects_before = ObjectDB.objects.count()
+        plaza_contents_before = list(self.plaza.contents)
+        real = promotion._create_connection_exit
+        calls = []
+
+        def second_fails(*args, **kwargs):
+            calls.append(args)
+            if len(calls) == 2:
+                raise RuntimeError("injected promotion failure")
+            return real(*args, **kwargs)
+
+        with (
+            mock.patch.object(promotion, "_create_connection_exit", side_effect=second_fails),
+            self.assertLogs("web.builder.promotion", level="ERROR") as logs,
+        ):
+            ok, result = promotion.promote_project_to_live(project.pk)
+        # The failure is logged once; the undo itself raised nothing.
+        self.assertEqual(len(logs.records), 1)
+        self.assertNotIn("undo", logs.output[0])
+        self.assertFalse(ok)
+        self.assertIn("injected promotion failure", result["error"])
+        self.assertEqual(len(calls), 2)
+        # In memory: the live room's contents have no new exit, and the area
+        # is still a sandbox.
+        self.assertEqual(self.plaza.contents, plaza_contents_before)
+        for obj in recorded:
+            self.assertTrue(obj.tags.has("sandbox"), obj)
+            self.assertTrue(obj.tags.has(f"project_{project.pk}"), obj)
+        # In rows: no new object, project unchanged.
+        self.assertEqual(ObjectDB.objects.count(), objects_before)
+        project.refresh_from_db()
+        self.assertEqual(project.status, "built")
+        self.assertTrue(project.built_object_ids)
+        # And it can still be promoted afterwards.
+        ok, result = promotion.promote_project_to_live(project.pk)
+        self.assertTrue(ok, result)
+
+
+class CleanupTests(SandboxTestBase):
+    def cleanup_url(self, project):
+        return reverse("builder:cleanup_sandbox", args=[project.pk])
+
+    def make_player_character(self, location):
+        account = create.create_account("splayer", "sp@example.com", "testpassword123")
+        char = create.create_object("typeclasses.characters.Character", key="Vic", location=location, home=location)
+        char.db_account = account
+        char.save(update_fields=["db_account"])
+        return char
+
+    def forge(self, project, *objs):
+        for obj in objs:
+            obj.tags.add("sandbox")
+            obj.tags.add(f"project_{project.pk}")
+
+    def test_owner_cleanup_removes_only_recorded_objects(self):
+        project = self.built_project(map_data=area_map(3, timed_rooms=(1, 3)))
+        recorded_ids = [o.id for o in self.recorded_objects(project)]
+        unrelated = create.create_object("typeclasses.rooms.Room", key="Unrelated", nohome=True)
+        objects_before = ObjectDB.objects.count()
+
+        resp = self.post_json(self.client_for(self.owner), self.cleanup_url(project))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["deleted"], {"rooms": 3, "exits": 4, "objects": 0})
+        self.assert_nothing_left(recorded_ids, objects_before - len(recorded_ids), 0)
+        self.assertTrue(ObjectDB.objects.filter(pk__in=[self.plaza.id, unrelated.id]).count() == 2)
+        project.refresh_from_db()
+        self.assertEqual((project.status, project.sandbox_room_id, project.built_object_ids), ("approved", None, {}))
+        # The project record is kept, and it can be built again.
+        ok, result = create_sandbox_from_project(project.pk)
+        self.assertTrue(ok, result)
+
+    def test_cleanup_route_permissions(self):
+        project = self.built_project()
+        self.assertEqual(self.post_json(self.client_for(self.builder2), self.cleanup_url(project)).status_code, 403)
+        project.refresh_from_db()
+        self.assertEqual(project.status, "built")
+        self.assertEqual(self.post_json(self.client_for(self.admin), self.cleanup_url(project)).status_code, 200)
+
+    def test_forged_tags_survive_web_cleanup(self):
+        project = self.built_project()
+        player = self.make_player_character(self.plaza)
+        self.forge(project, self.plaza, player)
+        resp = self.post_json(self.client_for(self.owner), self.cleanup_url(project))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(ObjectDB.objects.filter(pk=self.plaza.id).exists())
+        self.assertTrue(ObjectDB.objects.filter(pk=player.id).exists())
+        self.assertEqual(player.location, self.plaza)
+
+    def test_forged_tags_survive_in_game_cleanup(self):
+        project = self.built_project()
+        player = self.make_player_character(self.plaza)
+        self.forge(project, self.plaza, player)
+        builder_char = create.create_object("typeclasses.characters.Character", key="Bob", nohome=True)
+        builder_char.db_account = self.owner
+        builder_char.save(update_fields=["db_account"])
+        cmd = CmdCleanupSandbox()
+        cmd.caller = builder_char
+        cmd.args = str(project.pk)
+        with (
+            mock.patch.object(builder_char, "msg") as msg,
+            mock.patch("web.builder.sandbox_cleanup.call_in_main_thread", wraps=main_thread.call_in_main_thread) as spy,
+        ):
+            cmd.func()
+        self.assertIn("Sandbox cleaned: 2 rooms, 2 exits deleted.", msg.call_args.args[0])
+        self.assertEqual(spy.call_args.args, (sandbox_cleanup.cleanup_unit, project.pk))
+        self.assertTrue(ObjectDB.objects.filter(pk__in=[self.plaza.id, player.id]).count() == 2)
+
+    def test_forged_tags_survive_promotion_cleanup(self):
+        project = self.built_project()
+        player = self.make_player_character(self.plaza)
+        # A second live room that also carries the forged tags.
+        decoy = create.create_object("typeclasses.rooms.Room", key="Decoy", nohome=True)
+        self.forge(project, decoy, player)
+        with mock.patch.object(promotion, "delete_recorded", wraps=sandbox_cleanup.delete_recorded) as sweep:
+            ok, result = promote_project_to_live(project.pk)
+        self.assertTrue(ok, result)
+        self.assertEqual(sweep.call_count, 1)
+        self.assertEqual(sweep.call_args.args, ([], []))
+        self.assertTrue(ObjectDB.objects.filter(pk__in=[decoy.id, player.id]).count() == 2)
+        # Promotion didn't touch the forged objects' tags either.
+        self.assertTrue(decoy.tags.has("sandbox"))
+
+    def test_recorded_object_given_an_account_is_left_alone(self):
+        project = self.built_project()
+        record = project.built_object_ids
+        odd_room = ObjectDB.objects.get(pk=record["rooms"]["r2"])
+        odd_room.db_account = create.create_account("sodd", "sodd@example.com", "testpassword123")
+        odd_room.save(update_fields=["db_account"])
+        resp = self.post_json(self.client_for(self.owner), self.cleanup_url(project))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["skipped"], [odd_room.id])
+        self.assertTrue(ObjectDB.objects.filter(pk=odd_room.id).exists())
+        self.assertFalse(ObjectDB.objects.filter(pk=record["rooms"]["r1"]).exists())
+
+    def test_occupied_sandbox_is_refused_and_untouched(self):
+        project = self.built_project()
+        entry = ObjectDB.objects.get(pk=project.sandbox_room_id)
+        player = self.make_player_character(entry)
+        objects_before = ObjectDB.objects.count()
+        resp = self.post_json(self.client_for(self.owner), self.cleanup_url(project))
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn("still inside", resp.json()["error"])
+        self.assertEqual(ObjectDB.objects.count(), objects_before)
+        self.assertEqual(player.location, entry)
+        project.refresh_from_db()
+        self.assertEqual(project.status, "built")
+
+    def test_unrecorded_exit_into_sandbox_is_refused(self):
+        project = self.built_project()
+        entry = ObjectDB.objects.get(pk=project.sandbox_room_id)
+        dug = create.create_object("typeclasses.exits.Exit", key="hatch", location=self.plaza, destination=entry)
+        resp = self.post_json(self.client_for(self.owner), self.cleanup_url(project))
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn(f"#{dug.id}", resp.json()["error"])
+        self.assertTrue(ObjectDB.objects.filter(pk=dug.id).exists())
