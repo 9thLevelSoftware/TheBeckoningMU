@@ -77,9 +77,9 @@ gameplay and roleplay.
 
 |cLEARN MORE|n
 
-  |w+help v5|n         - V5 mechanics overview
-  |w+help clans|n      - Clan information
-  |w+help disciplines|n - Discipline powers
-  |w+news policy|n     - Game policies and house rules
+  |whelp v5-rules-guide|n     - V5 rules summary
+  |whelp clans|n              - Clan information
+  |whelp disciplines-guide|n  - Discipline powers
+  |wnews policy|n             - Game policies and house rules
 
 |rIn the Final Nights, every choice matters. Welcome to the Masquerade.|n

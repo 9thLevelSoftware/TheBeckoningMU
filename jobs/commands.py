@@ -139,7 +139,7 @@ class CmdJobClaim(COMMAND_DEFAULT_CLASS):
             return
         
         # Claim the job
-        job.players.add(self.caller.account)
+        job.players.add(utils.account_of(self.caller))
         job.save()
         
         self.caller.msg(f"You have claimed job {job.ref}: {job.title}")
@@ -232,7 +232,7 @@ class CmdJobComment(COMMAND_DEFAULT_CLASS):
         try:
             comment = Comment.objects.create(
                 job=job,
-                author=self.caller.account,
+                author=utils.account_of(self.caller),
                 content=comment_text.strip(),
                 public=False
             )
@@ -283,7 +283,7 @@ class CmdJobPublic(COMMAND_DEFAULT_CLASS):
         try:
             comment = Comment.objects.create(
                 job=job,
-                author=self.caller.account,
+                author=utils.account_of(self.caller),
                 content=comment_text.strip(),
                 public=True
             )
@@ -329,9 +329,14 @@ class CmdJobSubmit(COMMAND_DEFAULT_CLASS):
     Usage:
       job/submit <bucket_name> <title> = <description>
 
+    Players may submit to the buckets 'buckets' lists (Requests and Bugs
+    by default); staff may submit to any bucket. A bucket name may have
+    spaces (job/submit Hunt Scenes Friday hunt = ...); the rest before =
+    is the title.
+
     Examples:
       job/submit Bugs Character sheet not saving = My character sheet keeps resetting
-      job/submit Features Add new command = Would like a +time command
+      job/submit Requests Scene at Elysium = Could staff run a scene on Friday?
     """
 
     key = "job/submit"
@@ -346,17 +351,20 @@ class CmdJobSubmit(COMMAND_DEFAULT_CLASS):
         
         try:
             bucket_and_title, description = self.args.split("=", 1)
-            parts = bucket_and_title.strip().split(" ", 1)
-            if len(parts) < 2:
+            bucket_name, title = utils.split_bucket_and_title(bucket_and_title)
+            if not title:
                 self.caller.msg("Usage: job/submit <bucket_name> <title> = <description>")
                 return
-            bucket_name, title = parts
         except ValueError:
             self.caller.msg("Usage: job/submit <bucket_name> <title> = <description>")
             return
         
         bucket = utils.get_bucket(self.caller, bucket_name.strip())
         if not bucket:
+            return
+        if not bucket.player_submit and not utils.is_staff(self.caller):
+            names = ", ".join(b.name for b in utils.player_buckets()) or "none yet"
+            self.caller.msg(f"You can't file jobs in '{bucket.name}'. Player buckets: {names}.")
             return
         
         # Create the job
@@ -365,7 +373,7 @@ class CmdJobSubmit(COMMAND_DEFAULT_CLASS):
                 bucket=bucket,
                 title=title.strip(),
                 description=description.strip(),
-                creator=self.caller.account,
+                creator=utils.account_of(self.caller),
                 status="OPEN"
             )
             self.caller.msg(f"Job {job.ref} created: {job.title}")
@@ -400,11 +408,10 @@ class CmdJobCreate(COMMAND_DEFAULT_CLASS):
         
         try:
             bucket_and_title, description = self.args.split("=", 1)
-            parts = bucket_and_title.strip().split(" ", 1)
-            if len(parts) < 2:
+            bucket_name, title = utils.split_bucket_and_title(bucket_and_title)
+            if not title:
                 self.caller.msg("Usage: job/create <bucket_name> <title> = <description>")
                 return
-            bucket_name, title = parts
         except ValueError:
             self.caller.msg("Usage: job/create <bucket_name> <title> = <description>")
             return
@@ -419,7 +426,7 @@ class CmdJobCreate(COMMAND_DEFAULT_CLASS):
                 bucket=bucket,
                 title=title.strip(),
                 description=description.strip(),
-                creator=self.caller.account,
+                creator=utils.account_of(self.caller),
                 status="OPEN"
             )
             self.caller.msg(f"Job {job.ref} created: {job.title}")
@@ -545,22 +552,26 @@ class CmdJobDelete(COMMAND_DEFAULT_CLASS):
 
 class CmdBuckets(COMMAND_DEFAULT_CLASS):
     """
-    List all job buckets.
+    List job buckets.
     
     Usage:
       buckets
     
-    Examples:
-      buckets
+    Players see the buckets they may file jobs in with job/submit
+    (Requests and Bugs by default); staff see every bucket, with a
+    "player" mark on those.
     """
     
     key = "buckets"
     aliases = ["+buckets"]
-    locks = "cmd:perm(Builder)"
+    locks = "cmd:all()"
     help_category = "Jobs"
     
     def func(self):
-        buckets = Bucket.objects.all()
+        if utils.is_staff(self.caller):
+            buckets = Bucket.objects.all()
+        else:
+            buckets = utils.player_buckets()
         output = utils.format_bucket_list(buckets)
         self.caller.msg(output)
 
@@ -571,6 +582,10 @@ class CmdBucketCreate(COMMAND_DEFAULT_CLASS):
     
     Usage:
       bucket/create <name> = <description>
+      bucket/create/player <name> = <description>
+    
+    /player lets players file jobs in it with job/submit (and see it in
+    'buckets'); without it only staff can.
     
     Examples:
       bucket/create Features = Feature requests from players
@@ -606,9 +621,11 @@ class CmdBucketCreate(COMMAND_DEFAULT_CLASS):
             bucket = Bucket.objects.create(
                 name=name,
                 description=description,
-                created_by=self.caller.account
+                created_by=utils.account_of(self.caller),
+                player_submit="player" in self.switches,
             )
-            self.caller.msg(f"Bucket '{bucket.name}' created.")
+            who = "players and staff" if bucket.player_submit else "staff"
+            self.caller.msg(f"Bucket '{bucket.name}' created ({who} can submit).")
         except DbError as e:
             self.caller.msg(f"A database error occurred while creating the bucket: {e}")
 

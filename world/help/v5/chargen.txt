@@ -14,7 +14,8 @@ Characters are created on the game website, not in the game.
 
 A character can't be played, roll or spend XP until it is approved.
 Once it is, connect to the game and use |yic <name>|n to start playing.
-Until then you can delete it with |ychardelete <name>|n. If staff revoke
+You can delete your own character at any time, approved or not, with
+|ychardelete <name>|n; deleting cannot be undone. If staff revoke
 an approval, the character keeps its sheet and XP; resubmit it on the
 website and staff review it as it stands.
 
@@ -33,8 +34,8 @@ website and staff review it as it stands.
        (Caitiff: any two; thin-bloods: none), plus 1 from your predator
        type. One power per dot, at or below the Discipline's rating.
   Predator type: required for Neonates and Ancillae, optional for
-       Childer, none for thin-bloods. Its specialty, Discipline dot and
-       backgrounds/merits/flaws are free.
+       Childer, none for thin-bloods. Its specialty, Discipline dot,
+       backgrounds, merits and flaws are free.
   Rituals/formulas: Blood Sorcery gives one free level-1 ritual;
        Thin-blood Alchemist gives one free formula.
   Advantages and flaws: up to 7 dots of backgrounds and merits and
@@ -46,5 +47,5 @@ website and staff review it as it stands.
   Clans: the V5 core clans, Caitiff and thin-bloods.
 
 For the setting and the V5 rules behind the choices on the form, see
-|yhelp clans|n, |yhelp disciplines|n, |yhelp backgrounds|n and |yhelp v5|n.
-The full policy is in |y+news chargen_policy|n.
+|yhelp clans|n, |yhelp disciplines-guide|n, |yhelp backgrounds-guide|n and |yhelp v5-rules-guide|n.
+The full policy is in |ynews policy/chargen_policy|n.

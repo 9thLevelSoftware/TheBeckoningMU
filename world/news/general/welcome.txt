@@ -19,10 +19,10 @@ of unlife in the modern nights.
 If you're new to the game, try these commands:
 
   |y→|n |Whelp|n                - Access the help system
-  |y→|n |W+news updates|n        - Read about recent changes
-  |y→|n |W+news policy|n         - Read game policies
+  |y→|n |Wnews updates|n         - Read about recent changes
+  |y→|n |Wnews policy|n          - Read game policies
   |y→|n |W+bbs|n                 - Read the bulletin boards
-  |y→|n |W+who|n                 - See who's online
+  |y→|n |Wwho|n                  - See who's online
 
 Characters are created on the game website, at its |y/character-creation/|n
 page (see |Whelp chargen|n).
@@ -41,9 +41,10 @@ Will you embrace the Beast, or fight to maintain your Humanity?
 
 |W▸ NEED HELP?|n
 
-  |y●|n Read |W+help getting_started|n for a full new player guide
-  |y●|n Ask questions on |W+bbs general|n
-  |y●|n Use |W+job/create|n to request staff assistance
+  |y●|n Read |Wnews general/getting_started|n for a full new player guide
+  |y●|n Ask questions on the general board (|W+bbpost general=<title>/<question>|n)
+  |y●|n Use |Wjob/submit Requests <title> = <description>|n to ask staff for help
+      (|Wbuckets|n lists the buckets you can use)
   |y●|n Contact staff with |Wpage <staffname>=<message>|n
 
 |x════════════════════════════════════════════════════════════════════════════════|n

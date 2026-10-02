@@ -23,7 +23,7 @@ Hunger, up to the whole pool. |yroll|n and |ypower|n use your current Hunger.
 
 |WHUNGER 4 AND 5:|n
 
-  - |yHunger 4+:|n you are prone to Hunger frenzy (see |yhelp frenzy|n).
+  - |yHunger 4+:|n you are prone to Hunger frenzy (see |yhelp frenzy-guide|n).
   - |yHunger 5:|n you can't Rouse the Blood. |yrouse|n, |ybloodsurge|n
     and any power that needs a Rouse check are refused until you feed.
 
@@ -55,8 +55,8 @@ Hunger falls when you feed:
   - |wOther vampires|n: risks blood bonds
 
 Feed with |y+hunt|n (once a day), or ask for a staff-run scene with
-|y+hunt/staffed|n; staff record the scene's feeding (see help hunt).
+|y+hunt/staffed|n; staff record the scene's feeding (see help hunt-guide).
 
 |[r+===================================================================+|n
 
-|ySee also:|n help roll, help dice_commands, help blood_commands, help frenzy
+|ySee also:|n help roll-guide, help dice_commands, help blood_commands, help frenzy-guide, help v5-rules-guide

@@ -378,7 +378,7 @@ class CmdPower(default_cmds.MuxCommand):
     Powers without a dice roll are used without rolling: you pay their Rouse
     checks and their effect starts.
 
-    `+power <discipline>/<power name>` also works.
+    '+power <discipline>/<power name>' also works.
     """
 
     key = "power"
@@ -549,11 +549,11 @@ class CmdRouse(default_cmds.MuxCommand):
 
     Roll one die: on 6-10 nothing happens, on 1-5 your Hunger rises by 1.
     Rouse when the Storyteller asks (Blush of Life and so on). Discipline
-    powers make their own Rouse checks through `power`, with the Blood
+    powers make their own Rouse checks through 'power', with the Blood
     Potency re-roll; a manual check gets no re-roll.
 
     At Hunger 5 you can't Rouse the Blood. The exception is a Rouse you
-    can't refuse, such as rising for the night (`rouse/wake`): it is rolled
+    can't refuse, such as rising for the night ('rouse/wake'): it is rolled
     even at Hunger 5. If it fails there, Hunger stays at 5, you make an
     immediate hunger frenzy test at Difficulty 4 (QR p.13; core p.211), and
     a failed rise at Hunger 5 also sends you into torpor (QR p.4).

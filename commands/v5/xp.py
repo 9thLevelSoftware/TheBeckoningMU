@@ -184,7 +184,7 @@ class CmdSpend(default_cmds.MuxCommand):
     advantage 3 per dot, Blood Potency new level x 10 (up to your
     Generation's maximum).
 
-    The name must be a real trait of that type: `+spend skill strength`
+    The name must be a real trait of that type: '+spend skill strength'
     is refused, and nothing is charged when a spend is refused. Willpower
     (Composure + Resolve) and Humanity can't be bought.
 

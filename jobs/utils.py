@@ -82,6 +82,56 @@ def get_job(caller, job_ref, bucket=None):
     return jobs[0]
 
 
+# The buckets every game has (created at server start by
+# world.seed_defaults). player_submit marks the ones players may file in.
+DEFAULT_BUCKETS = (
+    ("Requests", "Player requests to staff: scenes, questions, help", True),
+    ("Bugs", "Bug reports from players and staff", True),
+    ("Approval", "Character applications from the website", False),
+    ("Hunt Scenes", "Staff-run hunting scenes for players (+hunt/staffed)", False),
+    ("Builds", "Building and area work for staff", False),
+)
+
+
+def ensure_default_buckets():
+    """Create any missing default bucket; never changes an existing one. Returns the number created."""
+    created = 0
+    for name, description, player_submit in DEFAULT_BUCKETS:
+        if Bucket.objects.filter(name__iexact=name).exists():
+            continue
+        Bucket.objects.create(name=name, description=description, player_submit=player_submit)
+        created += 1
+    return created
+
+
+def player_buckets():
+    """Buckets players may submit to, by name."""
+    return Bucket.objects.filter(player_submit=True, is_archived=False).order_by("name")
+
+
+def split_bucket_and_title(text):
+    """
+    Split "<bucket> <title>" where the bucket name may contain spaces
+    ("Hunt Scenes Need a scene"): the longest existing bucket name the text
+    starts with wins; otherwise the first word is the bucket.
+
+    Returns:
+        (bucket_name, title), with title "" when there is none.
+    """
+    text = text.strip()
+    lowered = text.lower()
+    best = None
+    for name in Bucket.objects.values_list("name", flat=True):
+        candidate = name.lower()
+        fits = lowered == candidate or lowered.startswith(candidate + " ")
+        if fits and (best is None or len(name) > len(best)):
+            best = name
+    if best is not None:
+        return text[: len(best)], text[len(best) :].strip()
+    first, _, rest = text.partition(" ")
+    return first, rest.strip()
+
+
 def get_bucket(caller, bucket_name):
     """
     Fetches a Bucket by name with error handling.
@@ -97,7 +147,7 @@ def get_bucket(caller, bucket_name):
         bucket = Bucket.objects.get(name__iexact=bucket_name)
         return bucket
     except Bucket.DoesNotExist:
-        caller.msg(f"Bucket '{bucket_name}' not found.")
+        caller.msg(f"Bucket '{bucket_name}' not found. Type 'buckets' to list the buckets you can use.")
         return None
 
 
@@ -303,8 +353,9 @@ def format_bucket_list(buckets):
         job_count = bucket.jobs.count()
         description = bucket.description[:44] if bucket.description else "No description"
 
+        label = f"{bucket.name} (player)" if bucket.player_submit else bucket.name
         row_content = "|w{:<20} {:<8} {:<44}|n".format(
-            bucket.name[:20],
+            label[:20],
             str(job_count),
             description
         )

@@ -106,6 +106,6 @@ Staff only: |ypower/norouse|n skips the Rouse checks.
 
 |WRELATED TOPICS:|n
 
-|ySee also:|n help roll, help hunger, help disciplines, help bloodsurge
+|ySee also:|n help roll-guide, help hunger-guide, help disciplines-guide, help bloodsurge, help v5-rules-guide
 
 |[r+===================================================================+|n

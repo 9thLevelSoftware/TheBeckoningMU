@@ -32,21 +32,24 @@ resources, and external assets.
   +background/use influence=sway city council vote
 
 |yEffects:|n
-  - Grants bonus dice based on background level
-  - May consume one of your background's uses per session
+  - Uses one of the background's uses for this session (if limited)
+  - Tells you the bonus: dice equal to the background's dots. Nothing
+    is rolled; add the dice to your |yroll|n when the ST agrees
   - ST may require a roll to see if contacts come through
 
 |WSPECIAL BACKGROUND COMMANDS:|n
 
 |y+background/herd|n
-  Feed from your Herd background.
-  Reduces Hunger based on Herd level.
-  Safer than hunting on the streets.
+  Feed from your Herd background, once per week (7 days from your last
+  Herd feeding). Slakes up to your Herd dots in Hunger with no hunting
+  roll; your Blood Potency still applies, and without a kill Hunger
+  doesn't go below its floor (see |yhelp hunger-guide|n).
 
 |y+background/resources <item>=<rating>|n
   Acquire an item using your Resources background.
   Rating indicates item cost (1-5).
-  Can only acquire items at or below your Resources level.
+  Can only acquire items at or below your Resources level, and uses one
+  of your Resources uses. It records the purchase; no object is made.
 
 |yExamples:|n
   +background/herd                # Feed from herd
@@ -62,29 +65,30 @@ resources, and external assets.
 |yHerd|n - Reliable feeding sources
 |yInfluence|n - Political or social pull
 |yMask|n - Alternate mortal identity
-|yMentor|n - Elder vampire guidance
+|yMawla|n - A Kindred mentor or patron
 |yResources|n - Wealth and financial access
 |yRetainers|n - Loyal servants (may be ghouls)
 |yStatus|n - Standing within Kindred society
 
 |WUSES PER SESSION:|n
 
-Most backgrounds have limited uses per game session:
+Some backgrounds have limited uses per game session:
 
-  |yLevel 1-2:|n 1 use per session
-  |yLevel 3-4:|n 2 uses per session
-  |yLevel 5:|n 3 uses per session
+  |yAllies, Influence, Mawla, Resources:|n one use per dot
+  |yContacts:|n two uses per dot
+  |yHerd:|n once per week (see above)
+  |yFame, Haven, Mask, Retainers, Status:|n unlimited or passive
 
-Uses reset at the start of each new session (or when ST calls
-for a reset with +background/reset).
-
-Some backgrounds (like Haven, Resources for small purchases)
-may have unlimited uses at ST discretion.
+These are this game's conventions, not V5 book rules (see
+|yhelp backgrounds-guide|n).
 
 |WSTAFF COMMANDS:|n
 
 |y+background/reset|n
-  Reset all background uses for a new session. (Staff only)
+  (Staff only) Reset the per-session background uses of the character
+  running the command; the Herd week is kept. It takes no target, so
+  there is no command yet to reset a player's uses, and uses don't
+  refill on their own.
 
 |WTIPS:|n
 
@@ -100,6 +104,6 @@ may have unlimited uses at ST discretion.
 
 |WRELATED TOPICS:|n
 
-|ySee also:|n help backgrounds, help herd, help resources, help hunt
+|ySee also:|n help backgrounds-guide, help hunger-guide, help hunt-guide
 
 |[r+===================================================================+|n

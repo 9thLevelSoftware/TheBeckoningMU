@@ -8,7 +8,7 @@ Blood Surge, and Hunger tracking.
 |WFEEDING:|n
 
 Players feed with |y+hunt <hunting ground>|n, or ask for a staff-run hunt
-scene with |y+hunt/staffed <ground>|n (see help hunt).
+scene with |y+hunt/staffed <ground>|n (see help hunt-guide).
 
 |yfeed <character>=<source>[/<resonance>[/<intensity>]]|n   (staff only)
   Record a feeding from a staff-run scene. Sources (QR p.12): small
@@ -60,30 +60,15 @@ scene with |y+hunt/staffed <ground>|n (see help hunt).
   - Current resonance (if any)
   - Blood Surge status (if active)
 
-|WHUNGER EFFECTS:|n
+|WHUNGER 5:|n
 
-|yHunger 0:|n Well-fed and sated
-|yHunger 1-2:|n Minor cravings
-|yHunger 3:|n Moderate hunger, need to feed soon
-|yHunger 4:|n Severe hunger, the Beast stirs
-|yHunger 5:|n |[RRAVENOUS|n - Cannot use most discipline powers
-
-At Hunger 5, your dice pool replaces ALL normal dice with Hunger
-dice, making Bestial Failures much more likely.
-
-|WHUNGER DICE MECHANICS:|n
-
-When rolling, Hunger dice replace normal dice equal to your
-Hunger level. Hunger dice can cause:
-
-  - |[RMessy Critical|n - Success with a Hunger 10 in a critical
-    Your success is violent, obvious, or dramatic
-
-  - |[RBestial Failure|n - Failure with any Hunger dice
-    Your clan Compulsion activates, the Beast takes control
+At |[RHunger 5|n you can't Rouse the Blood: |yrouse|n, |ybloodsurge|n,
+mending with |y+heal|n and any power that needs a Rouse check are refused
+until you feed. What Hunger dice do to your rolls (messy criticals and
+bestial failures) is in |yhelp hunger-guide|n and |yhelp v5-rules-guide|n.
 
 |WRELATED TOPICS:|n
 
-|ySee also:|n help hunger, help hunt, help rouse, help disciplines
+|ySee also:|n help hunger-guide, help hunt-guide, help rouse, help disciplines-guide
 
 |[r+===================================================================+|n

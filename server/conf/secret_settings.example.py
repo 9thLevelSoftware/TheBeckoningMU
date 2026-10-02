@@ -37,3 +37,9 @@ CSRF_TRUSTED_ORIGINS = [
 # SESSION_COOKIE_SECURE = True
 # CSRF_COOKIE_SECURE = True
 # SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# The front proxy whose X-Forwarded-For header Evennia trusts. Set it to that
+# proxy's address only, and have the proxy overwrite the header; see
+# "Deployment notes (client addresses)" in README.md. Without it the
+# approval page's same-address flag means nothing.
+# UPSTREAM_IPS = ["<front proxy address>"]

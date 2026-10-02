@@ -63,17 +63,15 @@ Shows:
 
 |WPOWER COSTS:|n
 
-Most powers require a |WRouse check|n when activated:
-  - Roll 1 die
-  - On 1-5: Hunger increases by 1
-  - On 6-10: No Hunger increase
-
-Some powers are free to use (passive or low-level).
+Each power lists how many |WRouse checks|n it costs (|y+powerinfo|n):
+0 for free powers, usually 1, and 2 or 3 for a few. Each check is one
+die: 6-10 nothing happens, 1-5 your Hunger rises by 1.
 
 |WRESONANCE BONUSES:|n
 
-If you have the right resonance from feeding, you gain
-|g+1 die|n to powers that match:
+If the blood you last fed on had an |wIntense|n or |wAcute|n resonance
+(a Fleeting one gives no dice), you gain |g+1 die|n to powers of its
+Disciplines:
 
   |ycholeric|n - Celerity, Potence powers
   |ymelancholy|n - Fortitude, Obfuscate powers
@@ -82,11 +80,8 @@ If you have the right resonance from feeding, you gain
 
 |WACTIVE EFFECTS:|n
 
-When powers create ongoing effects, use |y+effects|n to view them.
-Effects may last for:
-  - |WScene|n - Until the scene ends
-  - |WTurns|n - A specific number of combat turns
-  - |WPermanent|n - Until manually ended
+When powers create ongoing effects, use |y+effects|n to view them
+(see |yhelp effects-guide|n).
 
 |WHUNGER RESTRICTIONS:|n
 
@@ -97,7 +92,7 @@ for hunger frenzy (Difficulty 4).
 
 |WRELATED TOPICS:|n
 
-|ySee also:|n help disciplines, help disciplines_powers, help effects,
-         help rouse, help hunger
+|ySee also:|n help disciplines-guide, help disciplines_powers, help effects-guide,
+         help rouse, help hunger-guide
 
 |[r+===================================================================+|n

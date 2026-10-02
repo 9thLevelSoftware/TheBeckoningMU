@@ -65,4 +65,4 @@ hunt again before the 24 hours are up with |y+hunt/reset <character>|n.
 With the Herd background you can slake up to your Herd dots of Hunger once
 a week with no hunting roll (+background); the same Hunger floor applies.
 
-|ySee also:|n help hunger, help rouse, help frenzy, help backgrounds
+|ySee also:|n help hunger-guide, help rouse, help frenzy-guide, help backgrounds-guide, help v5-rules-guide

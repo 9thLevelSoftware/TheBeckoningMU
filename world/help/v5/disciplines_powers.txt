@@ -1,50 +1,44 @@
-# Disciplines and Powers
+|[R+===================================================================+
+|W|                       DISCIPLINES AND POWERS                      |
+|[R+===================================================================+|n
 
-## Overview
+|WOVERVIEW|n
 
 Disciplines are supernatural powers fueled by vampiric blood. Each discipline has powers at levels 1-5. Using a discipline power typically requires a Rouse check, which may increase your Hunger.
 
-## Commands
+|WCOMMANDS|n
 
-### View Your Disciplines
-```
-+disciplines
-+disc
-```
+|yView Your Disciplines|n
+  |y+disciplines|n
+  |y+disc|n
 Shows all your known disciplines and their powers.
 
-### View Specific Discipline
-```
-+disciplines <discipline name>
-+disc animalism
-```
+|yView Specific Discipline|n
+  |y+disciplines <discipline name>|n
+  |y+disc animalism|n
 Shows all powers for a specific discipline you know.
 
-### Get Power Information
-```
-+powerinfo <discipline>/<power name>
-+pinfo celerity/cat's grace
-```
+|yGet Power Information|n
+  |y+powerinfo <discipline>/<power name>|n
+  |y+pinfo celerity/cat's grace|n
 Shows detailed information about a specific discipline power.
 
-### Use a Power
-```
-power <power name> [vs <difficulty>]
-power <power name> = <target>
-+power <discipline>/<power name>
-```
+|yUse a Power|n
+  |ypower <power name> [vs <difficulty>]|n
+  |ypower <power name> = <target>|n
+  |y+power <discipline>/<power name>|n
 Uses a discipline power you know: it rolls the power's pool (if it has
 one) with your Hunger, then makes its Rouse checks, and the Hunger they
 cost is added afterwards. At Hunger 5 a power that needs a Rouse check is
 refused. A contested power rolls against the named target's resistance.
-See `help power` for the details.
+See |yhelp power|n for the details.
 
-## The Core Disciplines
+|WTHE CORE DISCIPLINES|n
 
 The V5 core book's disciplines (V5 core p.244-288). Each power is listed as
 name (level, cost). Amalgam powers also need the second discipline.
 
-### Animalism
+|yAnimalism|n
 Commune with and command animals and the Beast (V5 core p.244-247).
 
 - Bond Famulus (1, 3 Rouse): Ghoul one animal as a bonded companion that obeys simple commands
@@ -57,7 +51,7 @@ Commune with and command animals and the Beast (V5 core p.244-247).
 - Animal Dominion (5, 2 Rouse): Command whole flocks or swarms of animals
 - Drawing Out the Beast (5, 1 Rouse): Push your own frenzy out onto a nearby victim
 
-### Auspex
+|yAuspex|n
 Supernatural senses and perception (V5 core p.248-252).
 
 - Heightened Senses (1, free): Add Auspex to perception rolls; senses sharpen beyond human limits
@@ -70,7 +64,7 @@ Supernatural senses and perception (V5 core p.248-252).
 - Possession (5, 2 Rouse; needs Dominate 3): Take over a mortal's body
 - Telepathy (5, 1 Rouse): Read surface thoughts or send your own
 
-### Blood Sorcery
+|yBlood Sorcery|n
 Blood magic and rituals (V5 core p.271-282).
 
 - Corrosive Vitae (1, 1 Rouse): Your blood eats through inanimate, non-living matter
@@ -89,7 +83,7 @@ Rituals (bought separately; 1 Rouse, Intelligence + Blood Sorcery):
 - Level 4: Defense of the Sacred Haven, Eyes of the Nighthawk, Incorporeal Passage, Ward against Cainites, Warding Circle against Lupines
 - Level 5: Escape to True Sanctuary, Heart of Stone, Shaft of Belated Dissolution, Warding Circle against Cainites
 
-### Celerity
+|yCelerity|n
 Supernatural speed and reflexes (V5 core p.252-254).
 
 - Cat's Grace (1, free): Automatically keep your balance
@@ -102,7 +96,7 @@ Supernatural speed and reflexes (V5 core p.252-254).
 - Lightning Strike (5, 1 Rouse): The target can't defend against your close-combat attack
 - Split Second (5, 1 Rouse): Act in a sudden moment, rewriting what just happened
 
-### Dominate
+|yDominate|n
 Mind control and mental commands (V5 core p.254-257).
 
 - Cloud Memory (1, free): Make the target forget the current moment
@@ -115,7 +109,7 @@ Mind control and mental commands (V5 core p.254-257).
 - Mass Manipulation (5, 1 Rouse): Use a Dominate power on a whole group at once
 - Terminal Decree (5, free): Your commands may now harm or kill the victim
 
-### Fortitude
+|yFortitude|n
 Supernatural resilience and toughness (V5 core p.258-260).
 
 - Resilience (1, free): Add Fortitude to your Health track
@@ -128,7 +122,7 @@ Supernatural resilience and toughness (V5 core p.258-260).
 - Flesh of Marble (5, 2 Rouse): Ignore the first source of physical damage each turn (not sunlight)
 - Prowess from Pain (5, 1 Rouse): No wound penalties; your injuries boost physical Attributes
 
-### Obfuscate
+|yObfuscate|n
 Supernatural stealth and invisibility (V5 core p.260-263).
 
 - Cloak of Shadows (1, free): Become unseen while you keep still
@@ -141,7 +135,7 @@ Supernatural stealth and invisibility (V5 core p.260-263).
 - Cloak the Gathering (5, 1 Rouse): Extend your Obfuscate to your companions
 - Impostor's Guise (5, 1 Rouse): Look like one specific person
 
-### Potence
+|yPotence|n
 Supernatural strength (V5 core p.263-266).
 
 - Lethal Body (1, free): Your unarmed blows deal Aggravated damage to mortals
@@ -154,7 +148,7 @@ Supernatural strength (V5 core p.263-266).
 - Earthshock (5, 2 Rouse): Strike the ground to stagger or knock down those nearby
 - Fist of Caine (5, 1 Rouse): Your unarmed attacks deal Aggravated damage to mortals and vampires
 
-### Presence
+|yPresence|n
 Supernatural charisma and emotion manipulation (V5 core p.266-269).
 
 - Awe (1, free): Become captivating; add Presence to Persuasion, Performance and Charisma pools
@@ -167,7 +161,7 @@ Supernatural charisma and emotion manipulation (V5 core p.266-269).
 - Majesty (5, 2 Rouse): No one can act against you without first resisting
 - Star Magnetism (5, 1 Rouse): Presence powers work through live video and audio
 
-### Protean
+|yProtean|n
 Shapeshifting and transformation (V5 core p.269-271).
 
 - Eyes of the Beast (1, free): Your eyes glow and see in total darkness
@@ -179,7 +173,7 @@ Shapeshifting and transformation (V5 core p.269-271).
 - Mist Form (5, 1 Rouse): Turn into mist that only fire, sun or supernatural attacks can harm
 - The Unfettered Heart (5, free): Your heart moves within your chest, making you much harder to stake
 
-### Thin-Blood Alchemy
+|yThin-Blood Alchemy|n
 Alchemical formulae unique to thin-blooded vampires (V5 core p.282-288).
 
 Thin-bloods get Alchemy through the Thin-blood Alchemist merit. Formulas:
@@ -192,7 +186,7 @@ Thin-bloods get Alchemy through the Thin-blood Alchemist merit. Formulas:
 - Airborne Momentum (4): Fly under your own power
 - Awaken the Sleeper (5): Wake a vampire from day-sleep or torpor
 
-## Rouse Checks
+|WROUSE CHECKS|n
 
 Most discipline powers require a Rouse check. When you activate such a power:
 - Roll a single d10
@@ -201,11 +195,11 @@ Most discipline powers require a Rouse check. When you activate such a power:
 
 Some powers cost two or more Rouse checks; the list above shows the cost.
 At Hunger 5 you can't make a Rouse check (QR p.4). Blood Potency lets you
-re-roll a failed Rouse check for low-level powers (see help hunger).
+re-roll a failed Rouse check for low-level powers (see help hunger-guide).
 
 The power activates regardless of the Rouse check result, but failure means you're closer to losing control.
 
-## Amalgam Powers
+|WAMALGAM POWERS|n
 
 Some powers combine two disciplines (V5 core p.244). You must have both
 disciplines at the required levels:
@@ -218,44 +212,36 @@ disciplines at the required levels:
 - Spark of Rage (Potence 3) requires Presence 3
 - Irresistible Voice (Presence 4) requires Dominate 1
 
-## Resonance Bonuses
+|WRESONANCE BONUSES|n
 
 The blood you last drank carries a Resonance (V5 core p.226-231). Intense or
 Acute Resonance adds one die to the matching disciplines' pools; Fleeting
 Resonance adds no dice but lets you spend XP on them:
 
-- **Choleric** (angry, violent, bullying, passionate, envious): Celerity, Potence
-- **Melancholy** (sad, scared, intellectual, depressed, grounded): Fortitude, Obfuscate
-- **Phlegmatic** (lazy, apathetic, calm, controlling, sentimental): Auspex, Dominate
-- **Sanguine** (horny, happy, addicted, active, flighty, enthusiastic): Blood Sorcery, Presence
-- **Animal blood**: Animalism, Protean (bagged blood: none)
+- |wCholeric|n (angry, violent, bullying, passionate, envious): Celerity, Potence
+- |wMelancholy|n (sad, scared, intellectual, depressed, grounded): Fortitude, Obfuscate
+- |wPhlegmatic|n (lazy, apathetic, calm, controlling, sentimental): Auspex, Dominate
+- |wSanguine|n (horny, happy, addicted, active, flighty, enthusiastic): Blood Sorcery, Presence
+- |wAnimal blood|n: Animalism, Protean (bagged blood: none)
 
-## Learning Disciplines
+|WLEARNING DISCIPLINES|n
 
 Disciplines are typically learned during character creation based on your clan, or purchased with XP using the +spend command.
 
-See also: +help xp, +help clans, +help hunger
+See also: help xp-guide, help clans, help hunger-guide
 
-## Examples
+|WEXAMPLES|n
 
 View all your disciplines:
-```
-+disciplines
-```
+  |y+disciplines|n
 
 View only your Animalism powers:
-```
-+disc animalism
-```
+  |y+disc animalism|n
 
 Get info about a specific power:
-```
-+powerinfo celerity/cat's grace
-```
+  |y+powerinfo celerity/cat's grace|n
 
 Use a discipline power:
-```
-+power animalism/sense the beast
-+activate dominate/compel
-+use celerity/fleetness
-```
+  |y+power animalism/sense the beast|n
+  |y+activate dominate/compel|n
+  |y+use celerity/fleetness|n

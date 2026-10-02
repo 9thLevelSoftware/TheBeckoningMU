@@ -94,6 +94,12 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         self.add(CmdHeal)
         self.add(CmdHealth)
 
+        # Staff: torpor and NPCs
+        from commands.v5.staff import CmdNPC, CmdTorpor
+
+        self.add(CmdTorpor)
+        self.add(CmdNPC)
+
         # Add V5 Thin-Blood commands
         from commands.v5.thinblood import CmdAlchemy, CmdDaylight
 
@@ -148,25 +154,10 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         self.add(CmdCoterie)
         self.add(CmdSocial)
 
-        # Add BBS commands
-        from bbs.commands import BBSCmdSet
-
-        self.add(BBSCmdSet)
-
-        # Add Jobs commands
-        from jobs.cmdset import JobsCmdSet
-
-        self.add(JobsCmdSet)
-
         # Add V5 blood system (feeding, Blood Surge, Hunger tracking)
         from commands.v5.blood_cmdset import BloodCmdSet
 
         self.add(BloodCmdSet)
-
-        # Add News command
-        from commands.news import CmdNews
-
-        self.add(CmdNews)
 
         # Add Sandbox commands. @cleanup_sandbox deletes only the object ids
         # recorded at build time, never objects selected by (forgeable) tags.
@@ -199,6 +190,25 @@ class AccountCmdSet(default_cmds.AccountCmdSet):
         # Characters are created only through the website form
         # (/character-creation/), which records them for staff approval.
         self.remove(default_cmds.CmdCharCreate)
+
+        # News is on the account, so players can read it before they have
+        # an approved character to puppet (the welcome screens point there).
+        from commands.news import CmdNews
+
+        self.add(CmdNews)
+
+        # Jobs are on the account too: an applicant follows their Approval
+        # job before they can puppet, and staff review jobs out of character.
+        # Players still see only their own jobs; staff commands keep their locks.
+        from jobs.cmdset import JobsCmdSet
+
+        self.add(JobsCmdSet)
+
+        # The boards too, which the welcome news sends new players to.
+        # (Boards with required character flags stay closed to an OOC reader.)
+        from bbs.commands import BBSCmdSet
+
+        self.add(BBSCmdSet)
 
 
 class UnloggedinCmdSet(default_cmds.UnloggedinCmdSet):

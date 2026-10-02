@@ -83,4 +83,4 @@ Characters are created on the game website; see |yhelp chargen|n.
 
 |[r+===================================================================+|n
 
-|ySee also:|n help disciplines, help compulsion, help chargen
+|ySee also:|n help disciplines-guide, help frenzy-guide, help chargen, help v5-rules-guide

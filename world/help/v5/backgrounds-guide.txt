@@ -33,8 +33,8 @@ except Herd.
 |yHerd|n (dots 1-5: from 1-3 mortals to 31-60)
   Mortals you can feed from freely and safely
   |wBenefit:|n Slake up to [dots] Hunger per week without a hunting roll
-  (core p.189)
-  |wUses:|n Once per week
+  (core p.189). Your Blood Potency still applies (see |yhelp hunger-guide|n).
+  |wUses:|n Once per week (7 days from your last Herd feeding)
 
 |yInfluence|n (dots 1-5: from well-connected to dominant)
   Political power in mortal society
@@ -72,33 +72,37 @@ Suspect, Shunned, ...).
 
 |WUSING BACKGROUNDS:|n
 
-Most backgrounds can be actively used for mechanical benefits:
-
 |y+background|n
-  View all your backgrounds
+  View all your backgrounds, their benefit and uses left
 
 |y+background <name>|n
   View details of a specific background
   Example: |y+background contacts|n
 
 |y+background/use <name>=<task>|n
-  Use background for a task
+  Spend one use of a background on a task. The game records the use
+  and tells you the bonus ([dots] dice); add it to your |yroll|n
+  yourself when the Storyteller agrees it applies.
   Example: |y+background/use contacts=investigate gang activity|n
 
 |y+background/herd|n
-  Feed from your Herd (reduces Hunger safely)
+  Feed from your Herd (see Herd above). Lowers your Hunger at once.
 
 |y+background/resources <item>=<rating>|n
-  Acquire an item using Resources
+  Record acquiring an item whose rating is at most your Resources;
+  uses one Resources use. No object is created.
   Example: |y+background/resources pistol=2|n
 
 |WIMPORTANT NOTES:|n
 
-- Most backgrounds have |ylimited uses per session|n
-- Uses reset at start of each game session
-- Staff may award additional uses for good roleplay
-- Backgrounds can be increased with XP
-- Some backgrounds (Status, Fame) are always "on"
+- Allies, Influence, Mawla and Resources have [dots] uses per session,
+  Contacts [dots x 2]; the others are unlimited or passive, and Herd
+  is weekly.
+- Per-session uses don't refill on their own. |y+background/reset|n
+  (staff) resets only the uses of the character running it, and no
+  command yet resets another character's uses. The Herd week is never
+  reset: it counts 7 days from your last Herd feeding.
+- Backgrounds can be raised with XP (|y+spend advantage <name>|n).
 
 |[r+===================================================================+|n
 
@@ -107,4 +111,4 @@ Most backgrounds can be actively used for mechanical benefits:
   |w+background/use|n    - Use a background
   |w+sheet|n             - View character (includes backgrounds)
 
-|ySee also:|n help chargen, help xp, help status
+|ySee also:|n help chargen, help xp-guide, help status-guide

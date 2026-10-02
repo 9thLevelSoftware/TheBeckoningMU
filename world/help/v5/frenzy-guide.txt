@@ -70,7 +70,8 @@ its end.
 |WCOMMANDS|n
 
 |w+frenzy|n                               your frenzy test pool and any test you owe
-|w+frenzy/check <fury|hunger|terror>|n    the provocations and their difficulties
+|w+frenzy/check <type>|n                 the provocations and their difficulties for
+                                        a type: fury, hunger or terror
 |w+frenzy/resist <difficulty> [<type>]|n  roll to resist (the type matters for banes)
 |w+frenzy/pending|n                       roll a hunger frenzy test you owe
 
@@ -82,6 +83,6 @@ its end.
   Severity, each -1 to an Attribute, lasting one more night (only one if
   you ride the wave).
 
-|ySee also:|n help humanity, help hunger, help clans
+|ySee also:|n help humanity-guide, help hunger-guide, help clans, help v5-rules-guide
 
 |[R+===================================================================+|n

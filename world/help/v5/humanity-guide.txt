@@ -56,4 +56,4 @@ cost Stains, at the Storyteller's discretion.
 |w+remorse|n                                  make your Remorse test (once per 24 hours)
 |w+remorse <character>|n                      (staff) run a character's Remorse test
 
-|ySee also:|n help frenzy, help hunger
+|ySee also:|n help frenzy-guide, help hunger-guide, help v5-rules-guide

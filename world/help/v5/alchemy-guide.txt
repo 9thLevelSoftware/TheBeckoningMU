@@ -58,4 +58,4 @@ needs a Rouse check.
 
 |[r+===================================================================+|n
 
-|ySee also:|n help thinblood, help disciplines, help rouse
+|ySee also:|n help thinblood, help disciplines-guide, help rouse

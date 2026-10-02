@@ -25,6 +25,9 @@ favors owed between vampires - debts that |ymust|n be honored.
   - Serious political leverage
   - Can determine important votes
 
+|yBlood Boon|n - A debt between Major and Life
+  - The game records it as type |yblood|n
+
 |yLife Boon|n - Ultimate debt
   - Saving from Final Death
   - Example: "Rescued me from fire/sunlight/Blood Hunt"
@@ -33,17 +36,18 @@ favors owed between vampires - debts that |ymust|n be honored.
 
 |WHOW BOONS WORK:|n
 
-|yGranting a Boon:|n
+|yOwing a Boon:|n
   - Someone performs a service for you
-  - You now |[Rowe them|n a boon
-  - Harpy witnesses and records it
-  - Public knowledge in domain
+  - You, the debtor, offer the boon with |y+boongive|n
+  - They accept it with |y+boonaccept|n (or decline it)
+  - A Harpy may acknowledge it (|y+boonadmin/acknowledge|n)
 
 |yCalling in a Boon:|n
-  - You request favor from debtor
+  - The creditor calls it in with |y+booncall|n
   - Must be |yproportional|n to boon level
   - Debtor |ymust comply|n or face Status loss
-  - Harpy confirms boon is cleared
+  - Debtor and creditor each confirm repayment with |y+boonfulfill|n
+  - A disagreement goes to |y+boon/dispute|n; a Harpy or staff rules
 
 |yRefusing a Boon:|n
   - Grounds for Status loss or worse
@@ -64,18 +68,23 @@ favors owed between vampires - debts that |ymust|n be honored.
   - |[RNever owe Life Boon if possible|n
 
 |yTrading Boons:|n
-  - Can be transferred to third party
-  - "I'll give you the boon <Name> owes me"
-  - Requires Harpy verification
+  - In play, a boon can be promised to a third party
+  - The game has no transfer command: staff record any agreed
+    transfer by hand
   - Political wheeling and dealing
 
 |WHARPY'S ROLE:|n
 
 The |yHarpy|n maintains the boon ledger:
-  - Witnesses and records all boons
+  - Acknowledges boons (|y+boonadmin/acknowledge|n)
   - Announces major boons at Elysium
-  - Arbitrates disputes over boon value
+  - Rules on disputes (|y+boonadmin/uphold|n, |y/fulfill|n or |y/cancel|n),
+    except on boons they or their own characters are party to
   - Enforces boon payment
+
+A Harpy uses |y+boonadmin|n only once staff grant their account the
+|wHarpy|n permission (|yperm *<account> = Harpy|n); holding the Harpy
+position with |y+statusadmin/position|n doesn't grant it.
 
 |WBOON ETIQUETTE:|n
 
@@ -121,4 +130,4 @@ Boons are |ymore valuable than Status|n in many ways:
 
 |[r+===================================================================+|n
 
-|ySee also:|n help status, help positions, help elysium, help harpy
+|ySee also:|n help boon_commands, help status-guide, help positions
