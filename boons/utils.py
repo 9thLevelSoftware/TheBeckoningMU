@@ -91,12 +91,22 @@ def offer_boon(debtor, creditor, boon_type, description, witnesses=None, is_publ
         is_public=is_public
     )
 
-    # Add witnesses
-    if witnesses:
-        for witness in witnesses:
-            boon.witnesses.add(witness)
+    from chronicle.services import record_event
 
-    boon.save()
+    record_event(
+        idempotency_key=f"boons:{boon.pk}:boon.offered:{boon.created_date.isoformat()}",
+        source_app="boons",
+        source_type="Boon",
+        source_id=str(boon.pk),
+        kind="boon.offered",
+        title="Boon offered",
+        summary="A boon was offered.",
+        payload={"boon_type": boon.boon_type},
+        visibility="public" if boon.is_public else "participants",
+        actor=getattr(debtor, "account", None),
+        participants=(debtor, creditor),
+        occurred_at=boon.created_date,
+    )
 
     return (True, boon, f"Boon offered: {debtor.key} will owe {creditor.key} a {boon_type} boon.")
 
@@ -127,6 +137,22 @@ def accept_boon(boon_id, character=None):
         # Update both ledgers
         update_ledger(boon.debtor)
         update_ledger(boon.creditor)
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"boons:{boon.pk}:boon.accepted:{boon.accepted_date.isoformat()}",
+            source_app="boons",
+            source_type="Boon",
+            source_id=str(boon.pk),
+            kind="boon.accepted",
+            title="Boon accepted",
+            summary="A boon was accepted.",
+            payload={"boon_type": boon.boon_type},
+            visibility="public" if boon.is_public else "participants",
+            actor=getattr(character, "account", None),
+            participants=(boon.debtor, boon.creditor),
+            occurred_at=boon.accepted_date,
+        )
 
     return (success, message)
 
@@ -152,7 +178,25 @@ def decline_boon(boon_id, reason="", character=None):
     if character and boon.debtor != character:
         return (False, "Only the debtor can decline this boon.")
 
-    return boon.decline(reason)
+    success, message = boon.decline(reason)
+    if success:
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"boons:{boon.pk}:boon.declined:{boon.modified_date.isoformat()}",
+            source_app="boons",
+            source_type="Boon",
+            source_id=str(boon.pk),
+            kind="boon.declined",
+            title="Boon declined",
+            summary="A boon was declined.",
+            payload={"boon_type": boon.boon_type},
+            visibility="public" if boon.is_public else "participants",
+            actor=getattr(character, "account", None),
+            participants=(boon.debtor, boon.creditor),
+            occurred_at=boon.modified_date,
+        )
+    return (success, message)
 
 
 def call_in_boon(boon_id, description, character=None):
@@ -176,7 +220,25 @@ def call_in_boon(boon_id, description, character=None):
     if character and boon.creditor != character:
         return (False, "Only the creditor can call in this boon.")
 
-    return boon.call_in(description)
+    success, message = boon.call_in(description)
+    if success:
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"boons:{boon.pk}:boon.called_in:{boon.called_in_date.isoformat()}",
+            source_app="boons",
+            source_type="Boon",
+            source_id=str(boon.pk),
+            kind="boon.called_in",
+            title="Boon called in",
+            summary="A boon was called in.",
+            payload={"boon_type": boon.boon_type},
+            visibility="public" if boon.is_public else "participants",
+            actor=getattr(character, "account", None),
+            participants=(boon.debtor, boon.creditor),
+            occurred_at=boon.called_in_date,
+        )
+    return (success, message)
 
 
 def fulfill_boon(boon_id, description, character=None):
@@ -206,6 +268,22 @@ def fulfill_boon(boon_id, description, character=None):
         # Update both ledgers
         update_ledger(boon.debtor)
         update_ledger(boon.creditor)
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"boons:{boon.pk}:boon.fulfilled:{boon.fulfilled_date.isoformat()}",
+            source_app="boons",
+            source_type="Boon",
+            source_id=str(boon.pk),
+            kind="boon.fulfilled",
+            title="Boon fulfilled",
+            summary="A boon was fulfilled.",
+            payload={"boon_type": boon.boon_type},
+            visibility="public" if boon.is_public else "participants",
+            actor=getattr(character, "account", None),
+            participants=(boon.debtor, boon.creditor),
+            occurred_at=boon.fulfilled_date,
+        )
 
     return (success, message)
 
@@ -233,6 +311,22 @@ def cancel_boon(boon_id, reason="", character=None):
         # Update both ledgers
         update_ledger(boon.debtor)
         update_ledger(boon.creditor)
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"boons:{boon.pk}:boon.canceled:{boon.modified_date.isoformat()}",
+            source_app="boons",
+            source_type="Boon",
+            source_id=str(boon.pk),
+            kind="boon.canceled",
+            title="Boon canceled",
+            summary="A boon was canceled.",
+            payload={"boon_type": boon.boon_type},
+            visibility="public" if boon.is_public else "participants",
+            actor=getattr(character, "account", None),
+            participants=(boon.debtor, boon.creditor),
+            occurred_at=boon.modified_date,
+        )
 
     return (success, message)
 
@@ -254,7 +348,25 @@ def dispute_boon(boon_id, reason, character=None):
     except Boon.DoesNotExist:
         return (False, "Boon not found.")
 
-    return boon.dispute(reason)
+    success, message = boon.dispute(reason)
+    if success:
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"boons:{boon.pk}:boon.disputed:{boon.modified_date.isoformat()}",
+            source_app="boons",
+            source_type="Boon",
+            source_id=str(boon.pk),
+            kind="boon.disputed",
+            title="Boon disputed",
+            summary="A boon was disputed.",
+            payload={"boon_type": boon.boon_type},
+            visibility="public" if boon.is_public else "participants",
+            actor=getattr(character, "account", None),
+            participants=(boon.debtor, boon.creditor),
+            occurred_at=boon.modified_date,
+        )
+    return (success, message)
 
 
 def acknowledge_boon(boon_id, harpy_character):
@@ -273,7 +385,26 @@ def acknowledge_boon(boon_id, harpy_character):
     except Boon.DoesNotExist:
         return (False, "Boon not found.")
 
-    return boon.acknowledge_by_harpy(harpy_character)
+    success, message = boon.acknowledge_by_harpy(harpy_character)
+    if success:
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"boons:{boon.pk}:boon.acknowledged:{boon.modified_date.isoformat()}",
+            source_app="boons",
+            source_type="Boon",
+            source_id=str(boon.pk),
+            kind="boon.acknowledged",
+            title="Boon acknowledged",
+            summary="A Harpy acknowledged a boon.",
+            payload={"boon_type": boon.boon_type},
+            visibility="public" if boon.is_public else "participants",
+            actor=getattr(harpy_character, "account", None),
+            participants=(boon.debtor, boon.creditor),
+            occurred_at=boon.modified_date,
+        )
+    return (success, message)
+
 
 
 def get_boons_owed_by(character, status='accepted'):
@@ -497,9 +628,7 @@ def format_boon_ledger(caller, ledger):
     Returns:
         str: Formatted boon ledger display
     """
-    from world.ansi_theme import (
-        GOLD, PALE_IVORY, RESET, BLOOD_RED, SHADOW_GREY
-    )
+    from world.ansi_theme import BLOOD_RED, GOLD, PALE_IVORY, RESET, SHADOW_GREY
 
     output = []
     output.append("\n|c*" + "=" * 78 + "*|n")
@@ -571,9 +700,7 @@ def format_boons_with_character(caller, target, boons, net_position):
     Returns:
         str: Formatted boons display
     """
-    from world.ansi_theme import (
-        PALE_IVORY, RESET, GOLD, BLOOD_RED, SHADOW_GREY
-    )
+    from world.ansi_theme import BLOOD_RED, GOLD, PALE_IVORY, RESET, SHADOW_GREY
 
     output = []
     output.append("\n|c*" + "=" * 78 + "*|n")
@@ -622,9 +749,7 @@ def format_pending_boons(caller, pending):
     Returns:
         str: Formatted pending boons display
     """
-    from world.ansi_theme import (
-        PALE_IVORY, RESET, GOLD, BLOOD_RED, SHADOW_GREY
-    )
+    from world.ansi_theme import BLOOD_RED, GOLD, PALE_IVORY, RESET, SHADOW_GREY
 
     output = []
     output.append("\n|c*" + "=" * 78 + "*|n")

@@ -263,9 +263,39 @@ class StatusRequest(SharedMemoryModel):
         self.resolved_date = timezone.now()
         self.save()
 
+        old_value = None
+        if self.request_type == "earned_status":
+            from .utils import get_character_status
+
+            current_status = get_character_status(self.character)
+            old_value = current_status.earned_status if current_status else 0
+
         # Apply the change
         self._apply_change()
+        from chronicle.services import record_event
 
+        payload = {}
+        if self.requested_position:
+            payload["position"] = self.requested_position.name
+        if old_value is not None:
+            from .utils import get_character_status
+
+            payload["old_value"] = old_value
+            payload["new_value"] = get_character_status(self.character).earned_status
+        record_event(
+            idempotency_key=f"status:{self.pk}:status.request_approved:{self.resolved_date.isoformat()}",
+            source_app="status",
+            source_type="StatusRequest",
+            source_id=str(self.pk),
+            kind="status.request_approved",
+            title="Status request approved",
+            summary="A status request was approved.",
+            payload=payload,
+            visibility="participants",
+            actor=getattr(staff_member, "account", None),
+            participants=(self.character,),
+            occurred_at=self.resolved_date,
+        )
     def deny(self, staff_member, reason=""):
         """
         Deny the status request.

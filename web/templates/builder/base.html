@@ -362,6 +362,8 @@
             {% if user.is_staff %}
             <a href="{% url 'builder:build_review' %}"
                class="nav-link-custom {% block nav_review %}{% endblock %}">Review</a>
+            <a href="{% url 'character_approval' %}" class="nav-link-custom">Character Approval</a>
+            <a href="{% url 'narrative_ops' %}" class="nav-link-custom">Story Operations</a>
             {% endif %}
             <a href="/" class="nav-link-custom">
                 <i class="bi bi-arrow-left" style="font-size: 11px;"></i> Back to Site

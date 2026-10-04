@@ -281,8 +281,9 @@ All 13 V5 core clans are available:
 - |w+help <clan>|n - Specific clan info
 
 |yWeb Resources|n
-- Web chargen: |yhttp://localhost:4001/character-creation/|n
-- Character approval status: Check your |w+jobs|n
+- Open the official game website and choose "Create a Character"; sign in to submit
+  through the Django character-creation and staff-approval workflow.
+- Retired static pages only redirect when `PUBLIC_GAME_BASE_URL` is configured; otherwise they display an unavailable notice and never claim submission.
 
 |yStaff Assistance|n
 - |w+job/create chargen=<question>|n for help
@@ -312,4 +313,4 @@ All 13 V5 core clans are available:
 
 |rWelcome to the night. Welcome to the Masquerade.|n
 
-|rLast Updated: November 2025|n
+|rLast Updated: October 2026|n

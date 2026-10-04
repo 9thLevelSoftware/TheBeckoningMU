@@ -26,6 +26,7 @@ rules for a MUSH-style roleplay-focused experience.
 |whelp disciplines|n     - Vampire supernatural powers
 |whelp status|n          - The Status and Boons political system
 |whelp chargen|n         - Character creation guide
+|whelp chronicle|n       - Public events and read-only agent access
 
 |WIMPORTANT MUSH ETIQUETTE:|n
 

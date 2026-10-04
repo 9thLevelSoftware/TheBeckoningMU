@@ -203,6 +203,28 @@ class CmdBBSPost(default_cmds.MuxCommand):
                 body=body,
                 is_anonymous=is_anonymous
             )
+            if (
+                board.is_ic
+                and not board.read_perm
+                and not board.get_required_flags_list()
+                and not post.read_perm
+            ):
+                from chronicle.services import record_event
+
+                record_event(
+                    idempotency_key=f"bbs:{post.pk}:bbs.posted:{post.created_at.isoformat()}",
+                    source_app="bbs",
+                    source_type="Post",
+                    source_id=str(post.pk),
+                    kind="bbs.posted",
+                    title="IC bulletin post created",
+                    summary="A post was created on a public IC bulletin board.",
+                    payload={"board": board.name, "post_title": post.title},
+                    visibility="public",
+                    actor=account,
+                    participants=(),
+                    occurred_at=post.created_at,
+                )
 
             if is_anonymous:
                 self.caller.msg(f"Posted anonymously to '{board.name}' as post #{post.sequence_number}.")

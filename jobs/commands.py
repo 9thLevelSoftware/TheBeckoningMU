@@ -4,13 +4,14 @@ Jobs commands - focused, single-responsibility command classes.
 Provides player-facing and admin commands for the Jobs system.
 """
 
-from evennia import default_cmds
-from evennia.utils import class_from_module
-from .models import Job, Bucket, Comment
-from evennia.accounts.models import AccountDB
 from django.conf import settings
 from django.db import Error as DbError
+from evennia import default_cmds
+from evennia.accounts.models import AccountDB
+from evennia.utils import class_from_module
+
 from . import utils
+from .models import Bucket, Comment, Job
 
 COMMAND_DEFAULT_CLASS = class_from_module(settings.COMMAND_DEFAULT_CLASS)
 
@@ -127,7 +128,23 @@ class CmdJobClaim(COMMAND_DEFAULT_CLASS):
         # Claim the job
         job.players.add(self.caller.account)
         job.save()
-        
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"jobs:{job.pk}:job.claimed:{job.updated_at.isoformat()}",
+            source_app="jobs",
+            source_type="Job",
+            source_id=str(job.pk),
+            kind="job.claimed",
+            title="Job claimed",
+            summary="A job was claimed.",
+            payload={"job_state": job.status, "job_priority": job.priority},
+            visibility="participants",
+            actor=self.caller.account,
+            participants=utils.job_participant_characters(job),
+            occurred_at=job.updated_at,
+        )
+
         self.caller.msg(f"You have claimed job #{job.sequence_number}: {job.title}")
 
 
@@ -170,6 +187,22 @@ class CmdJobDone(COMMAND_DEFAULT_CLASS):
         job.completed = True
         job.status = "CLOSED"
         job.save()
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"jobs:{job.pk}:job.completed:{job.updated_at.isoformat()}",
+            source_app="jobs",
+            source_type="Job",
+            source_id=str(job.pk),
+            kind="job.completed",
+            title="Job completed",
+            summary="A job was completed.",
+            payload={"job_state": job.status, "job_priority": job.priority},
+            visibility="participants",
+            actor=self.caller.account,
+            participants=utils.job_participant_characters(job),
+            occurred_at=job.updated_at,
+        )
         
         self.caller.msg(f"Job #{job.sequence_number}: {job.title} has been marked as complete.")
 
@@ -344,7 +377,24 @@ class CmdJobSubmit(COMMAND_DEFAULT_CLASS):
                 creator=self.caller.account,
                 status="OPEN"
             )
+            from chronicle.services import record_event
+
+            record_event(
+                idempotency_key=f"jobs:{job.pk}:job.created:{job.created_at.isoformat()}",
+                source_app="jobs",
+                source_type="Job",
+                source_id=str(job.pk),
+                kind="job.created",
+                title="Job created",
+                summary="A job was created.",
+                payload={"job_state": job.status, "job_priority": job.priority},
+                visibility="participants",
+                actor=self.caller.account,
+                participants=(self.caller,),
+                occurred_at=job.created_at,
+            )
             self.caller.msg(f"Job #{job.sequence_number} created in bucket '{bucket.name}': {job.title}")
+
         except DbError as e:
             self.caller.msg(f"A database error occurred while creating the job: {e}")
 
@@ -397,6 +447,22 @@ class CmdJobCreate(COMMAND_DEFAULT_CLASS):
                 description=description.strip(),
                 creator=self.caller.account,
                 status="OPEN"
+            )
+            from chronicle.services import record_event
+
+            record_event(
+                idempotency_key=f"jobs:{job.pk}:job.created:{job.created_at.isoformat()}",
+                source_app="jobs",
+                source_type="Job",
+                source_id=str(job.pk),
+                kind="job.created",
+                title="Job created",
+                summary="A job was created.",
+                payload={"job_state": job.status, "job_priority": job.priority},
+                visibility="participants",
+                actor=self.caller.account,
+                participants=(self.caller,),
+                occurred_at=job.created_at,
             )
             self.caller.msg(f"Job #{job.sequence_number} created in bucket '{bucket.name}': {job.title}")
         except DbError as e:
@@ -479,6 +545,22 @@ class CmdJobReopen(COMMAND_DEFAULT_CLASS):
         job.completed = False
         job.status = "OPEN"
         job.save()
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"jobs:{job.pk}:job.reopened:{job.updated_at.isoformat()}",
+            source_app="jobs",
+            source_type="Job",
+            source_id=str(job.pk),
+            kind="job.reopened",
+            title="Job reopened",
+            summary="A job was reopened.",
+            payload={"job_state": job.status, "job_priority": job.priority},
+            visibility="staff",
+            actor=self.caller.account,
+            participants=(),
+            occurred_at=job.updated_at,
+        )
         
         self.caller.msg(f"Job #{job.sequence_number}: {job.title} has been reopened.")
 

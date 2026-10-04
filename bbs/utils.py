@@ -3,6 +3,7 @@ BBS utility functions for permissions and formatting.
 """
 
 from evennia.utils.utils import crop
+
 from .models import Board, Post
 
 

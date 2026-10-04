@@ -2,9 +2,11 @@
 Jobs utility functions for shared functionality across job commands.
 """
 
-from .models import Job, Bucket
-from evennia.accounts.models import AccountDB
 from django.core.exceptions import ObjectDoesNotExist
+from evennia.accounts.models import AccountDB
+from evennia.objects.models import ObjectDB
+
+from .models import Bucket, Job
 
 
 def get_job(caller, job_id, bucket=None):
@@ -92,6 +94,11 @@ def check_job_permission(caller, job):
         return True
     
     return False
+
+def job_participant_characters(job):
+    account_ids = {job.creator_id, *job.players.values_list("pk", flat=True)}
+    return ObjectDB.objects.filter(db_account_id__in=account_ids)
+
 
 
 def format_job_view(job):

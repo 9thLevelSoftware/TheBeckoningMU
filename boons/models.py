@@ -273,53 +273,36 @@ class BoonLedger(SharedMemoryModel):
     def __str__(self):
         return f"{self.character.key}'s Boon Ledger (Net: {self.net_weight})"
 
+    def calculate_values(self):
+        """Return current ledger values without writing the cached ledger."""
+        owed_boons = Boon.objects.filter(debtor=self.character, status="accepted")
+        held_boons = Boon.objects.filter(creditor=self.character, status="accepted")
+        counts = {
+            "trivial_owed": owed_boons.filter(boon_type="trivial").count(),
+            "minor_owed": owed_boons.filter(boon_type="minor").count(),
+            "major_owed": owed_boons.filter(boon_type="major").count(),
+            "blood_owed": owed_boons.filter(boon_type="blood").count(),
+            "life_owed": owed_boons.filter(boon_type="life").count(),
+            "trivial_held": held_boons.filter(boon_type="trivial").count(),
+            "minor_held": held_boons.filter(boon_type="minor").count(),
+            "major_held": held_boons.filter(boon_type="major").count(),
+            "blood_held": held_boons.filter(boon_type="blood").count(),
+            "life_held": held_boons.filter(boon_type="life").count(),
+        }
+        weights = {"trivial": 1, "minor": 2, "major": 3, "blood": 4, "life": 5}
+        debt = sum(counts[f"{kind}_owed"] * weight for kind, weight in weights.items())
+        credit = sum(counts[f"{kind}_held"] * weight for kind, weight in weights.items())
+        return {
+            **counts,
+            "total_debt_weight": debt,
+            "total_credit_weight": credit,
+            "net_weight": credit - debt,
+        }
+
     def recalculate(self):
-        """Recalculate ledger from actual boons."""
-        # Count owed boons
-        owed_boons = Boon.objects.filter(
-            debtor=self.character,
-            status='accepted'
-        )
-
-        self.trivial_owed = owed_boons.filter(boon_type='trivial').count()
-        self.minor_owed = owed_boons.filter(boon_type='minor').count()
-        self.major_owed = owed_boons.filter(boon_type='major').count()
-        self.blood_owed = owed_boons.filter(boon_type='blood').count()
-        self.life_owed = owed_boons.filter(boon_type='life').count()
-
-        # Count held boons
-        held_boons = Boon.objects.filter(
-            creditor=self.character,
-            status='accepted'
-        )
-
-        self.trivial_held = held_boons.filter(boon_type='trivial').count()
-        self.minor_held = held_boons.filter(boon_type='minor').count()
-        self.major_held = held_boons.filter(boon_type='major').count()
-        self.blood_held = held_boons.filter(boon_type='blood').count()
-        self.life_held = held_boons.filter(boon_type='life').count()
-
-        # Calculate weights
-        weights = {'trivial': 1, 'minor': 2, 'major': 3, 'blood': 4, 'life': 5}
-
-        self.total_debt_weight = sum([
-            self.trivial_owed * weights['trivial'],
-            self.minor_owed * weights['minor'],
-            self.major_owed * weights['major'],
-            self.blood_owed * weights['blood'],
-            self.life_owed * weights['life']
-        ])
-
-        self.total_credit_weight = sum([
-            self.trivial_held * weights['trivial'],
-            self.minor_held * weights['minor'],
-            self.major_held * weights['major'],
-            self.blood_held * weights['blood'],
-            self.life_held * weights['life']
-        ])
-
-        self.net_weight = self.total_credit_weight - self.total_debt_weight
-
+        """Recalculate and persist the cached ledger from actual boons."""
+        values = self.calculate_values()
+        for field, value in values.items():
+            setattr(self, field, value)
         self.save()
-
         return (self.total_debt_weight, self.total_credit_weight, self.net_weight)

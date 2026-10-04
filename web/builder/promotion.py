@@ -7,10 +7,10 @@ creating connection exits and cleaning up the sandbox container.
 
 import logging
 import threading
-from typing import Dict, Any, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
 
-from evennia.utils.utils import run_in_main_thread
 from evennia.utils import search
+from evennia.utils.utils import run_in_main_thread
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +66,10 @@ def _do_promotion_in_main_thread(
         result contains: promoted_rooms, created_exits, entry_room_id, errors
     """
     try:
-        from typeclasses.rooms import Room
-        from typeclasses.exits import Exit
         from evennia.utils.create import create_object
+
+        from typeclasses.exits import Exit
+        from typeclasses.rooms import Room
 
         errors = []
 
@@ -222,6 +223,7 @@ def promote_project_to_live(
         On failure: result contains error message
     """
     from django.utils import timezone
+
     from web.builder.models import BuildProject
     from web.builder.sandbox_cleanup import cleanup_sandbox_for_project
 
@@ -296,8 +298,10 @@ def promote_project_to_live(
             # Don't fail the promotion if cleanup fails - rooms are already live
 
         # Update project status to live
+        transition_succeeded = False
         try:
             project.mark_live()
+            transition_succeeded = True
         except ValueError as e:
             logger.error(f"Failed to mark project {project_id} as live: {e}")
             # Don't fail - promotion succeeded even if status update failed
@@ -306,6 +310,25 @@ def promote_project_to_live(
         project.promoted_at = timezone.now()
         project.sandbox_room_id = None
         project.save(update_fields=["promoted_at", "sandbox_room_id"])
+
+        if transition_succeeded and not result.get("errors"):
+            from chronicle.services import record_event
+
+            payload = {"project_name": project.name} if project.is_public else {}
+            record_event(
+                idempotency_key=f"builder:{project.pk}:builder.promoted:{project.promoted_at.isoformat()}",
+                source_app="builder",
+                source_type="BuildProject",
+                source_id=str(project.pk),
+                kind="builder.promoted",
+                title="Builder project promoted",
+                summary="A builder project was promoted to the live world.",
+                payload=payload,
+                visibility="public" if project.is_public else "staff",
+                actor=project.user,
+                participants=(),
+                occurred_at=project.promoted_at,
+            )
 
         return True, result
 

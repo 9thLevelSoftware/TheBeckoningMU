@@ -10,8 +10,9 @@ def at_server_start():
     This is called every time the server starts up, regardless of
     how it was shut down.
     """
-    pass
+    from narrative.services import recover_pending_requests
 
+    recover_pending_requests()
 
 def at_server_stop():
     """

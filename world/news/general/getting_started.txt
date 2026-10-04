@@ -5,13 +5,11 @@
 
 |cSTEP 1: CREATE YOUR CHARACTER|n
 
-You have two options for character creation:
-
 |wWeb-based Chargen|n (Recommended for new players)
-  Visit: |yhttp://localhost:4001/character-creation/|n
-  - Visual interface with tooltips
-  - Validation to prevent errors
-  - Submit for staff approval when complete
+  Open the official game website and choose "Create a Character".
+  Sign in before completing the form; the saved character is submitted for staff approval.
+  If the link is unavailable, use the in-game chargen command below.
+
 
 |wIn-Game Chargen|n
   Command: |w+chargen/start|n
@@ -87,6 +85,14 @@ You have two options for character creation:
   - Boons are favors owed between vampires
   - Check your boons with |w+boon|n
   - Give boons with |w+boon/give <target>=<type>|n
+
+|yChronicle and Story Assistance|n
+
+  - Read staff-published entries at |w/chronicle/|n on the game website.
+  - Sign in to view your own participant entries at |w/chronicle/mine/|n.
+  - Optional AI-assisted hunt stories require explicit |w+hunt/story opt-in|n.
+  - The AI adds prose only; the ordinary |w+hunt|n path remains deterministic.
+  - Read |w+help hunt|n and |w+news policy|n before opting in.
 
 |w═══════════════════════════════════════════════════════════════════|n
 

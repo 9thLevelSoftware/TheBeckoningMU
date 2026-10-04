@@ -1,0 +1,22 @@
+|[R+===================================================================+
+|W|                       THE CHRONICLE                                |
+|[R+===================================================================+|n
+
+The Chronicle contains staff-reviewed events from Athens by Night.
+
+|WWEB PAGES:|n
+  |y/chronicle/|n       - Public entries published by staff
+  |y/chronicle/mine/|n  - Public entries plus participant-visible entries for your account
+
+Drafts are not shown publicly. Participant entries are visible only to the accounts
+that own the listed participant characters. Staff can correct or redact entries.
+
+|WREAD-ONLY AGENT ACCESS:|n
+An optional OAuth-protected MCP companion can read public lore, public Chronicle
+entries, your own Chronicle, and summaries for your owned characters. It cannot
+roll dice, change character state, publish stories, or run game commands. OAuth
+authorization is scoped and revocable; never share access tokens.
+
+|[r+===================================================================+|n
+
+|ySee also:|n help getting_started, help hunt, +news policy

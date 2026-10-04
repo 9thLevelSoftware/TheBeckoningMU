@@ -1,97 +1,32 @@
 # The Beckoning - Vampire: The Masquerade Website
 
-A website for "The Beckoning", an Athens By Night Vampire: The Masquerade chronicle. The site includes an interactive character creation tool that generates JSON data for import into an Evennia-based MU*.
+This standalone static site provides public information and reference materials for The Beckoning. Django owns authenticated character creation, validation, persistence, and staff approval at `/character-creation/`.
 
-## Features
+## Character creation
 
-- Interactive Vampire: The Masquerade 5th Edition character creation
-- Rule validation to ensure characters follow V5 creation guidelines
-- JSON export for character data
-- Integration with Evennia-based MU* systems
+The static pages `character-creation-new.html` and `character-creation.html` are retired entry points. They redirect to the Django character-creation page only when `PUBLIC_GAME_BASE_URL` is configured in `assets/js/site-config.js` to the canonical HTTPS game-site origin. Set the same origin as Django's `PUBLIC_GAME_BASE_URL` environment or deployment setting. If it is empty or invalid, these pages show an unavailable notice; they do not save characters in local storage or report a successful submission.
 
-## Character Creation Tool
+The homepage's **Create a Character** link uses the same deployment value. Set it only after the Django site is reachable. Players can also begin character creation in-game with `+chargen/start`.
 
-The character creation tool allows players to create Vampire: The Masquerade 5th Edition characters following the official rules. The tool includes:
+## Chronicle and narrative
 
-- Character information (name, concept, etc.)
-- Clan selection with automatic discipline assignment
-- Attribute distribution (following the 4/3/2 dot rule)
-- Skill distribution (following the 13/9/5 dot rule)
-- Discipline selection based on clan
-- Background selection
-- JSON export for integration with Evennia
+- Public staff-published entries: `/chronicle/`. Signed-in players can view their own participant entries at `/chronicle/mine/`.
+- Optional AI-assisted hunt prose uses `+hunt/story opt-in` and can be stopped with `+hunt/story opt-out`. AI output is explicitly attributed, cannot change rules or character state, and does not publish to the Chronicle. Ordinary `+hunt` remains deterministic.
+- The OAuth-protected MCP companion is read-only and account-scoped. It exposes public V5 lore/Chronicle plus the signed-in account's own Chronicle and owned character summaries; it cannot run game commands, roll dice, publish, or mutate state.
+- AI generation and MCP access remain disabled until an operator configures the provider and exact public URLs/allowlists.
 
-### Using the Character Creation Tool
+## Project structure
 
-1. Navigate to the character creation page by clicking the "Create a Character" button on the homepage
-2. Fill out the character information
-3. Select a clan
-4. Distribute attribute dots (4/3/2 across Physical, Social, Mental)
-5. Distribute skill dots (13/9/5 across Physical, Social, Mental)
-6. Assign discipline dots based on clan
-7. Select backgrounds
-8. Click "Generate JSON" to create the character data
-9. Copy the JSON data for import into the Evennia-based MU*
+- `index.html` - Static-site homepage.
+- `character-creation-new.html` and `character-creation.html` - Retired redirect entry points.
+- `assets/js/site-config.js` - Deployment-supplied public game origin (`PUBLIC_GAME_BASE_URL`).
+- `assets/js/game-link.js` - Validates the configured origin and routes to Django chargen.
+- `assets/css/main.css` and `assets/js/main.js` - Homepage presentation and behavior.
+- `references/` - V5 reference materials.
 
-### Evennia Integration
+## Technologies
 
-The character creation tool generates a JSON representation of the character that can be imported into an Evennia-based MU*. The JSON structure includes all necessary character information:
-
-```json
-{
-  "name": "Character Name",
-  "concept": "Character Concept",
-  "chronicle": "The Beckoning",
-  "clan": "Clan Name",
-  "attributes": {
-    "physical": { "strength": 2, "dexterity": 3, "stamina": 2 },
-    "social": { "charisma": 3, "manipulation": 2, "composure": 2 },
-    "mental": { "intelligence": 3, "wits": 2, "resolve": 3 }
-  },
-  "skills": {
-    "physical": { ... },
-    "social": { ... },
-    "mental": { ... }
-  },
-  "disciplines": { ... },
-  "backgrounds": { ... },
-  "derived": {
-    "health": 5,
-    "willpower": 5,
-    "humanity": 7,
-    "bloodPotency": 1,
-    "hunger": 1
-  }
-}
-```
-
-To import this data into your Evennia-based MU*, you'll need to implement a command that:
-
-1. Accepts the JSON data
-2. Validates the data
-3. Creates a character with the specified attributes
-4. Assigns the appropriate skills, disciplines, and backgrounds
-
-## Development
-
-### Project Structure
-
-- `index.html` - Main landing page
-- `character-creation.html` - Character creation interface
-- `assets/css/` - CSS stylesheets
-  - `main.css` - Main site styles
-  - `character-sheet.css` - Character sheet specific styles
-- `assets/js/` - JavaScript files
-  - `main.js` - Main site functionality
-  - `character-sheet.js` - Character creation functionality
-- `references/` - V5 reference materials
-
-### Technologies Used
-
-- HTML5
-- CSS3
-- JavaScript (ES6)
-- No external libraries or frameworks required
+HTML5, CSS3, and JavaScript. The Django game site remains responsible for character data and account authorization.
 
 ## License
 
