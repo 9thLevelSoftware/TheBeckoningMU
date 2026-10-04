@@ -16,6 +16,9 @@ def at_server_start():
 
     seed_defaults()
 
+    from narrative.services import recover_pending_requests
+
+    recover_pending_requests()
 
 def at_server_stop():
     """

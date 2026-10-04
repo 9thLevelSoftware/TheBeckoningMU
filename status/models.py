@@ -275,6 +275,13 @@ class StatusRequest(SharedMemoryModel):
             if self.status != "pending" or current != "pending":
                 return (False, f"Request #{self.id} is already {current or self.status}.")
 
+            old_value = None
+            if self.request_type == "earned_status":
+                from .utils import get_character_status
+
+                current_status = get_character_status(self.character)
+                old_value = current_status.earned_status if current_status else 0
+
             success, message = self._apply_change(staff_member)
             if not success:
                 transaction.set_rollback(True)
@@ -285,8 +292,33 @@ class StatusRequest(SharedMemoryModel):
             self.resolution_reason = reason
             self.resolved_date = timezone.now()
             self.save()
-        return (True, message)
 
+            payload = {}
+            if self.requested_position:
+                payload["position"] = self.requested_position.name
+            if old_value is not None:
+                from .utils import get_character_status
+
+                payload["old_value"] = old_value
+                payload["new_value"] = get_character_status(self.character).earned_status
+
+            from chronicle.services import record_event
+
+            record_event(
+                idempotency_key=f"status:{self.pk}:status.request_approved:{self.resolved_date.isoformat()}",
+                source_app="status",
+                source_type="StatusRequest",
+                source_id=str(self.pk),
+                kind="status.request_approved",
+                title="Status request approved",
+                summary="A status request was approved.",
+                payload=payload,
+                visibility="participants",
+                actor=getattr(staff_member, "account", None),
+                participants=(self.character,),
+                occurred_at=self.resolved_date,
+            )
+        return (True, message)
     def deny(self, staff_member, reason=""):
         """
         Deny a pending request.

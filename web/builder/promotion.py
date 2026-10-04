@@ -81,6 +81,7 @@ def _direction_taken(room, direction):
     return any(obj.destination and _exit_names(obj) & wanted for obj in room.contents)
 
 
+
 def _create_connection_exit(direction, location, destination):
     exit_obj = create_object(
         typeclass="typeclasses.exits.Exit",
@@ -244,9 +245,34 @@ def promote_project_to_live(
     Returns (True, result) or (False, {"error": message, "status": http}).
     """
     try:
-        return True, call_in_main_thread(promote_unit, project_id, connection_room_id, connection_direction)
+        result = call_in_main_thread(promote_unit, project_id, connection_room_id, connection_direction)
     except PromotionError as e:
         return False, {"error": str(e), "status": e.status}
     except Exception as e:
         logger.exception("Promotion failed for project %s", project_id)
         return False, {"error": f"Promotion failed: {e}", "status": 500}
+
+    try:
+        from web.builder.models import BuildProject
+        from chronicle.services import record_event
+
+        project = BuildProject.objects.get(pk=project_id)
+        payload = {"project_name": project.name} if project.is_public else {}
+        record_event(
+            idempotency_key=f"builder:{project.pk}:builder.promoted:{project.promoted_at.isoformat()}",
+            source_app="builder",
+            source_type="BuildProject",
+            source_id=str(project.pk),
+            kind="builder.promoted",
+            title="Builder project promoted",
+            summary="A builder project was promoted to the live world.",
+            payload=payload,
+            visibility="public" if project.is_public else "staff",
+            actor=project.user,
+            participants=(),
+            occurred_at=project.promoted_at,
+        )
+    except Exception:
+        logger.exception("Could not record Chronicle event for promoted project %s", project_id)
+
+    return True, result

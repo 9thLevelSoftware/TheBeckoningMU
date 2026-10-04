@@ -4,7 +4,7 @@ Status System Utility Functions
 Helper functions for managing Status, calculating bonuses, and handling positions.
 """
 
-from .models import CharacterStatus, CamarillaPosition, StatusRequest
+from .models import CamarillaPosition, CharacterStatus, StatusRequest
 
 
 def get_or_create_character_status(character):
@@ -123,6 +123,23 @@ def set_earned_status(character, value, reason="", changed_by=None):
         )
 
     char_status.save()
+    if change != 0:
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"status:{char_status.pk}:status.changed:{char_status.modified_date.isoformat()}",
+            source_app="status",
+            source_type="CharacterStatus",
+            source_id=str(char_status.pk),
+            kind="status.changed",
+            title="Earned status changed",
+            summary="A character's earned Status changed.",
+            payload={"old_value": old_value, "new_value": char_status.earned_status},
+            visibility="participants",
+            actor=getattr(changed_by, "account", None),
+            participants=(character,),
+            occurred_at=char_status.modified_date,
+        )
     return char_status
 
 
@@ -185,6 +202,22 @@ def assign_position(character, position_name, assigned_by=None):
                 str(assigned_by) if assigned_by else "System"
             )
             old_holder.save()
+            from chronicle.services import record_event
+
+            record_event(
+                idempotency_key=f"status:{old_holder.pk}:position.removed:{old_holder.modified_date.isoformat()}",
+                source_app="status",
+                source_type="CharacterStatus",
+                source_id=str(old_holder.pk),
+                kind="position.removed",
+                title="Position removed",
+                summary="A character's position was removed.",
+                payload={"position": position.name},
+                visibility="participants",
+                actor=getattr(assigned_by, "account", None),
+                participants=(old_holder.character,),
+                occurred_at=old_holder.modified_date,
+            )
 
     # Assign position
     char_status.position = position
@@ -196,6 +229,22 @@ def assign_position(character, position_name, assigned_by=None):
         str(assigned_by) if assigned_by else "System"
     )
     char_status.save()
+    from chronicle.services import record_event
+
+    record_event(
+        idempotency_key=f"status:{char_status.pk}:position.assigned:{char_status.modified_date.isoformat()}",
+        source_app="status",
+        source_type="CharacterStatus",
+        source_id=str(char_status.pk),
+        kind="position.assigned",
+        title="Position assigned",
+        summary="A character was appointed to a position.",
+        payload={"position": position.name},
+        visibility="participants",
+        actor=getattr(assigned_by, "account", None),
+        participants=(character,),
+        occurred_at=char_status.modified_date,
+    )
 
     return (True, f"{character.key} appointed as {position.name}.")
 
@@ -227,8 +276,25 @@ def remove_position(character, removed_by=None):
         str(removed_by) if removed_by else "System"
     )
     char_status.save()
+    from chronicle.services import record_event
+
+    record_event(
+        idempotency_key=f"status:{char_status.pk}:position.removed:{char_status.modified_date.isoformat()}",
+        source_app="status",
+        source_type="CharacterStatus",
+        source_id=str(char_status.pk),
+        kind="position.removed",
+        title="Position removed",
+        summary="A character's position was removed.",
+        payload={"position": position_name},
+        visibility="participants",
+        actor=getattr(removed_by, "account", None),
+        participants=(character,),
+        occurred_at=char_status.modified_date,
+    )
 
     return (True, f"{character.key} removed from position: {position_name}.")
+
 
 
 def get_all_positions():

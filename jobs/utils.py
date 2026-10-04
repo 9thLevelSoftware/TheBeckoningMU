@@ -5,6 +5,7 @@ Jobs utility functions for shared functionality across job commands.
 from django.db.models import Q
 from evennia.accounts.models import AccountDB
 from evennia.objects.objects import DefaultObject
+from evennia.objects.models import ObjectDB
 
 from .models import Bucket, Job
 
@@ -186,6 +187,11 @@ def check_job_permission(caller, job):
     True if the caller may comment on a job: staff, its creator or an assignee.
     """
     return is_staff(caller) or _is_party(account_of(caller), job)
+
+def job_participant_characters(job):
+    account_ids = {job.creator_id, *job.players.values_list("pk", flat=True)}
+    return ObjectDB.objects.filter(db_account_id__in=account_ids)
+
 
 
 def format_job_view(job, viewer):

@@ -62,6 +62,24 @@ The game now follows the V5 core book. What changed for players
 
 |w═══════════════════════════════════════════════════════════════════|n
 
+|c[OCTOBER 2026] - CHRONICLE & SAFE NARRATIVE|n
+
+|yChronicle and story operations|n
+- Added source-linked, staff-governed Chronicle events with public and participant-scoped views.
+- Staff can publish, correct, redact, and review sourced memory drafts; boon discrepancies are read-only.
+- Added authenticated, GET-only player projections with character ownership checks.
+
+|yOptional grounded hunt stories|n
+- Durable NPC personas, approved subject-scoped memories, and persistent story sessions.
+- Explicit opt-in; story prose cannot adjudicate dice, Hunger, or character state. Ordinary hunts remain deterministic.
+
+|yRead-only MCP companion|n
+- OAuth authorization code with PKCE and account-bound scopes exposes only five public/personal read tools.
+- No game commands, dice rolls, state changes, or publication tools are exposed.
+
+|yCharacter creation cutover|n
+- Django is the sole persisted web submission path; static entry points fail closed until |wPUBLIC_GAME_BASE_URL|n is configured.
+
 |c[NOVEMBER 2025] - ROADMAP COMPLETION|n
 
 |yPhase 1b: News System Implemented|n

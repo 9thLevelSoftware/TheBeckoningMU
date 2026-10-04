@@ -17,9 +17,17 @@ from django.urls import include, path
 
 # default evennia patterns
 from evennia.web.urls import urlpatterns as evennia_default_urlpatterns
+from oauth2_provider.urls import metadata_urlpatterns
 
 # add patterns
 urlpatterns = [
+    # Root RFC 8414/RFC 9728 discovery; OAuth endpoints are mounted under /o/.
+    path("", include((metadata_urlpatterns, "oauth2_provider"), namespace="oauth2_metadata")),
+    # Keep DOT application management staff-only; token and discovery endpoints remain available.
+    path("o/applications/", include("web.oauth", namespace="staff_oauth_apps")),
+    path("o/", include("oauth2_provider.urls")),
+    # Chronicle public and staff pages
+    path("", include("chronicle.urls")),
     # website
     path("", include("web.website.urls")),
     # webclient
