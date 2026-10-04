@@ -60,6 +60,34 @@ record the feeding with |yfeed <character>=<source>[/<resonance>[/<intensity>]]|
 harmful <1-4>, kill). Only staff can use feed. Staff can let a character
 hunt again before the 24 hours are up with |y+hunt/reset <character>|n.
 
+|WOPT-IN AI STORY HUNT (OPTIONAL)|n
+
+The story switch adds generated prose around the normal deterministic hunt.
+The usual dice and Hunger rules still apply; provider output cannot alter
+the result or other character state. If story generation is unavailable,
+use ordinary |w+hunt|n or |w+hunt/staffed|n instead.
+
+|ySyntax:|n
+  |w+hunt/story opt-in|n                         - Enable story requests for this character
+  |w+hunt/story start <location> [persona #id]|n - Resolve a hunt and start/resume a story
+  |w+hunt/story resume [action]|n                - Continue an active story
+  |w+hunt/story <action>|n                       - Submit an action to the active story
+  |w+hunt/story complete|n                       - Close the active story
+  |w+hunt/story opt-out|n                        - Withdraw consent and close the story
+
+|yConsent and privacy:|n
+Opt in for each character before requesting a story; opt-out withdraws consent
+and closes the active session. Requests include your submitted action and only
+approved, authorized scene facts, including private facts for that character
+only. Draft, redacted, staff-only, and other characters' private facts are
+never sent. Do not include real-world sensitive personal information in story
+actions.
+
+Generated prose is identified as AI-generated fiction, not a rules ruling or
+public Chronicle entry. Staff must approve any memory fact or public story
+separately. See |wnews policy/rp_policy|n for the full policy.
+
+
 |WHERD|n
 
 With the Herd background you can slake up to your Herd dots of Hunger once

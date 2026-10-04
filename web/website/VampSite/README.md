@@ -1,27 +1,32 @@
 # The Beckoning - Vampire: The Masquerade Website
 
-A static website for "The Beckoning", an Athens By Night Vampire: The Masquerade chronicle. It is plain HTML/CSS/JS served outside Django (the `.shtml` error pages and `cgi-bin/` are for a traditional web host).
+This standalone static site provides public information and reference materials for The Beckoning. Django owns authenticated character creation, validation, persistence, and staff approval at `/character-creation/`.
 
-## Character Creation
+## Character creation
 
-Character creation happens on the game website. The pages here (`character-creation-new.html` and the older `character-creation.html`) only explain that and link to the game's `/character-creation/` form, where players build a character and submit it for staff approval. The homepage's "Create a Character" button links there too.
+The static pages `character-creation-new.html` and `character-creation.html` are retired entry points. They redirect to the Django character-creation page only when `PUBLIC_GAME_BASE_URL` is configured in `assets/js/site-config.js` to the canonical HTTPS game-site origin. Set the same origin as Django's `PUBLIC_GAME_BASE_URL` environment or deployment setting. If it is empty or invalid, these pages show an unavailable notice; they do not save characters in local storage or report a successful submission.
 
-These static pages no longer validate creation rules or produce character JSON, and the game has no import path for pasted character data.
+The homepage's **Create a Character** link uses the same deployment value. Set it only after the Django site is reachable.
 
-### Game website address
+## Chronicle and narrative
 
-The game website is currently `https://beckon.vineyard.haus/`. It is set in exactly one place: `GAME_SITE_URL` at the top of `assets/js/game-site.js`. **When the game website moves (for example to Cloudflare), change that one line.** Every link with a `data-game-path` attribute (the "Create a Character" buttons in `index.html` and both creation pages) is pointed at `GAME_SITE_URL` + that path when the page loads. Without JavaScript the links fall back to a root-relative `/character-creation/`, which works only if this site is served from the same origin as the game.
+- Public staff-published entries: `/chronicle/`. Signed-in players can view their own participant entries at `/chronicle/mine/`.
+- Optional AI-assisted hunt prose uses `+hunt/story opt-in` and can be stopped with `+hunt/story opt-out`. AI output is explicitly attributed, cannot change rules or character state, and does not publish to the Chronicle. Ordinary `+hunt` remains deterministic.
+- The OAuth-protected MCP companion is read-only and account-scoped. It exposes public V5 lore/Chronicle plus the signed-in account's own Chronicle and owned character summaries; it cannot run game commands, roll dice, publish, or mutate state.
+- AI generation and MCP access remain disabled until an operator configures the provider and exact public URLs/allowlists.
 
-## Project Structure
+## Project structure
 
-- `index.html` - Main landing page
-- `character-creation-new.html`, `character-creation.html` - Pointers to the game website's character creation form
-- `assets/css/` - CSS stylesheets (`main.css` is the site style)
-- `assets/js/` - JavaScript files
-  - `main.js` - Main site functionality
-  - `game-site.js` - The game website address (`GAME_SITE_URL`) and the code that points the creation links at it
-  - `character-sheet.js`, `character-sheet-new.js` - The retired client-side character builder. No page loads them any more; they are kept for reference.
-- `references/` - V5 reference materials (PDFs)
+- `index.html` - Static-site homepage.
+- `character-creation-new.html` and `character-creation.html` - Retired redirect entry points.
+- `assets/js/site-config.js` - Deployment-supplied public game origin (`PUBLIC_GAME_BASE_URL`).
+- `assets/js/game-link.js` - Validates the configured origin and routes to Django chargen.
+- `assets/css/main.css` and `assets/js/main.js` - Homepage presentation and behavior.
+- `references/` - V5 reference materials.
+
+## Technologies
+
+HTML5, CSS3, and JavaScript. The Django game site remains responsible for character data and account authorization.
 
 ## License
 

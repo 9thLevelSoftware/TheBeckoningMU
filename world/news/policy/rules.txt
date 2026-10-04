@@ -194,6 +194,18 @@
 
 |w═══════════════════════════════════════════════════════════════════|n
 
+|c11. READ-ONLY AGENT ACCESS|n
+
+An optional MCP companion uses OAuth authorization and narrowly scoped, expiring
+tokens. It can read public V5 lore, published public Chronicle entries, your own
+Chronicle, and summaries for characters you own.
+
+It exposes no tools for dice, character changes, Chronicle publication, or game
+commands. Tokens can be revoked; never share access tokens. Public data may be
+read without revealing another account's characters or participant-only entries.
+
+|w═══════════════════════════════════════════════════════════════════|n
+
 |cQUESTIONS?|n
 
 - Read |wnews policy/rp_policy|n for RP-specific guidelines

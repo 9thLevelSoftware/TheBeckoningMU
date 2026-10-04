@@ -1,0 +1,17 @@
+{% extends "chronicle/base.html" %}
+{% block title %}My Chronicle - The Beckoning{% endblock %}
+{% block content %}
+<h1>My Chronicle</h1>
+<p>Public stories and participant-visible events linked to your characters.</p>
+{% for event in events %}
+<article>
+    <time datetime="{{ event.occurred_at|date:'c' }}">{{ event.occurred_at|date:"Y-m-d H:i" }}</time>
+    <h2>{{ event.title }}</h2>
+    <p>{{ event.summary|linebreaksbr }}</p>
+    {% if event.visibility == "participants" %}<p class="scope">Visible to involved characters only.</p>{% endif %}
+    {% if event.ai_generated %}<p class="scope">AI-assisted; reviewed and published by staff.</p>{% endif %}
+</article>
+{% empty %}
+<p class="notice">No Chronicle events are available for your characters yet.</p>
+{% endfor %}
+{% endblock %}

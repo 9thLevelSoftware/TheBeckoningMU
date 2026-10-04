@@ -23,9 +23,9 @@ from world.ansi_theme import (
     RESET,
     SHADOW_GREY,
 )
-from world.v5_data import HUNTING_GROUNDS, PREDATOR_TYPES
 
 from .utils.hunting_utils import find_ground, hunt, hunting_pool
+from world.v5_data import HUNTING_GROUNDS, PREDATOR_TYPES
 
 GROUND_LIST = ", ".join(f"{key} ({data['difficulty']})" for key, data in HUNTING_GROUNDS.items())
 
@@ -47,6 +47,10 @@ class CmdHunt(default_cmds.MuxCommand):
         +hunt <hunting ground>=alt          (your predator type's alternative pool)
         +hunt/staffed <hunting ground>
         +hunt/reset <character>             (staff: allow another hunt now)
+        +hunt/story opt-in | opt-out
+        +hunt/story start [location] [persona #dbref]
+        +hunt/story resume [action] | complete
+        +hunt/staffed [<location>]
 
     Hunting grounds and their difficulty (QR p.12):
         slum      2  slums, Skid Row, housing projects
@@ -62,6 +66,9 @@ class CmdHunt(default_cmds.MuxCommand):
     Blood Potency may slake less, and without killing you can't go below
     Hunger 1 (2 or 3 at high Blood Potency). The vessel's resonance is set
     on your blood.
+        /story - Opt-in, start, resume, act in, or complete a prose-only story hunt
+        /quick - Quick automated hunt (single roll)
+        /staffed - Request staff-run hunt scene (creates a Job)
 
     You can hunt once every 24 hours, whether or not you find a vessel, and
     not at all once your Hunger is as low as feeding without a kill can take
@@ -78,6 +85,9 @@ class CmdHunt(default_cmds.MuxCommand):
     help_category = "V5"
 
     def func(self):
+        if "story" in self.switches:
+            self._story_hunt()
+            return
         caller = self.caller
         if "reset" in self.switches:
             self._reset()
@@ -124,6 +134,114 @@ class CmdHunt(default_cmds.MuxCommand):
         if result["complication"]:
             output.append(f"|rComplication:|n {result['complication']['desc']} (the Storyteller decides what follows)")
         caller.msg("\n".join(output))
+
+    def _story_hunt(self):
+        from narrative.models import NarrativeConsent, NarrativePersona, StorySession
+        from narrative.services import configured_provider, generate_story, set_consent, start_session
+
+        caller = self.caller
+        account = getattr(caller, "account", None)
+        if not account or not getattr(caller, "id", None):
+            caller.msg("|rA logged-in character is required for story hunting.|n")
+            return
+        words = self.args.strip().split(maxsplit=1) if self.args else []
+        verb = words[0].lower() if words else "resume"
+        rest = words[1] if len(words) > 1 else ""
+
+        if verb in ("opt-in", "optin", "on"):
+            set_consent(account, caller, True)
+            caller.msg("Story hunting is enabled. Use |w+ hunt/story start [location]|n to begin; no AI request was made.")
+            return
+        if verb in ("opt-out", "optout", "off"):
+            set_consent(account, caller, False)
+            caller.msg("Story hunting is disabled and your active story session is closed.")
+            return
+        consent = NarrativeConsent.objects.filter(account=account, character=caller, opted_in=True).first()
+        if consent is None:
+            caller.msg("Story hunting is opt-in. Use |w+ hunt/story opt-in|n before any story request.")
+            return
+
+        if verb == "complete":
+            session = caller.narrative_sessions.filter(status=StorySession.Status.ACTIVE).first()
+            if session is None:
+                caller.msg("You have no active story session.")
+                return
+            session.complete()
+            caller.msg("Your story session is complete; its raw player action text was expired.")
+            return
+        if configured_provider() is None:
+            caller.msg("|rNarrative AI is not configured. No story request was sent.|n")
+            return
+
+        if verb == "start":
+            start_parts = rest.split()
+            location = find_ground(start_parts[0] if start_parts else "downtown")
+            if location is None:
+                caller.msg(f"|rInvalid location. Valid locations: {', '.join(HUNTING_GROUNDS)}|n")
+                return
+            persona = None
+            if len(start_parts) > 1:
+                dbref = start_parts[1].lstrip("#")
+                if not dbref.isdigit():
+                    caller.msg("Use a registered persona ObjectDB id, for example: +hunt/story start downtown #123.")
+                    return
+                persona = NarrativePersona.objects.filter(character_id=int(dbref)).first()
+                if persona is None:
+                    caller.msg("|rNo registered narrative persona has that ObjectDB id.|n")
+                    return
+            session = caller.narrative_sessions.filter(status=StorySession.Status.ACTIVE).first()
+            if session is None:
+                if not caller.attributes.has("vampire") or not caller.is_kindred:
+                    caller.msg("|rOnly vampires can hunt.|n")
+                    return
+                if caller.hunger == 0:
+                    caller.msg("|gYou are fully sated. You do not need to hunt right now.|n")
+                    return
+                result = hunt(caller, location)
+                if result.get("refused"):
+                    caller.msg(f"|y{result['refused']}|n")
+                    return
+                feeding = result.get("feeding") or {}
+                narrative_result = {
+                    "hunting_success": bool(result.get("success")),
+                    "location": location,
+                    "hunger_before": feeding.get("old_hunger"),
+                    "hunger_after": feeding.get("new_hunger"),
+                    "hunger_reduction": feeding.get("slaked", 0),
+                    "resonance": result.get("resonance", {}).get("type") if result.get("resonance") else None,
+                    "complications": [result["complication"]] if result.get("complication") else [],
+                }
+                session = start_session(caller, location, narrative_result, persona=persona)
+            action = f"Begin the hunt scene at {location}."
+        else:
+            session = caller.narrative_sessions.filter(status=StorySession.Status.ACTIVE).first()
+            if session is None:
+                caller.msg("You have no active story session. Use |w+ hunt/story start [location]|n.")
+                return
+            action = rest if verb == "resume" and rest else (
+                "Resume the scene." if verb == "resume" else self.args.strip()
+            )
+        session.current_action = action
+        session.save(update_fields=("current_action", "updated_at"))
+        try:
+            deferred = generate_story(session, action)
+        except (RuntimeError, PermissionError, ValueError) as exc:
+            session.current_action = ""
+            session.save(update_fields=("current_action", "updated_at"))
+            caller.msg(f"|r{exc}|n")
+            return
+        caller.msg("|wYour action is being woven into the hunt scene...|n")
+
+        def show_prose(prose):
+            caller.msg("|w[AI-generated narrative]|n")
+            caller.msg(f"|c{prose.replace('|', '||')}|n")
+            return prose
+
+        def show_error(_failure):
+            caller.msg("|rThe story request failed; it has been recorded and no additional hunt mechanics were changed.|n")
+            return None
+
+        deferred.addCallbacks(show_prose, show_error)
 
     def _reset(self):
         from dice.commands import _is_staff
@@ -174,6 +292,22 @@ class CmdHunt(default_cmds.MuxCommand):
             )
             job.players.add(caller.account)
             job.save()
+            from chronicle.services import record_event
+
+            record_event(
+                idempotency_key=f"jobs:{job.pk}:job.created:{job.created_at.isoformat()}",
+                source_app="jobs",
+                source_type="Job",
+                source_id=str(job.pk),
+                kind="job.created",
+                title="Job created",
+                summary="A staff-run hunt scene was requested.",
+                payload={"job_state": job.status, "job_priority": job.priority},
+                visibility="participants",
+                actor=caller.account,
+                participants=(caller,),
+                occurred_at=job.created_at,
+            )
         except Exception as err:
             caller.msg(f"|rError creating hunt scene job: {err}|n")
             caller.msg("|yPlease contact staff directly for hunt scenes.|n")

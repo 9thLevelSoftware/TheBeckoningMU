@@ -1,0 +1,111 @@
+{% extends "builder/base.html" %}
+{% block title %}Story Operations - The Beckoning{% endblock %}
+{% block content %}
+<div style="max-width:1100px;margin:0 auto;padding:24px;">
+    <h1>Story Operations</h1>
+    {% if messages %}
+    <ul>{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul>
+    {% endif %}
+
+    <section>
+        <h2>Curate a Chronicle scene</h2>
+        <p>New entries are unpublished drafts. Publishing is a separate staff action.</p>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="create">
+            <label>Title <input name="title" maxlength="200" required></label>
+            <label>Summary <textarea name="summary" rows="3"></textarea></label>
+            <button type="submit">Save draft</button>
+        </form>
+    </section>
+
+    <section>
+        <h2>Boon-ledger discrepancy report</h2>
+        <p>Not applicable to this schema: boon totals are calculated directly from authoritative Boon records, and there is no cached ledger to compare or drift to report.</p>
+    </section>
+
+    <section>
+        <h2>Unpublished drafts</h2>
+        {% for event in draft_events %}
+        <article style="border-top:1px solid #444;padding:12px 0;">
+            <h3>{{ event.title }}</h3>
+            <p>{{ event.summary|linebreaksbr }}</p>
+            <p>Source: {{ event.source_app }} / {{ event.source_type }} #{{ event.source_id }} · {{ event.kind }} · {{ event.visibility }}</p>
+            <form method="post" action="{% url 'narrative_ops_action' event.pk 'publish' %}">
+                {% csrf_token %}<button type="submit">Publish with current visibility</button>
+            </form>
+        </article>
+        {% empty %}
+        <p>No drafts are waiting for review.</p>
+        {% endfor %}
+    </section>
+
+    <section>
+        <h2>Draft memory facts</h2>
+        <p>Only approved, in-scope facts enter story prompts. Redaction clears fact text.</p>
+        {% for fact in draft_memory_facts %}
+        <article style="border-top:1px solid #444;padding:12px 0;">
+            <h3>{{ fact.persona.character.key }} · {{ fact.visibility }}{% if fact.subject %} · subject {{ fact.subject.key }}{% endif %}</h3>
+            <p>{{ fact.text|linebreaksbr }}</p>
+            {% if fact.source_event %}
+            <p>Source Chronicle #{{ fact.source_event.pk }}: {{ fact.source_event.title }} ({{ fact.source_event.kind }})</p>
+            {% else %}
+            <p>Staff entry: {{ fact.staff_entry|linebreaksbr }}</p>
+            {% endif %}
+            <form method="post" action="{% url 'narrative_ops_memory_action' fact.pk 'approve' %}">
+                {% csrf_token %}<button type="submit">Approve memory fact</button>
+            </form>
+            <form method="post" action="{% url 'narrative_ops_memory_action' fact.pk 'redact' %}">
+                {% csrf_token %}<button type="submit">Redact and clear text</button>
+            </form>
+        </article>
+        {% empty %}
+        <p>No memory drafts are waiting for review.</p>
+        {% endfor %}
+    </section>
+
+    <section>
+        <h2>Recent memory fact audit</h2>
+        {% for fact in recent_memory_facts %}
+        <article style="border-top:1px solid #444;padding:12px 0;">
+            <p>{{ fact.persona.character.key }} · {{ fact.status }} · {{ fact.visibility }} · #{{ fact.pk }}</p>
+            <p>{{ fact.text|default:"[redacted]"|linebreaksbr }}</p>
+            {% if fact.source_event %}
+            <p>Chronicle source #{{ fact.source_event.pk }} · {{ fact.source_event.kind }}</p>
+            {% else %}
+            <p>Staff provenance: {{ fact.staff_entry|default:"[redacted]"|linebreaksbr }}</p>
+            {% endif %}
+        </article>
+        {% empty %}
+        <p>No memory facts have been recorded.</p>
+        {% endfor %}
+    </section>
+
+    <section>
+        <h2>Recent events and corrections</h2>
+        {% for item in recent_events %}
+        {% with event=item.event %}
+        <article style="border-top:1px solid #444;padding:12px 0;">
+            <h3>{{ event.title|default:"[redacted]" }}</h3>
+            <p>{{ event.summary|linebreaksbr }}</p>
+            <p>{{ event.kind }} · {{ event.status }} · {{ event.visibility }} · #{{ event.pk }}</p>
+            {% if event.status == "published" %}
+            <form method="post" action="{% url 'narrative_ops_action' event.pk 'correct' %}">
+                {% csrf_token %}
+                <label>Corrected title <input name="title" maxlength="200" required value="{{ event.title }}"></label>
+                <label>Corrected summary <textarea name="summary" rows="2">{{ event.summary }}</textarea></label>
+                <label>Allow-listed payload JSON <textarea name="payload" rows="2">{{ item.payload_json }}</textarea></label>
+                <button type="submit">Save correction draft</button>
+            </form>
+            <form method="post" action="{% url 'narrative_ops_action' event.pk 'redact' %}" onsubmit="return confirm('Redact this Chronicle entry? Its displayable content will be cleared.');">
+                {% csrf_token %}<button type="submit">Redact and clear content</button>
+            </form>
+            {% endif %}
+        </article>
+        {% endwith %}
+        {% empty %}
+        <p>No Chronicle events exist yet.</p>
+        {% endfor %}
+    </section>
+</div>
+{% endblock %}

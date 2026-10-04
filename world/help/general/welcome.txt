@@ -27,6 +27,7 @@ rules for a MUSH-style roleplay-focused experience.
 |whelp status-guide|n    - Status in Kindred society
 |whelp boons-guide|n     - Boons, the currency of favors
 |whelp chargen|n         - Character creation (on the website)
+|whelp chronicle|n       - Public events and read-only agent access
 
 |WIMPORTANT MUSH ETIQUETTE:|n
 

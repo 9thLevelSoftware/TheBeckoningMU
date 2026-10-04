@@ -25,6 +25,8 @@ put secret game- or server-specific settings in secret_settings.py.
 """
 
 # Use the defaults from Evennia unless explicitly overridden
+import os
+
 from django.core.exceptions import ImproperlyConfigured
 from evennia import settings_default as _evennia_settings_default
 from evennia.contrib.base_systems import color_markups
@@ -37,13 +39,16 @@ from evennia.settings_default import *
 # This is the name of your game. Make it catchy!
 SERVERNAME = "Beckoning"
 
-# Add custom Django apps (BBS, Jobs, Status, Boons, Traits, Web Builder)
+# Add custom Django apps (BBS, Jobs, Status, Boons, Traits, Chronicle, Narrative, OAuth, Web Builder)
 INSTALLED_APPS += (
     "bbs",
     "jobs",
     "status",
     "boons",
     "traits",
+    "chronicle.apps.ChronicleConfig",
+    "narrative.apps.NarrativeConfig",
+    "oauth2_provider",
     "web.builder.apps.BuilderConfig",
 )
 
@@ -144,6 +149,47 @@ FILE_HELP_ENTRY_MODULES = ["world.help_entries"]
 # File-based news entries
 FILE_NEWS_ENTRY_MODULES = ["world.news_entries"]
 
+
+# Canonical public origin for static-site redirects to Django character creation.
+# Set PUBLIC_GAME_BASE_URL in deployment environment or secret_settings.py; blank blocks static redirects.
+PUBLIC_GAME_BASE_URL = os.environ.get("PUBLIC_GAME_BASE_URL", "")
+
+# Optional story provider configuration belongs in secret_settings.py.
+NARRATIVE_AI = None
+
+# MCP remains unavailable until its public URLs and exact request allowlists are configured.
+MCP_PUBLIC_URL = os.environ.get("MCP_PUBLIC_URL", "")
+MCP_RESOURCE_URL = os.environ.get("MCP_RESOURCE_URL", "")
+MCP_OAUTH_ISSUER = os.environ.get("MCP_OAUTH_ISSUER", "")
+MCP_ALLOWED_HOSTS = os.environ.get("MCP_ALLOWED_HOSTS") or None
+MCP_ALLOWED_ORIGINS = os.environ.get("MCP_ALLOWED_ORIGINS") or None
+
+OAUTH2_PROVIDER = {
+    "SCOPES": {
+        "character:self:read": "Read your own character summary, status, and boons",
+        "chronicle:read:public": "Read published public Chronicle events",
+        "chronicle:read:self": "Read public and your own participant Chronicle events",
+        "lore:read:public": "Read public V5 reference lore",
+    },
+    "DEFAULT_SCOPES": [],
+    "PKCE_REQUIRED": True,
+    "DCR_ENABLED": False,
+    "CIMD_ENABLED": False,
+    "ACCESS_TOKEN_EXPIRE_SECONDS": 3600,
+    "REFRESH_TOKEN_EXPIRE_SECONDS": 2592000,
+    "ROTATE_REFRESH_TOKEN": True,
+    "REFRESH_TOKEN_REUSE_PROTECTION": True,
+    "COMPLIANT_BCP_RFC9700_TOKEN_STORAGE": True,
+    "COMPLIANT_BCP_RFC9700_PKCE_METHOD": True,
+    "COMPLIANT_BCP_RFC9700_PKCE_REQUIRED": True,
+    "COMPLIANT_BCP_RFC9700_IMPLICIT_GRANT": True,
+    "COMPLIANT_BCP_RFC9700_PASSWORD_GRANT": True,
+    "COMPLIANT_BCP_RFC9700_ACCESS_TOKEN_TRANSPORT": True,
+    "COMPLIANT_BCP_RFC9700_AUTHZ_RESPONSE_ISS": True,
+    "OAUTH2_GRANT_TYPES_SUPPORTED": ["authorization_code", "refresh_token"],
+}
+
+
 ######################################################################
 # Settings given in secret_settings.py override those in this file.
 ######################################################################
@@ -178,3 +224,6 @@ if (
         f"SECRET_KEY in server/conf/secret_settings.py is too weak: use at least "
         f"{_SECRET_KEY_MIN_LENGTH} random characters (`evennia --initmissing` generates one)."
     )
+
+if MCP_OAUTH_ISSUER:
+    OAUTH2_PROVIDER = {**OAUTH2_PROVIDER, "OIDC_ISS_ENDPOINT": MCP_OAUTH_ISSUER}

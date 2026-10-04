@@ -258,6 +258,25 @@ Give OOC warning before RPing:
 
 |w═══════════════════════════════════════════════════════════════════|n
 
+|c11. OPTIONAL AI-ASSISTED STORYTELLING|n
+
+|yConsent and Data|n
+- AI-assisted hunt stories require explicit character-level |w+hunt/story opt-in|n;
+  use |w+hunt/story opt-out|n to withdraw consent and close the active session.
+- A configured provider receives the submitted action and the minimum scene context,
+  including approved public facts and private facts for that exact character only.
+- Do not include real-world sensitive personal information in story actions.
+- Draft, redacted, staff-only, and other characters' private facts are never sent.
+
+|yRules and Attribution|n
+- Story output is identified as AI-generated and is fictional prose only.
+- The provider never rolls dice, adjudicates outcomes, changes character state,
+  runs commands, controls another PC, or approves or publishes content.
+- The deterministic hunt resolves first; ordinary |w+hunt|n remains available
+  without a configured provider or AI opt-in.
+- AI text is not canon or a public Chronicle entry. Staff review any memory fact
+  or public story separately.
+
 |cQUESTIONS OR CONCERNS?|n
 
 - Read |wnews policy/rules|n for overall game rules
