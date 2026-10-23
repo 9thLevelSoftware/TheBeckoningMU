@@ -113,7 +113,9 @@ let advantagesData = [];
 let flawsData = [];
 
 let isEditMode = false;
+let editLoadError = null;
 let predatorDisciplineChoice = null;
+let retainedSelections = { specialties: {}, discipline_powers: [] };
 
 const PREDATOR_TYPES = {
     "Alleycat": ["Celerity", "Potence"],
@@ -142,14 +144,24 @@ const DOT_SELECTOR = '.dot, .blood-pip';
 // INITIALIZATION
 // ============================================================
 
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', async function () {
+    isEditMode = !!editCharacterId;
+    if (isEditMode) editLoadError = 'Character data is loading.';
     initializeDots();
     setupClanSelector();
     setupPredatorTypeSelector();
     setupFormSubmit();
-    loadTraitData();
+    const traitsLoaded = loadTraitData();
     setupPrioritySelectors();
     initTabs();
+
+    // Dynamic detail inputs must exist before restoring saved character data.
+    const ready = await traitsLoaded;
+    if (isEditMode && !ready) {
+        editLoadError = 'Trait data could not be loaded. Reload this page before editing.';
+        validateForm();
+        return;
+    }
 
     // Draft system: offer to resume saved draft (only for new characters)
     if (!editCharacterId) {
@@ -158,8 +170,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Edit mode: load character data for editing after rejection
     if (editCharacterId) {
-        isEditMode = true;
-        loadCharacterForEdit(editCharacterId);
+        await loadCharacterForEdit(editCharacterId);
     }
 
     // Auto-save draft every 30 seconds
@@ -813,10 +824,12 @@ async function loadTraitData() {
         renderDisciplines();
         renderAdvantages();
         renderFlaws();
+        return true;
 
     } catch (error) {
         console.error('Error loading trait data:', error);
         showToast('Error loading trait data: ' + error.message, 'danger');
+        return false;
     }
 }
 
@@ -995,6 +1008,7 @@ function renderAdvantages() {
         }
     });
 
+    restoreTraitDetails('advantage', advantageValues);
     updatePointsDisplay();
 }
 
@@ -1067,7 +1081,19 @@ function renderFlaws() {
         }
     });
 
+    restoreTraitDetails('flaw', flawValues);
     updatePointsDisplay();
+}
+
+function restoreTraitDetails(prefix, values) {
+    Object.entries(values).forEach(function ([name, data]) {
+        ['instance', 'specialty'].forEach(function (field) {
+            const input = document.getElementById(prefix + '-' + field + '-' + name.replace(/\s+/g, '_'));
+            if (!input) return;
+            input.value = data[field] || '';
+            input.addEventListener('input', function () { values[name][field] = this.value; });
+        });
+    });
 }
 
 // ============================================================
@@ -1077,6 +1103,7 @@ function renderFlaws() {
 
 function validateForm() {
     const errors = [];
+    if (editLoadError) errors.push(editLoadError);
 
     // Validate attribute priorities
     if (!attributePriorities.primary || !attributePriorities.secondary || !attributePriorities.tertiary) {
@@ -1273,6 +1300,10 @@ function setupFormSubmit() {
             character_data.predator_discipline = predatorDisciplineChoice;
         }
         character_data.disciplines = disciplines;
+        // These saved selections have no editor in this form. Preserve them
+        // explicitly; the backend checks them against any changed trait levels.
+        character_data.specialties = JSON.parse(JSON.stringify(retainedSelections.specialties));
+        character_data.discipline_powers = retainedSelections.discipline_powers.slice();
 
         // Add advantages with instance/specialty data
         const advantages = {};
@@ -1281,13 +1312,15 @@ function setupFormSubmit() {
                 const advantageData = { value: data.value };
 
                 const instanceInput = document.getElementById('advantage-instance-' + advantage.replace(/\s+/g, '_'));
-                if (instanceInput && instanceInput.value) {
-                    advantageData.instance = instanceInput.value;
+                const instance = instanceInput ? instanceInput.value : data.instance;
+                if (instance) {
+                    advantageData.instance = instance;
                 }
 
                 const specialtyInput = document.getElementById('advantage-specialty-' + advantage.replace(/\s+/g, '_'));
-                if (specialtyInput && specialtyInput.value) {
-                    advantageData.specialty = specialtyInput.value;
+                const specialty = specialtyInput ? specialtyInput.value : data.specialty;
+                if (specialty) {
+                    advantageData.specialty = specialty;
                 }
 
                 advantages[advantage] = advantageData;
@@ -1302,13 +1335,15 @@ function setupFormSubmit() {
                 const flawData = { value: data.value };
 
                 const instanceInput = document.getElementById('flaw-instance-' + flaw.replace(/\s+/g, '_'));
-                if (instanceInput && instanceInput.value) {
-                    flawData.instance = instanceInput.value;
+                const instance = instanceInput ? instanceInput.value : data.instance;
+                if (instance) {
+                    flawData.instance = instance;
                 }
 
                 const specialtyInput = document.getElementById('flaw-specialty-' + flaw.replace(/\s+/g, '_'));
-                if (specialtyInput && specialtyInput.value) {
-                    flawData.specialty = specialtyInput.value;
+                const specialty = specialtyInput ? specialtyInput.value : data.specialty;
+                if (specialty) {
+                    flawData.specialty = specialty;
                 }
 
                 flaws[flaw] = flawData;
@@ -1317,7 +1352,6 @@ function setupFormSubmit() {
         character_data.flaws = flaws;
 
         const payload = { character_data: character_data };
-        console.log('Submitting character:', payload);
 
         try {
             let url, successMsg;
@@ -1344,8 +1378,7 @@ function setupFormSubmit() {
                 throw new Error(errorData.error || 'Failed to submit character');
             }
 
-            const data = await response.json();
-            console.log('Success response:', data);
+            await response.json();
 
             clearDraft();
             showToast(successMsg, 'success');
@@ -1366,6 +1399,9 @@ function setupFormSubmit() {
 // ============================================================
 
 async function loadCharacterForEdit(charId) {
+    retainedSelections = { specialties: {}, discipline_powers: [] };
+    editLoadError = 'Character data is loading.';
+    validateForm();
     try {
         const response = await fetch('/api/traits/character/' + charId + '/for-edit/', {
             headers: {
@@ -1374,8 +1410,7 @@ async function loadCharacterForEdit(charId) {
         });
         if (!response.ok) {
             const err = await response.json().catch(function () { return {}; });
-            alert('Cannot edit: ' + (err.error || 'Unknown error'));
-            return;
+            throw new Error('Cannot edit: ' + (err.error || 'Unknown error'));
         }
         const data = await response.json();
 
@@ -1384,6 +1419,8 @@ async function loadCharacterForEdit(charId) {
         }
 
         populateFormFromCharacterData(data.character_data);
+        editLoadError = null;
+        validateForm();
 
         const submitBtn = document.getElementById('submit-button');
         if (submitBtn) {
@@ -1396,7 +1433,9 @@ async function loadCharacterForEdit(charId) {
         }
     } catch (err) {
         console.error('Error loading character for edit:', err);
-        alert('Failed to load character data.');
+        editLoadError = err.message || 'Failed to load character data. Reload this page before editing.';
+        validateForm();
+        alert(editLoadError);
     }
 }
 
@@ -1417,6 +1456,27 @@ function showRejectionBanner(notes, count) {
 }
 
 function populateFormFromCharacterData(data) {
+    const selections = validatedSavedSelections(data);
+    // The canonical form has one row per trait. Refuse to collapse legacy
+    // multiple-instance records into that row and silently lose saved data.
+    const details = {};
+    ['advantages', 'flaws'].forEach(function (category) {
+        details[category] = {};
+        Object.entries(data[category] || {}).forEach(function ([name, saved]) {
+            if (Array.isArray(saved)) {
+                if (saved.length !== 1) {
+                    throw new Error('This character has multiple saved instances of ' + name +
+                        '. Please contact staff for help editing it without losing data.');
+                }
+                saved = saved[0];
+            }
+            details[category][name] = typeof saved === 'number' ? { value: saved } : Object.assign({}, saved);
+        });
+    });
+    [disciplineValues, advantageValues, flawValues].forEach(function (values) {
+        Object.keys(values).forEach(function (name) { delete values[name]; });
+    });
+    retainedSelections = selections;
     // Set simple bio fields
     if (data.full_name) document.getElementById('full_name').value = data.full_name;
     if (data.concept) document.getElementById('concept').value = data.concept;
@@ -1435,12 +1495,18 @@ function populateFormFromCharacterData(data) {
     }
     if (data.predator_type) {
         document.getElementById('predator_type').value = data.predator_type;
+        document.getElementById('predator_type').dispatchEvent(new Event('change'));
+    }
+    predatorDisciplineChoice = data.predator_discipline || null;
+    if (predatorDisciplineChoice) {
+        const radio = document.querySelector('input[name="predator-disc"][value="' + predatorDisciplineChoice + '"]');
+        if (radio) radio.checked = true;
     }
 
     // Set attributes
     const attrMap = data.attributes || {};
     for (const [traitName, rating] of Object.entries(attrMap)) {
-        const lowerName = traitName.toLowerCase();
+        const lowerName = traitName.trim().toLowerCase().replace(/\s+/g, '_');
         if (traitValues.hasOwnProperty(lowerName)) {
             traitValues[lowerName] = rating;
             const dotsContainer = document.querySelector('.trait-dots[data-trait="' + lowerName + '"], .pip-row[data-trait="' + lowerName + '"]');
@@ -1453,7 +1519,7 @@ function populateFormFromCharacterData(data) {
     // Set skills
     const skillMap = data.skills || {};
     for (const [traitName, rating] of Object.entries(skillMap)) {
-        const lowerName = traitName.toLowerCase();
+        const lowerName = traitName.trim().toLowerCase().replace(/\s+/g, '_');
         if (traitValues.hasOwnProperty(lowerName)) {
             traitValues[lowerName] = rating;
             const dotsContainer = document.querySelector('.trait-dots[data-trait="' + lowerName + '"], .pip-row[data-trait="' + lowerName + '"]');
@@ -1466,28 +1532,27 @@ function populateFormFromCharacterData(data) {
     // Set disciplines
     const discMap = data.disciplines || {};
     for (const [discName, rating] of Object.entries(discMap)) {
-        disciplineValues[discName] = rating;
+        disciplineValues[discName] = rating - (discName === predatorDisciplineChoice ? 1 : 0);
     }
 
     // Set advantages
-    const advMap = data.advantages || {};
-    for (const [advName, rating] of Object.entries(advMap)) {
-        if (typeof rating === 'number') {
-            advantageValues[advName] = { value: rating };
-        } else if (typeof rating === 'object' && rating.value !== undefined) {
-            advantageValues[advName] = rating;
-        }
-    }
+    Object.assign(advantageValues, details.advantages);
 
     // Set flaws
-    const flawMap = data.flaws || {};
-    for (const [flawName, rating] of Object.entries(flawMap)) {
-        if (typeof rating === 'number') {
-            flawValues[flawName] = { value: rating };
-        } else if (typeof rating === 'object' && rating.value !== undefined) {
-            flawValues[flawName] = rating;
-        }
-    }
+    Object.assign(flawValues, details.flaws);
+
+    restorePrioritiesFromTotals('attr', {
+        physical: ['strength', 'dexterity', 'stamina'],
+        social: ['charisma', 'manipulation', 'composure'],
+        mental: ['intelligence', 'wits', 'resolve']
+    }, [7, 5, 3], 3);
+    restorePrioritiesFromTotals('skill', {
+        physical: PHYSICAL_SKILLS, social: SOCIAL_SKILLS, mental: MENTAL_SKILLS
+    }, [13, 9, 5], 0);
+
+    renderDisciplines();
+    renderAdvantages();
+    renderFlaws();
 
     // Re-render dynamic sections so dots update
     document.querySelectorAll('#disciplines-container .trait-dots, #disciplines-container .pip-row').forEach(function (dotsContainer) {
@@ -1511,6 +1576,40 @@ function populateFormFromCharacterData(data) {
 
     updatePointsDisplay();
     validateForm();
+}
+
+function restorePrioritiesFromTotals(type, groups, budgets, base) {
+    const priorities = type === 'attr' ? attributePriorities : skillPriorities;
+    const totals = {};
+    Object.entries(groups).forEach(function ([category, traits]) {
+        totals[category] = traits.reduce(function (sum, trait) { return sum + (traitValues[trait] || 0); }, 0) - base;
+    });
+    ['primary', 'secondary', 'tertiary'].forEach(function (level, index) {
+        const matches = Object.keys(totals).filter(function (category) { return totals[category] === budgets[index]; });
+        priorities[level] = matches.length === 1 ? matches[0] : null;
+        document.getElementById(type + '-priority-' + level).value = priorities[level] || '';
+    });
+    validatePrioritySelections(type);
+    if (type === 'attr') updateAttributeMaxValues();
+    else updateSkillMaxValues();
+}
+
+function validatedSavedSelections(data) {
+    const specialties = data.specialties === undefined ? {} : data.specialties;
+    const powers = data.discipline_powers === undefined ? [] : data.discipline_powers;
+    const objectMap = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+    if (!objectMap(specialties) || !Array.isArray(powers) ||
+        powers.some(name => typeof name !== 'string' || !name.trim())) {
+        throw new Error('Saved specialties or discipline powers cannot be safely restored. Please contact staff for help.');
+    }
+    for (const [skill, values] of Object.entries(specialties)) {
+        if (!skill.trim() || !objectMap(values) || Object.entries(values).some(function ([name, rating]) {
+            return !name.trim() || name.length > 100 || !Number.isInteger(rating) || rating < 1 || rating > 5;
+        })) {
+            throw new Error('Saved specialties cannot be safely restored. Please contact staff for help.');
+        }
+    }
+    return { specialties: JSON.parse(JSON.stringify(specialties)), discipline_powers: powers.slice() };
 }
 
 // ============================================================
@@ -1540,6 +1639,8 @@ function saveDraft() {
             attributePriorities: Object.assign({}, attributePriorities),
             skillPriorities: Object.assign({}, skillPriorities),
             predatorDisciplineChoice: predatorDisciplineChoice,
+            specialties: JSON.parse(JSON.stringify(retainedSelections.specialties)),
+            discipline_powers: retainedSelections.discipline_powers.slice(),
             savedAt: new Date().toISOString()
         };
         localStorage.setItem(getDraftKey(), JSON.stringify(draft));
@@ -1571,6 +1672,7 @@ function loadDraft() {
 }
 
 function applyDraftToForm(draft) {
+    retainedSelections = validatedSavedSelections(draft);
     // Restore simple form fields
     if (draft.full_name) document.getElementById('full_name').value = draft.full_name;
     if (draft.concept) document.getElementById('concept').value = draft.concept;
@@ -1670,6 +1772,8 @@ function applyDraftToForm(draft) {
         });
     }
 
+    restoreTraitDetails('advantage', advantageValues);
+    restoreTraitDetails('flaw', flawValues);
     updatePointsDisplay();
     validateForm();
 }

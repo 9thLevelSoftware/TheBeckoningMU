@@ -4,8 +4,63 @@ Django Models for Status System
 Tracks Camarilla positions, Status ratings, and status change requests.
 """
 
-from django.db import models
+from contextvars import ContextVar
+from functools import wraps
+
+from django.db import models, transaction
 from evennia.typeclasses.models import SharedMemoryModel
+
+_status_changes = ContextVar("status_changes", default=None)
+
+
+def _track_status_instance(instance):
+    """Register a status object before an operation can mutate its cached fields."""
+    changes = _status_changes.get()
+    if changes is not None:
+        changes.setdefault(id(instance), (instance, instance.pk, instance._state.db))
+
+
+def _restore_status_instances(changes):
+    """Repair only affected Python instances after their SQL transaction rolls back."""
+    for instance, primary_key, database in changes.values():
+        fields = [field.attname for field in instance._meta.concrete_fields]
+        persisted = type(instance).objects.using(database).filter(pk=primary_key).values(*fields).first()
+        instance._state.fields_cache.clear()
+        instance._prefetched_objects_cache = {}
+        if persisted is None:
+            # The row was created inside the rolled-back operation. Do not
+            # leave its now-nonexistent identity available through idmapper.
+            instance.flush_from_cache(force=True)
+            instance.pk = None
+            instance._state.adding = True
+        else:
+            # refresh_from_db constructs a model through the same idmapper and
+            # can return this stale instance. Scalar values avoid that path;
+            # __dict__ assignment also avoids any saving field descriptors.
+            instance.__dict__.update(persisted)
+
+
+def _status_atomic(operation):
+    """Keep status rows and the operation's idmapper instances consistent on failure."""
+
+    @wraps(operation)
+    def wrapped(*args, **kwargs):
+        parent_changes = _status_changes.get()
+        changes = {}
+        token = _status_changes.set(changes)
+        try:
+            try:
+                with transaction.atomic():
+                    return operation(*args, **kwargs)
+            except Exception:
+                _restore_status_instances(changes)
+                raise
+        finally:
+            _status_changes.reset(token)
+            if parent_changes is not None:
+                parent_changes.update(changes)
+
+    return wrapped
 
 
 class CamarillaPosition(SharedMemoryModel):
@@ -33,22 +88,18 @@ class CamarillaPosition(SharedMemoryModel):
     sect = models.CharField(
         max_length=50,
         default="Camarilla",
-        choices=[
-            ("Camarilla", "Camarilla"),
-            ("Anarch", "Anarch"),
-            ("Independent", "Independent")
-        ],
-        help_text="Sect this position belongs to"
+        choices=[("Camarilla", "Camarilla"), ("Anarch", "Anarch"), ("Independent", "Independent")],
+        help_text="Sect this position belongs to",
     )
 
     # Active status
     is_active = models.BooleanField(default=True, help_text="Whether this position is currently in use")
 
     class Meta:
-        app_label = 'status'
+        app_label = "status"
         verbose_name = "Camarilla Position"
         verbose_name_plural = "Camarilla Positions"
-        ordering = ['-hierarchy_level', 'name']
+        ordering = ["-hierarchy_level", "name"]
 
     def __str__(self):
         return f"{self.name} ({self.sect}) - Status {self.status_granted}"
@@ -64,10 +115,10 @@ class CharacterStatus(SharedMemoryModel):
 
     # Character reference
     character = models.OneToOneField(
-        'objects.ObjectDB',
+        "objects.ObjectDB",
         on_delete=models.CASCADE,
-        related_name='status_data',
-        help_text="Character this status belongs to"
+        related_name="status_data",
+        help_text="Character this status belongs to",
     )
 
     # Status ratings
@@ -81,15 +132,13 @@ class CharacterStatus(SharedMemoryModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='holders',
-        help_text="Current Camarilla position held (if any)"
+        related_name="holders",
+        help_text="Current Camarilla position held (if any)",
     )
 
     # Additional positions/titles (stored as JSON)
     additional_positions = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="Additional positions/titles held (e.g., Primogen of Clan Ventrue)"
+        default=list, blank=True, help_text="Additional positions/titles held (e.g., Primogen of Clan Ventrue)"
     )
 
     # Sect affiliation
@@ -100,27 +149,23 @@ class CharacterStatus(SharedMemoryModel):
             ("Camarilla", "Camarilla"),
             ("Anarch", "Anarch"),
             ("Independent", "Independent"),
-            ("Autarkis", "Autarkis")
+            ("Autarkis", "Autarkis"),
         ],
-        help_text="Sect affiliation"
+        help_text="Sect affiliation",
     )
 
     # Reputation
     reputation = models.TextField(blank=True, help_text="Public reputation/known deeds")
 
     # Status history (stored as JSON)
-    status_history = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="History of status changes"
-    )
+    status_history = models.JSONField(default=list, blank=True, help_text="History of status changes")
 
     # Timestamps
     created_date = models.DateTimeField(auto_now_add=True)
     modified_date = models.DateTimeField(auto_now=True)
 
     class Meta:
-        app_label = 'status'
+        app_label = "status"
         verbose_name = "Character Status"
         verbose_name_plural = "Character Status Records"
 
@@ -156,7 +201,7 @@ class CharacterStatus(SharedMemoryModel):
             "change": change,
             "reason": reason,
             "changed_by": changed_by,
-            "new_total": self.total_status
+            "new_total": self.total_status,
         }
 
         if not self.status_history:
@@ -175,10 +220,10 @@ class StatusRequest(SharedMemoryModel):
 
     # Request identification
     character = models.ForeignKey(
-        'objects.ObjectDB',
+        "objects.ObjectDB",
         on_delete=models.CASCADE,
-        related_name='status_requests',
-        help_text="Character requesting status change"
+        related_name="status_requests",
+        help_text="Character requesting status change",
     )
 
     # Request type
@@ -189,9 +234,9 @@ class StatusRequest(SharedMemoryModel):
             ("position", "Position Appointment"),
             ("position_removal", "Position Removal"),
             ("sect_change", "Sect Change"),
-            ("other", "Other")
+            ("other", "Other"),
         ],
-        help_text="Type of status request"
+        help_text="Type of status request",
     )
 
     # Request details
@@ -201,7 +246,7 @@ class StatusRequest(SharedMemoryModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        help_text="Requested position (if applicable)"
+        help_text="Requested position (if applicable)",
     )
 
     reason = models.TextField(help_text="Reason for request / IC justification")
@@ -211,23 +256,18 @@ class StatusRequest(SharedMemoryModel):
     status = models.CharField(
         max_length=20,
         default="pending",
-        choices=[
-            ("pending", "Pending"),
-            ("approved", "Approved"),
-            ("denied", "Denied"),
-            ("review", "Under Review")
-        ],
-        help_text="Request status"
+        choices=[("pending", "Pending"), ("approved", "Approved"), ("denied", "Denied"), ("review", "Under Review")],
+        help_text="Request status",
     )
 
     # Staff response
     reviewed_by = models.ForeignKey(
-        'objects.ObjectDB',
+        "objects.ObjectDB",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='reviewed_status_requests',
-        help_text="Staff member who reviewed this request"
+        related_name="reviewed_status_requests",
+        help_text="Staff member who reviewed this request",
     )
 
     staff_notes = models.TextField(blank=True, help_text="Staff notes/response")
@@ -239,14 +279,15 @@ class StatusRequest(SharedMemoryModel):
     resolved_date = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        app_label = 'status'
+        app_label = "status"
         verbose_name = "Status Request"
         verbose_name_plural = "Status Requests"
-        ordering = ['-created_date']
+        ordering = ["-created_date"]
 
     def __str__(self):
         return f"{self.character.key} - {self.request_type} ({self.status})"
 
+    @_status_atomic
     def approve(self, staff_member, reason=""):
         """
         Approve the status request.
@@ -257,6 +298,7 @@ class StatusRequest(SharedMemoryModel):
         """
         from django.utils import timezone
 
+        _track_status_instance(self)
         self.status = "approved"
         self.reviewed_by = staff_member
         self.resolution_reason = reason
@@ -296,6 +338,7 @@ class StatusRequest(SharedMemoryModel):
             participants=(self.character,),
             occurred_at=self.resolved_date,
         )
+
     def deny(self, staff_member, reason=""):
         """
         Deny the status request.
@@ -321,9 +364,7 @@ class StatusRequest(SharedMemoryModel):
         if self.request_type == "earned_status":
             char_status.earned_status = max(0, min(5, char_status.earned_status + self.requested_change))
             char_status.add_status_history(
-                self.requested_change,
-                self.reason,
-                str(self.reviewed_by) if self.reviewed_by else "System"
+                self.requested_change, self.reason, str(self.reviewed_by) if self.reviewed_by else "System"
             )
             char_status.save()
 
@@ -334,6 +375,7 @@ class StatusRequest(SharedMemoryModel):
                     # Clear any existing holder
                     old_holders = CharacterStatus.objects.filter(position=self.requested_position)
                     for old_holder in old_holders:
+                        _track_status_instance(old_holder)
                         old_holder.position = None
                         old_holder.position_status = 0
                         old_holder.save()
@@ -344,7 +386,7 @@ class StatusRequest(SharedMemoryModel):
                 char_status.add_status_history(
                     self.requested_position.status_granted,
                     f"Appointed to position: {self.requested_position.name}",
-                    str(self.reviewed_by) if self.reviewed_by else "System"
+                    str(self.reviewed_by) if self.reviewed_by else "System",
                 )
                 char_status.save()
 
@@ -352,9 +394,7 @@ class StatusRequest(SharedMemoryModel):
             char_status.position = None
             char_status.position_status = 0
             char_status.add_status_history(
-                0,
-                f"Removed from position",
-                str(self.reviewed_by) if self.reviewed_by else "System"
+                0, "Removed from position", str(self.reviewed_by) if self.reviewed_by else "System"
             )
             char_status.save()
 

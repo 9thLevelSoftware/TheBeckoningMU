@@ -13,8 +13,10 @@ from django.views.generic import TemplateView
 
 from boons.models import BoonLedger
 from narrative.models import MemoryFact
+from narrative.services import configured_provider
 
-from .models import ChronicleEvent
+from .generation import MAX_SOURCES, request_draft
+from .models import ChronicleEvent, ChronicleGenerationRequest
 from .read_services import account_chronicle
 from .services import (
     correct_event,
@@ -88,6 +90,19 @@ class NarrativeOpsView(TemplateView):
             {"event": event, "payload_json": json.dumps(event.payload, ensure_ascii=False)} for event in events[:100]
         ]
         context["boon_ledger_discrepancies"] = _boon_ledger_discrepancies()
+        context["draft_events"] = events.filter(status=ChronicleEvent.Status.DRAFT).prefetch_related("source_events")[
+            :100
+        ]
+        context["generation_enabled"] = configured_provider() is not None
+        context["generation_sources"] = public_events()[:100]
+        context["generation_requests"] = ChronicleGenerationRequest.objects.select_related(
+            "draft_event", "requested_by"
+        ).order_by("-id")[:50]
+        context["generation_request_key"] = str(uuid4())
+        context["generation_max_sources"] = MAX_SOURCES
+        source_id = self.request.GET.get("source", "")
+        if source_id.isascii() and source_id.isdigit():
+            context["selected_source"] = events.filter(pk=source_id).first()
         return context
 
     def post(self, request, *args, **kwargs):
@@ -142,10 +157,33 @@ class StaffEventActionView(View):
                 raise Http404
         except ChronicleEvent.DoesNotExist as error:
             raise Http404 from error
-        except ValueError as error:
+        except (ValueError, PermissionError) as error:
             messages.error(request, str(error))
         else:
             messages.success(request, f"Chronicle event {action} action completed.")
+        return HttpResponseRedirect(reverse("narrative_ops"))
+
+
+@method_decorator(login_required, name="dispatch")
+@method_decorator(staff_member_required, name="dispatch")
+class StaffGenerationRequestView(View):
+    http_method_names = ["post"]
+
+    def post(self, request):
+        try:
+            draft_request = request_draft(
+                request.user,
+                request.POST.getlist("source_ids"),
+                request.POST.get("mode", ""),
+                request_key=request.POST.get("request_key"),
+            )
+        except (ValueError, PermissionError, RuntimeError) as error:
+            messages.error(request, str(error))
+        else:
+            messages.success(
+                request,
+                f"Chronicle drafting request #{draft_request.pk} is {draft_request.status}. Publication requires staff review.",
+            )
         return HttpResponseRedirect(reverse("narrative_ops"))
 
 
@@ -168,7 +206,7 @@ class StaffMemoryFactActionView(View):
                     raise ValueError("This memory fact is already redacted.")
                 fact.status = MemoryFact.Status.REDACTED
                 fact.text = ""
-                fact.staff_entry = ""
+                fact.staff_entry = "" if fact.source_event_id else "[redacted staff entry]"
                 fact.save(update_fields=("status", "text", "staff_entry"))
             else:
                 raise Http404

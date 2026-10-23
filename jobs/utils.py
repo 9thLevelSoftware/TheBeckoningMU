@@ -2,7 +2,6 @@
 Jobs utility functions for shared functionality across job commands.
 """
 
-from django.core.exceptions import ObjectDoesNotExist
 from evennia.accounts.models import AccountDB
 from evennia.objects.models import ObjectDB
 
@@ -12,12 +11,12 @@ from .models import Bucket, Job
 def get_job(caller, job_id, bucket=None):
     """
     Fetches a Job by sequence number with error handling.
-    
+
     Args:
         caller: The calling character
         job_id: Job sequence number (string or int)
         bucket: Optional bucket to search within
-    
+
     Returns:
         Job object or None, messaging the caller on failure.
     """
@@ -35,11 +34,11 @@ def get_job(caller, job_id, bucket=None):
 def get_bucket(caller, bucket_name):
     """
     Fetches a Bucket by name with error handling.
-    
+
     Args:
         caller: The calling character
         bucket_name: Bucket name string
-    
+
     Returns:
         Bucket object or None, messaging the caller on failure.
     """
@@ -54,11 +53,11 @@ def get_bucket(caller, bucket_name):
 def get_account(caller, account_name):
     """
     Fetches an AccountDB by username with error handling.
-    
+
     Args:
         caller: The calling character
         account_name: Account username string
-    
+
     Returns:
         AccountDB object or None, messaging the caller on failure.
     """
@@ -73,32 +72,29 @@ def get_account(caller, account_name):
 def check_job_permission(caller, job):
     """
     Checks if a caller has permission to interact with a specific job.
-    
+
     Args:
         caller: The calling character
         job: Job object
-    
+
     Returns:
         Boolean - True if caller can interact with the job
     """
     # Admins can always interact
     if caller.check_permstring("Builder"):
         return True
-    
+
     # Account created the job
     if caller.account == job.creator:
         return True
-    
+
     # Account is assigned to the job
-    if caller.account in job.players.all():
-        return True
-    
-    return False
+    return caller.account in job.players.all()
+
 
 def job_participant_characters(job):
     account_ids = {job.creator_id, *job.players.values_list("pk", flat=True)}
     return ObjectDB.objects.filter(db_account_id__in=account_ids)
-
 
 
 def format_job_view(job):
@@ -134,13 +130,13 @@ def format_job_view(job):
         player_names = [p.username for p in players]
         output += f"|wAssigned to:|n {', '.join(player_names)}\n"
     else:
-        output += f"|wAssigned to:|n None\n"
+        output += "|wAssigned to:|n None\n"
 
     # Completion status
     if job.completed:
-        output += f"|wCompleted:|n Yes\n"
+        output += "|wCompleted:|n Yes\n"
     else:
-        output += f"|wCompleted:|n No\n"
+        output += "|wCompleted:|n No\n"
 
     output += "\n|wDescription:|n\n"
     output += f"{job.description}\n"
@@ -183,12 +179,10 @@ def format_job_list(jobs, title="Jobs"):
             return f"No {title.lower()} found."
 
     # Box border header
-    output = "\n|c*" + "=" * 78 + "*|n\n"
+    output = f"\n|w{title}|n\n|c*" + "=" * 78 + "*|n\n"
 
     # Header row (ID=4, Title=28, Bucket=15, Status=8, Assigned=15 = 70 + 4 spaces = 74)
-    header_content = "|w{:<4} {:<28} {:<15} {:<8} {:<15}|n".format(
-        "ID", "Title", "Bucket", "Status", "Assigned"
-    )
+    header_content = "|w{:<4} {:<28} {:<15} {:<8} {:<15}|n".format("ID", "Title", "Bucket", "Status", "Assigned")
     output += f"|c|||n {header_content} |c|||n\n"
     output += "|c*" + "=" * 78 + "*|n\n"
 
@@ -213,13 +207,7 @@ def format_job_list(jobs, title="Jobs"):
         if job.completed:
             status = "CLOSED"
 
-        row_content = "|w{:<4} {:<28} {:<15} {:<8} {:<15}|n".format(
-            str(job.sequence_number),
-            job.title[:28],
-            job.bucket.name[:15],
-            status[:8],
-            assigned
-        )
+        row_content = f"|w{str(job.sequence_number):<4} {job.title[:28]:<28} {job.bucket.name[:15]:<15} {status[:8]:<8} {assigned:<15}|n"
         output += f"|c|||n {row_content} |c|||n\n"
 
     output += "|c*" + "=" * 78 + "*|n\n"
@@ -240,7 +228,7 @@ def format_bucket_list(buckets):
         return "No buckets found."
 
     # Box border header
-    output = "\n|c*" + "=" * 78 + "*|n\n"
+    output = "\n|wJob Buckets|n\n|c*" + "=" * 78 + "*|n\n"
 
     # Header row (Name=20, Jobs=8, Description=44 = 72 + 2 spaces = 74)
     header_content = "|w{:<20} {:<8} {:<44}|n".format("Name", "Jobs", "Description")
@@ -257,11 +245,7 @@ def format_bucket_list(buckets):
         job_count = bucket.jobs.count()
         description = bucket.description[:44] if bucket.description else "No description"
 
-        row_content = "|w{:<20} {:<8} {:<44}|n".format(
-            bucket.name[:20],
-            str(job_count),
-            description
-        )
+        row_content = f"|w{bucket.name[:20]:<20} {str(job_count):<8} {description:<44}|n"
         output += f"|c|||n {row_content} |c|||n\n"
 
     output += "|c*" + "=" * 78 + "*|n\n"
@@ -271,11 +255,11 @@ def format_bucket_list(buckets):
 def can_view_job(caller, job):
     """
     Checks if a caller can view a specific job.
-    
+
     Args:
         caller: The calling character
         job: Job object
-    
+
     Returns:
         Boolean - True if caller can view the job
     """
@@ -286,11 +270,11 @@ def can_view_job(caller, job):
 def can_modify_job(caller, job):
     """
     Checks if a caller can modify a specific job.
-    
+
     Args:
         caller: The calling character
         job: Job object
-    
+
     Returns:
         Boolean - True if caller can modify the job
     """
@@ -301,24 +285,21 @@ def can_modify_job(caller, job):
 def can_complete_job(caller, job):
     """
     Checks if a caller can complete a specific job.
-    
+
     Args:
         caller: The calling character
         job: Job object
-    
+
     Returns:
         Boolean - True if caller can complete the job
     """
     # Admins can always complete
     if caller.check_permstring("Builder"):
         return True
-    
+
     # Assigned players can complete
     if caller.account in job.players.all():
         return True
-    
+
     # Job creator can complete their own job
-    if caller.account == job.creator:
-        return True
-    
-    return False
+    return caller.account == job.creator

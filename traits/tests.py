@@ -8,9 +8,11 @@ Tests the core trait manipulation API:
 - Error cases and edge conditions
 """
 
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from evennia.objects.models import ObjectDB
-from traits.models import TraitCategory, Trait, CharacterTrait
+
+from traits.models import CharacterTrait, Trait, TraitCategory
 from traits.utils import (
     get_character_trait_value,
     set_character_trait_value,
@@ -24,17 +26,9 @@ class TraitUtilsTestCase(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         # Create test categories
-        self.attr_category = TraitCategory.objects.create(
-            name="Test Attributes",
-            code="test_attrs",
-            sort_order=1
-        )
+        self.attr_category = TraitCategory.objects.create(name="Test Attributes", code="test_attrs", sort_order=1)
 
-        self.skill_category = TraitCategory.objects.create(
-            name="Test Skills",
-            code="test_skills",
-            sort_order=2
-        )
+        self.skill_category = TraitCategory.objects.create(name="Test Skills", code="test_skills", sort_order=2)
 
         # Create test traits
         self.strength = Trait.objects.create(
@@ -43,7 +37,7 @@ class TraitUtilsTestCase(TestCase):
             min_value=1,
             max_value=5,
             has_specialties=False,
-            is_instanced=False
+            is_instanced=False,
         )
 
         self.firearms = Trait.objects.create(
@@ -52,13 +46,12 @@ class TraitUtilsTestCase(TestCase):
             min_value=0,
             max_value=5,
             has_specialties=True,
-            is_instanced=False
+            is_instanced=False,
         )
 
         # Create test character
         self.character = ObjectDB.objects.create(
-            db_key="TestCharacter",
-            db_typeclass_path="typeclasses.characters.Character"
+            db_key="TestCharacter", db_typeclass_path="typeclasses.characters.Character"
         )
 
     def test_set_and_get_trait_value(self):
@@ -74,67 +67,38 @@ class TraitUtilsTestCase(TestCase):
     def test_set_and_get_trait_with_specialty(self):
         """Test setting and getting a trait with specialty."""
         # Set skill with specialty
-        success = set_character_trait_value(
-            self.character,
-            "Firearms",
-            2,
-            specialty="Pistols"
-        )
+        success = set_character_trait_value(self.character, "Firearms", 2, specialty="Pistols")
         self.assertTrue(success)
 
         # Get skill value with specialty
-        value = get_character_trait_value(
-            self.character,
-            "Firearms",
-            specialty="Pistols"
-        )
+        value = get_character_trait_value(self.character, "Firearms", specialty="Pistols")
         self.assertEqual(value, 2)
 
         # Different specialty should return 0
-        value = get_character_trait_value(
-            self.character,
-            "Firearms",
-            specialty="Rifles"
-        )
+        value = get_character_trait_value(self.character, "Firearms", specialty="Rifles")
         self.assertEqual(value, 0)
 
     def test_validate_trait_valid_rating(self):
         """Test trait validation with valid rating."""
-        is_valid, msg = validate_trait_for_character(
-            self.character,
-            "Strength",
-            3
-        )
+        is_valid, msg = validate_trait_for_character(self.character, "Strength", 3)
         self.assertTrue(is_valid)
         self.assertEqual(msg, "")
 
     def test_validate_trait_too_high(self):
         """Test trait validation with rating too high."""
-        is_valid, msg = validate_trait_for_character(
-            self.character,
-            "Strength",
-            10
-        )
+        is_valid, msg = validate_trait_for_character(self.character, "Strength", 10)
         self.assertFalse(is_valid)
         self.assertIn("maximum", msg.lower())
 
     def test_validate_trait_too_low(self):
         """Test trait validation with rating too low."""
-        is_valid, msg = validate_trait_for_character(
-            self.character,
-            "Strength",
-            0
-        )
+        is_valid, msg = validate_trait_for_character(self.character, "Strength", 0)
         self.assertFalse(is_valid)
         self.assertIn("minimum", msg.lower())
 
     def test_validate_trait_nonexistent(self):
         """Test trait validation with non-existent trait."""
-        is_valid, msg = validate_trait_for_character(
-            self.character,
-            "NonExistentTrait",
-            3
-        )
+        is_valid, msg = validate_trait_for_character(self.character, "NonExistentTrait", 3)
         self.assertFalse(is_valid)
         self.assertIn("not found", msg.lower())
 
@@ -179,36 +143,18 @@ class TraitUtilsTestCase(TestCase):
 
     def test_get_nonexistent_trait(self):
         """Test getting a trait the character doesn't have."""
-        value = get_character_trait_value(self.character, "Strength")
+        value = get_character_trait_value(self.character, "Unknown Trait")
         self.assertEqual(value, 0)  # Should return 0 for traits not set
 
     def test_multiple_specialties_same_skill(self):
         """Test that a character can have multiple specialties in same skill."""
         # Set different specialties
-        set_character_trait_value(
-            self.character,
-            "Firearms",
-            2,
-            specialty="Pistols"
-        )
-        set_character_trait_value(
-            self.character,
-            "Firearms",
-            3,
-            specialty="Rifles"
-        )
+        set_character_trait_value(self.character, "Firearms", 2, specialty="Pistols")
+        set_character_trait_value(self.character, "Firearms", 3, specialty="Rifles")
 
         # Verify both exist independently
-        pistols = get_character_trait_value(
-            self.character,
-            "Firearms",
-            specialty="Pistols"
-        )
-        rifles = get_character_trait_value(
-            self.character,
-            "Firearms",
-            specialty="Rifles"
-        )
+        pistols = get_character_trait_value(self.character, "Firearms", specialty="Pistols")
+        rifles = get_character_trait_value(self.character, "Firearms", specialty="Rifles")
 
         self.assertEqual(pistols, 2)
         self.assertEqual(rifles, 3)
@@ -235,20 +181,11 @@ class TraitModelTestCase(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.category = TraitCategory.objects.create(
-            name="Test Category",
-            code="test_cat",
-            sort_order=1
-        )
+        self.category = TraitCategory.objects.create(name="Test Category", code="test_cat", sort_order=1)
 
     def test_trait_creation(self):
         """Test creating a trait."""
-        trait = Trait.objects.create(
-            name="Test Trait",
-            category=self.category,
-            min_value=0,
-            max_value=5
-        )
+        trait = Trait.objects.create(name="Test Trait", category=self.category, min_value=0, max_value=5)
         self.assertEqual(trait.name, "Test Trait")
         self.assertEqual(trait.category, self.category)
         self.assertEqual(trait.min_value, 0)
@@ -256,18 +193,8 @@ class TraitModelTestCase(TestCase):
 
     def test_trait_category_relationship(self):
         """Test that traits are properly linked to categories."""
-        trait1 = Trait.objects.create(
-            name="Trait 1",
-            category=self.category,
-            min_value=0,
-            max_value=5
-        )
-        trait2 = Trait.objects.create(
-            name="Trait 2",
-            category=self.category,
-            min_value=0,
-            max_value=5
-        )
+        trait1 = Trait.objects.create(name="Trait 1", category=self.category, min_value=0, max_value=5)
+        trait2 = Trait.objects.create(name="Trait 2", category=self.category, min_value=0, max_value=5)
 
         # Test reverse relationship
         category_traits = self.category.traits.all()
@@ -277,17 +204,11 @@ class TraitModelTestCase(TestCase):
 
     def test_trait_unique_name(self):
         """Test that trait names must be unique."""
-        Trait.objects.create(
-            name="Unique Trait",
-            category=self.category
-        )
+        Trait.objects.create(name="Unique Trait", category=self.category)
 
         # Attempting to create another trait with same name should fail
-        with self.assertRaises(Exception):
-            Trait.objects.create(
-                name="Unique Trait",
-                category=self.category
-            )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Trait.objects.create(name="Unique Trait", category=self.category)
 
     def tearDown(self):
         """Clean up test data."""

@@ -20,6 +20,48 @@
     </section>
 
     <section>
+        <h2>Draft an AI recap or rumor</h2>
+        <p>Choose up to {{ generation_max_sources }} published public sources. AI output is attributed and saved only as an unpublished draft. Every supplied source remains linked for review.</p>
+        {% if generation_enabled %}
+        <form method="post" action="{% url 'narrative_ops_generate' %}">
+            {% csrf_token %}
+            <input type="hidden" name="request_key" value="{{ generation_request_key }}">
+            <label>Draft type <select name="mode"><option value="recap">Recap</option><option value="rumor">Rumor</option></select></label>
+            <fieldset><legend>Published public sources</legend>
+                {% for source in generation_sources %}
+                <p><label><input type="checkbox" name="source_ids" value="{{ source.pk }}">#{{ source.pk }} {{ source.title }}</label>
+                <a href="?source={{ source.pk }}#source-detail">Read source</a></p>
+                {% empty %}<p>No published public sources are available.</p>{% endfor %}
+            </fieldset>
+            <button type="submit">Request unpublished AI draft</button>
+        </form>
+        {% else %}<p>Narrative AI is not configured. No drafting requests can be sent.</p>{% endif %}
+    </section>
+
+    <section>
+        <h2>Recent AI drafting requests</h2>
+        <p>Pending requests are asynchronous. Refresh this page to check results. Failed requests are never retried automatically.</p>
+        {% for draft_request in generation_requests %}
+        <article style="border-top:1px solid #444;padding:12px 0;">
+            <h3>AI {{ draft_request.mode }} #{{ draft_request.pk }} · {{ draft_request.status }}</h3>
+            <p>Requested by {{ draft_request.requested_by }} · {{ draft_request.created_at }}</p>
+            <p>All supplied sources: {% for source_id in draft_request.source_ids %}<a href="?source={{ source_id }}#source-detail">#{{ source_id }}</a> {% endfor %}</p>
+            {% if draft_request.citations %}<p>Cited source IDs: {{ draft_request.citations|join:", " }}</p>{% endif %}
+            {% if draft_request.error %}<p>{{ draft_request.error }}</p>{% endif %}
+            {% if draft_request.draft_event %}<p><a href="#event-{{ draft_request.draft_event.pk }}">Review draft #{{ draft_request.draft_event.pk }}</a> · {{ draft_request.draft_event.status }}</p>{% endif %}
+        </article>
+        {% empty %}<p>No AI drafting requests have been made.</p>{% endfor %}
+    </section>
+
+    {% if selected_source %}
+    <section id="source-detail">
+        <h2>Source #{{ selected_source.pk }}: {{ selected_source.title|default:"[redacted]" }}</h2>
+        <p>{{ selected_source.status }} · {{ selected_source.visibility }}</p>
+        <p>{{ selected_source.summary|linebreaksbr }}</p>
+    </section>
+    {% endif %}
+
+    <section>
         <h2>Boon-ledger discrepancies</h2>
         <p>This report compares the cached ledger with a read-only recalculation. It never changes records.</p>
         {% for discrepancy in boon_ledger_discrepancies %}
@@ -36,8 +78,10 @@ Expected: {{ discrepancy.expected }}</pre>
     <section>
         <h2>Unpublished drafts</h2>
         {% for event in draft_events %}
-        <article style="border-top:1px solid #444;padding:12px 0;">
+        <article id="event-{{ event.pk }}" style="border-top:1px solid #444;padding:12px 0;">
             <h3>{{ event.title }}</h3>
+            {% if event.ai_generated %}<p>AI-generated draft; staff review is required.</p>{% endif %}
+            {% if event.source_events.all %}<p>Sources: {% for source in event.source_events.all %}<a href="?source={{ source.pk }}#source-detail">#{{ source.pk }}</a> {% endfor %}</p>{% endif %}
             <p>{{ event.summary|linebreaksbr }}</p>
             <p>Source: {{ event.source_app }} / {{ event.source_type }} #{{ event.source_id }} · {{ event.kind }} · {{ event.visibility }}</p>
             <form method="post" action="{% url 'narrative_ops_action' event.pk 'publish' %}">
@@ -96,6 +140,7 @@ Expected: {{ discrepancy.expected }}</pre>
         {% with event=item.event %}
         <article style="border-top:1px solid #444;padding:12px 0;">
             <h3>{{ event.title|default:"[redacted]" }}</h3>
+            {% if event.ai_generated %}<p>AI-generated Chronicle prose.</p>{% endif %}
             <p>{{ event.summary|linebreaksbr }}</p>
             <p>{{ event.kind }} · {{ event.status }} · {{ event.visibility }} · #{{ event.pk }}</p>
             {% if event.status == "published" %}

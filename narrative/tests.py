@@ -6,7 +6,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from evennia.objects.models import ObjectDB
 from evennia.utils.test_resources import EvenniaCommandTest
-from twisted.internet.defer import fail, succeed
+from twisted.internet.defer import Deferred, fail, succeed
 
 from .models import (
     MemoryFact,
@@ -287,6 +287,267 @@ class NarrativeStoryTests(TestCase):
         request.refresh_from_db()
         self.assertEqual(request.status, StoryGenerationRequest.Status.SUCCEEDED)
         self.assertEqual(request.response, "The scene continues.")
+
+
+class NarrativePrivacyTests(TestCase):
+    def setUp(self):
+        NarrativeStoryTests.setUp(self)
+        NarrativeConsent.objects.create(account=self.account, character=self.character, opted_in=True)
+        self.messages = []
+        self.responses = []
+        self.provider = Mock(generate=self._generate)
+
+    def _generate(self, messages):
+        self.messages.append(messages)
+        response = Deferred()
+        self.responses.append(response)
+        return response
+
+    def _fact(self, **kwargs):
+        return MemoryFact.objects.create(
+            persona=self.persona,
+            text="Sensitive approved detail.",
+            staff_entry="Staff-curated source.",
+            visibility=MemoryFact.Visibility.PUBLIC,
+            status=MemoryFact.Status.APPROVED,
+            **kwargs,
+        )
+
+    def _request(self, scheduler=None):
+        result = generate_story(self.session, "Private player action.", self.provider, scheduler or (lambda fn: fn()))
+        received = []
+        result.addCallback(received.append)
+        result.addErrback(lambda _failure: None)
+        return received
+
+    def _respond(self, prose="Derived sensitive prose."):
+        self.responses[-1].callback(json.dumps({"prose": prose, "citations": []}))
+
+    def test_queued_opt_out_never_sends_player_text(self):
+        queued = []
+        self._request(queued.append)
+        set_consent(self.account, self.character, False)
+        queued[0]()
+        self.assertEqual(self.messages, [])
+        request = StoryGenerationRequest.objects.get()
+        self.assertEqual(request.status, StoryGenerationRequest.Status.FAILED)
+        self.assertEqual(request.error, "Consent withdrawn.")
+        self.assertEqual(request.action_text, "")
+
+    def test_queued_completion_never_sends_player_text(self):
+        queued = []
+        self._request(queued.append)
+        self.session.complete()
+        queued[0]()
+        self.assertEqual(self.messages, [])
+
+    def test_queued_terminal_request_is_not_sent_or_overwritten(self):
+        queued = []
+        self._request(queued.append)
+        StoryGenerationRequest.objects.update(status=StoryGenerationRequest.Status.SUCCEEDED, response="Earlier result")
+        queued[0]()
+        self.assertEqual(self.messages, [])
+        self.assertEqual(StoryGenerationRequest.objects.get().response, "Earlier result")
+
+    def test_queued_request_retrieves_current_facts_at_dispatch(self):
+        fact = self._fact()
+        queued = []
+        self._request(queued.append)
+        fact.status = MemoryFact.Status.REDACTED
+        fact.save(update_fields=("status",))
+        queued[0]()
+        self.assertNotIn("Sensitive approved detail.", self.messages[0][-1]["content"])
+        self._respond()
+
+    def test_queued_changed_owner_never_sends_player_text(self):
+        queued = []
+        self._request(queued.append)
+        ObjectDB.objects.filter(pk=self.character.pk).update(db_account=self.other_account)
+        queued[0]()
+        self.assertEqual(self.messages, [])
+
+    def test_inflight_terminal_request_cannot_succeed(self):
+        received = self._request()
+        StoryGenerationRequest.objects.update(status="failed", error="Canceled independently.", action_text="")
+        self._respond()
+        self.assertEqual(received, [])
+        request = StoryGenerationRequest.objects.get()
+        self.assertEqual(request.status, "failed")
+        self.assertEqual(request.error, "Canceled independently.")
+
+    def test_inflight_persona_edit_rejects_response(self):
+        received = self._request()
+        NarrativePersona.objects.filter(pk=self.persona.pk).update(profile="Changed profile.")
+        self._respond()
+        self.assertEqual(received, [])
+        self.assertEqual(StoryGenerationRequest.objects.get().status, "failed")
+
+    def test_recovery_queue_rechecks_opt_out_at_dispatch(self):
+        from .services import recover_pending_requests
+
+        StoryGenerationRequest.objects.create(session=self.session, action_text="Recovered private text.")
+        queued = []
+        self.assertEqual(recover_pending_requests(self.provider, queued.append), 1)
+        set_consent(self.account, self.character, False)
+        queued[0]()
+        self.assertEqual(self.messages, [])
+
+    def test_context_changes_during_message_build_never_reach_provider(self):
+        from chronicle.models import ChronicleEvent
+
+        from . import services
+
+        event = ChronicleEvent.objects.create(
+            idempotency_key="dispatch-source",
+            source_app="staff",
+            source_type="scene",
+            source_id="dispatch",
+            kind="scene.curated",
+            title="Source",
+            visibility="public",
+            status="published",
+        )
+        fact = self._fact(source_event=event)
+        build_messages = services._messages
+        mutations = {
+            "fact": lambda: MemoryFact.objects.filter(pk=fact.pk).update(status="redacted"),
+            "source": lambda: ChronicleEvent.objects.filter(pk=event.pk).update(status="redacted"),
+            "scene": lambda: StorySession.objects.filter(pk=self.session.pk).update(location="club"),
+            "resume": lambda: StorySession.objects.filter(pk=self.session.pk).update(resume_state={"phase": "changed"}),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(context=name):
+
+                def change_after_build(*args, mutate=mutate):
+                    messages = build_messages(*args)
+                    mutate()
+                    return messages
+
+                with patch("narrative.services._messages", side_effect=change_after_build):
+                    self._request()
+                self.assertEqual(self.messages, [])
+                self.assertEqual(StoryGenerationRequest.objects.latest("id").status, "failed")
+
+    def test_changed_inherited_fingerprint_cannot_be_replaced_by_new_snapshot(self):
+        from . import services
+
+        fact = self._fact()
+        self._request()
+        self._respond("Earlier derived prose.")
+        resume_context = services._resume_context
+
+        def change_after_resume(session):
+            context = resume_context(session)
+            MemoryFact.objects.filter(pk=fact.pk).update(text="Changed approved detail.")
+            return context
+
+        with patch("narrative.services._resume_context", side_effect=change_after_resume):
+            received = self._request()
+        self.assertEqual(len(self.messages), 1)
+        self.assertEqual(received, [])
+        self.assertEqual(StoryGenerationRequest.objects.latest("id").status, "failed")
+
+    def test_uncited_inflight_fact_changes_reject_response(self):
+        for changes in (
+            {"status": MemoryFact.Status.REDACTED},
+            {"expires_at": timezone.now()},
+            {"text": "Edited fact."},
+            {"staff_entry": "Changed provenance."},
+            {"visibility": MemoryFact.Visibility.STAFF},
+            {"visibility": MemoryFact.Visibility.PRIVATE, "subject_id": self.other_character.pk},
+        ):
+            with self.subTest(changes=changes):
+                fact = self._fact()
+                received = self._request()
+                MemoryFact.objects.filter(pk=fact.pk).update(**changes)
+                self._respond()
+                self.assertEqual(received, [])
+                request = StoryGenerationRequest.objects.latest("id")
+                self.assertEqual(request.status, StoryGenerationRequest.Status.FAILED)
+                self.assertEqual(request.response, "")
+
+    def test_uncited_inflight_source_changes_reject_response(self):
+        from chronicle.models import ChronicleEvent
+
+        for field, value in (
+            ("status", "redacted"),
+            ("visibility", "staff"),
+            ("summary", "Edited source."),
+            ("payload", {"changed": True}),
+            ("participants", None),
+        ):
+            with self.subTest(field=field):
+                event = ChronicleEvent.objects.create(
+                    idempotency_key=f"narrative-source-{field}",
+                    source_app="staff",
+                    source_type="scene",
+                    source_id=field,
+                    kind="scene.curated",
+                    title="Source",
+                    summary="Source text",
+                    visibility="participants",
+                    status="published",
+                )
+                event.participants.add(self.character)
+                self._fact(source_event=event)
+                received = self._request()
+                if field == "participants":
+                    event.participants.clear()
+                else:
+                    ChronicleEvent.objects.filter(pk=event.pk).update(**{field: value})
+                self._respond()
+                self.assertEqual(received, [])
+                self.assertEqual(StoryGenerationRequest.objects.latest("id").status, "failed")
+
+    def test_inflight_closed_or_terminal_request_cannot_succeed(self):
+        received = self._request()
+        self.session.complete()
+        self._respond()
+        self.assertEqual(received, [])
+        self.assertEqual(StoryGenerationRequest.objects.get().error, "Session completed.")
+
+    def test_legacy_resume_prose_is_omitted(self):
+        self.session.resume_state["last_response"] = "Legacy sensitive prose."
+        self.session.save(update_fields=("resume_state",))
+        self._request()
+        self.assertNotIn("Legacy sensitive prose.", self.messages[-1][-1]["content"])
+        self._respond()
+
+    def test_revoked_uncited_fact_invalidates_resume_prose(self):
+        fact = self._fact()
+        self._request()
+        self._respond()
+        MemoryFact.objects.filter(pk=fact.pk).update(status="redacted")
+        self._request()
+        self.assertNotIn("Derived sensitive prose.", self.messages[-1][-1]["content"])
+        self.assertNotIn("Sensitive approved detail.", self.messages[-1][-1]["content"])
+        self._respond("Safe continuation.")
+
+    def test_transitive_resume_dependencies_survive_fact_retrieval_limit(self):
+        original = self._fact()
+        self._request()
+        self._respond("First derived prose.")
+        for _index in range(21):
+            self._fact()
+        self._request()
+        self.assertIn("First derived prose.", self.messages[-1][-1]["content"])
+        self._respond("Second derived prose.")
+        MemoryFact.objects.filter(pk=original.pk).update(status="redacted")
+        self._request()
+        self.assertNotIn("Second derived prose.", self.messages[-1][-1]["content"])
+        self._respond("Safe continuation.")
+
+    def test_inflight_inherited_dependency_revocation_rejects_response(self):
+        original = self._fact()
+        self._request()
+        self._respond("First derived prose.")
+        for _index in range(21):
+            self._fact()
+        received = self._request()
+        MemoryFact.objects.filter(pk=original.pk).update(status="redacted")
+        self._respond()
+        self.assertEqual(received, [])
+        self.assertEqual(StoryGenerationRequest.objects.latest("id").status, "failed")
 
 
 class NarrativeCommandDispatchTests(EvenniaCommandTest):

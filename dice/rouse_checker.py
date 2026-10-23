@@ -5,12 +5,15 @@ Handles Rouse checks and Blood Potency reroll mechanics, integrating with
 the character trait system to track and update Hunger levels.
 """
 
-from typing import Dict, Any, Optional
-from .dice_roller import roll_rouse_check as base_rouse_check
+from typing import Any
+
+from commands.v5.utils import blood_utils
 from traits.utils import get_character_trait_value
 
+from .dice_roller import roll_rouse_check as base_rouse_check
 
-def perform_rouse_check(character, reason: str = '', power_level: int = 1) -> Dict[str, Any]:
+
+def perform_rouse_check(character, reason: str = "", power_level: int = 1) -> dict[str, Any]:
     """
     Perform a Rouse check and update character Hunger.
 
@@ -50,27 +53,26 @@ def perform_rouse_check(character, reason: str = '', power_level: int = 1) -> Di
         >>>     print(f"Failed. Hunger increased to {result['hunger_after']}")
     """
     # Get current Hunger
-    hunger_before = getattr(character.db, 'hunger', 1)
-    hunger_before = max(0, min(5, hunger_before))  # Clamp to 0-5
+    hunger_before = get_hunger_level(character)
 
     # Check if Hunger is already at maximum
     if hunger_before >= 5:
         return {
-            'roll': 0,
-            'success': False,
-            'hunger_before': 5,
-            'hunger_after': 5,
-            'hunger_change': 0,
-            'reroll_eligible': False,
-            'reroll_used': False,
-            'reason': reason,
-            'message': "Hunger already at maximum (5). Rouse check not rolled."
+            "roll": 0,
+            "success": False,
+            "hunger_before": 5,
+            "hunger_after": 5,
+            "hunger_change": 0,
+            "reroll_eligible": False,
+            "reroll_used": False,
+            "reason": reason,
+            "message": "Hunger already at maximum (5). Rouse check not rolled.",
         }
 
     # Perform initial Rouse check
     initial_result = base_rouse_check()
-    roll_value = initial_result['roll']
-    success = initial_result['success']
+    roll_value = initial_result["roll"]
+    success = initial_result["success"]
     reroll_used = False
     reroll_eligible = False
 
@@ -81,8 +83,8 @@ def perform_rouse_check(character, reason: str = '', power_level: int = 1) -> Di
         if reroll_eligible:
             # Perform automatic reroll (Blood Potency benefit)
             reroll_result = base_rouse_check()
-            roll_value = reroll_result['roll']
-            success = reroll_result['success']
+            roll_value = reroll_result["roll"]
+            success = reroll_result["success"]
             reroll_used = True
 
     # Update Hunger if failed
@@ -90,20 +92,18 @@ def perform_rouse_check(character, reason: str = '', power_level: int = 1) -> Di
     hunger_after = min(5, hunger_before + hunger_change)
 
     # Save updated Hunger to character
-    character.db.hunger = hunger_after
+    set_hunger_level(character, hunger_after)
 
     return {
-        'roll': roll_value,
-        'success': success,
-        'hunger_before': hunger_before,
-        'hunger_after': hunger_after,
-        'hunger_change': hunger_change,
-        'reroll_eligible': reroll_eligible,
-        'reroll_used': reroll_used,
-        'reason': reason,
-        'message': _format_rouse_message(
-            roll_value, success, hunger_before, hunger_after, reroll_used, reason
-        )
+        "roll": roll_value,
+        "success": success,
+        "hunger_before": hunger_before,
+        "hunger_after": hunger_after,
+        "hunger_change": hunger_change,
+        "reroll_eligible": reroll_eligible,
+        "reroll_used": reroll_used,
+        "reason": reason,
+        "message": _format_rouse_message(roll_value, success, hunger_before, hunger_after, reroll_used, reason),
     }
 
 
@@ -139,16 +139,14 @@ def can_reroll_rouse(character, power_level: int) -> bool:
         False
     """
     # Get character's Blood Potency
-    blood_potency = get_character_trait_value(character, 'Blood Potency')
+    blood_potency = get_character_trait_value(character, "Blood Potency")
 
     # Determine maximum power level eligible for reroll
     if blood_potency == 0:
         max_reroll_level = 0  # No rerolls
     elif blood_potency in [1, 2]:
         max_reroll_level = 1  # Level 1 only
-    elif blood_potency == 3:
-        max_reroll_level = 2  # Levels 1-2
-    elif blood_potency in [4, 5]:
+    elif blood_potency == 3 or blood_potency in [4, 5]:
         max_reroll_level = 2  # Levels 1-2
     elif blood_potency in [6, 7]:
         max_reroll_level = 3  # Levels 1-3
@@ -172,8 +170,7 @@ def get_hunger_level(character) -> int:
     Returns:
         int: Hunger level (0-5), defaults to 1 if not set
     """
-    hunger = getattr(character.db, 'hunger', 1)
-    return max(0, min(5, hunger))  # Clamp to valid range
+    return blood_utils.get_hunger_level(character)
 
 
 def set_hunger_level(character, hunger: int) -> int:
@@ -187,18 +184,11 @@ def set_hunger_level(character, hunger: int) -> int:
     Returns:
         int: Actual Hunger level set (after clamping)
     """
-    clamped_hunger = max(0, min(5, hunger))
-    character.db.hunger = clamped_hunger
-    return clamped_hunger
+    return blood_utils.set_hunger_level(character, hunger)
 
 
 def _format_rouse_message(
-    roll: int,
-    success: bool,
-    hunger_before: int,
-    hunger_after: int,
-    reroll_used: bool,
-    reason: str
+    roll: int, success: bool, hunger_before: int, hunger_after: int, reroll_used: bool, reason: str
 ) -> str:
     """
     Format a Rouse check result message for display.
@@ -265,10 +255,10 @@ def format_hunger_display(character) -> str:
     if hunger >= 5:
         color = "|r|h"  # Bright red for max Hunger
     elif hunger >= 4:
-        color = "|r"    # Red for high Hunger
+        color = "|r"  # Red for high Hunger
     elif hunger >= 2:
-        color = "|y"    # Yellow for moderate Hunger
+        color = "|y"  # Yellow for moderate Hunger
     else:
-        color = "|g"    # Green for low Hunger
+        color = "|g"  # Green for low Hunger
 
     return f"Hunger: {color}{filled}|x{empty}|n ({hunger}/5)"

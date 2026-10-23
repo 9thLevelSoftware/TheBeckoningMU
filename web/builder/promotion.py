@@ -7,12 +7,27 @@ creating connection exits and cleaning up the sandbox container.
 
 import logging
 import threading
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
+from django.db import transaction
+from django.utils import timezone
+from evennia.objects.models import ObjectDB
 from evennia.utils import search
-from evennia.utils.utils import run_in_main_thread
+from twisted.internet import reactor
+from twisted.python.threadable import isInIOThread
 
 logger = logging.getLogger(__name__)
+
+
+def run_in_main_thread(callback):
+    """Dispatch promotion using the caller's actual reactor-thread identity."""
+    if isInIOThread():
+        callback()
+    elif reactor.running:
+        reactor.callFromThread(callback)
+    else:
+        raise RuntimeError("The game reactor is not running; promotion was not started.")
+
 
 # Direction opposites for bidirectional exit creation
 DIRECTION_OPPOSITES = {
@@ -29,7 +44,7 @@ DIRECTION_OPPOSITES = {
 }
 
 
-def _get_opposite_direction(direction: str) -> Optional[str]:
+def _get_opposite_direction(direction: str) -> str | None:
     """
     Get the opposite direction for bidirectional exit creation.
 
@@ -44,7 +59,7 @@ def _get_opposite_direction(direction: str) -> Optional[str]:
 
 def _do_promotion_in_main_thread(
     project_id: int, connection_room_id: int, connection_direction: str
-) -> Tuple[bool, Dict[str, Any]]:
+) -> tuple[bool, dict[str, Any]]:
     """
     Actually perform promotion in Evennia's main thread.
 
@@ -68,18 +83,17 @@ def _do_promotion_in_main_thread(
     try:
         from evennia.utils.create import create_object
 
-        from typeclasses.exits import Exit
-        from typeclasses.rooms import Room
+        from web.builder.models import BuildProject
 
         errors = []
 
         # Find all project rooms with sandbox tag
         project_tag = f"project_{project_id}"
-        sandbox_rooms = search.search_object(
-            "",
-            typeclass="typeclasses.rooms.Room",
-            tags=[project_tag, "sandbox"],
+        sandbox_rooms = ObjectDB.objects.get_by_tag(key=[project_tag, "sandbox"]).filter(
+            db_typeclass_path="typeclasses.rooms.Room"
         )
+        container_id = BuildProject.objects.values_list("sandbox_room_id", flat=True).get(pk=project_id)
+        sandbox_rooms = [room for room in sandbox_rooms if room.id != container_id]
 
         if not sandbox_rooms:
             return False, {"error": "No sandbox rooms found for this project"}
@@ -92,9 +106,7 @@ def _do_promotion_in_main_thread(
             if found:
                 connection_room = found[0]
         except Exception as e:
-            logger.warning(
-                f"Error searching for connection room #{connection_room_id}: {e}"
-            )
+            logger.warning(f"Error searching for connection room #{connection_room_id}: {e}")
 
         if not connection_room:
             return False, {"error": f"Connection room #{connection_room_id} not found"}
@@ -110,22 +122,10 @@ def _do_promotion_in_main_thread(
                 and exit_obj.destination
                 and exit_obj.name.lower() == connection_direction.lower()
             ):
-                return False, {
-                    "error": f"Exit '{connection_direction}' already exists from connection room"
-                }
+                return False, {"error": f"Exit '{connection_direction}' already exists from connection room"}
 
         # Determine entry room (room with lowest ID, or first in list)
         entry_room = min(sandbox_rooms, key=lambda r: r.id)
-
-        # Remove 'sandbox' tag from all project rooms (moves them to live world)
-        promoted_count = 0
-        for room in sandbox_rooms:
-            try:
-                room.tags.remove("sandbox")
-                promoted_count += 1
-            except Exception as e:
-                logger.warning(f"Failed to remove sandbox tag from room {room.id}: {e}")
-                errors.append(f"Room {room.id}: {e}")
 
         # Create exit from connection room to project entry room
         created_exits = []
@@ -148,10 +148,7 @@ def _do_promotion_in_main_thread(
                     "destination": entry_room.id,
                 }
             )
-            logger.info(
-                f"Created exit from room {connection_room.id} to {entry_room.id} "
-                f"({connection_direction})"
-            )
+            logger.info(f"Created exit from room {connection_room.id} to {entry_room.id} ({connection_direction})")
         except Exception as e:
             error_msg = f"Failed to create forward exit: {e}"
             logger.exception(error_msg)
@@ -180,19 +177,39 @@ def _do_promotion_in_main_thread(
                     }
                 )
                 logger.info(
-                    f"Created return exit from room {entry_room.id} to {connection_room.id} "
-                    f"({opposite_direction})"
+                    f"Created return exit from room {entry_room.id} to {connection_room.id} ({opposite_direction})"
                 )
             except Exception as e:
                 error_msg = f"Failed to create return exit: {e}"
                 logger.exception(error_msg)
                 errors.append(error_msg)
 
-        return True, {
+        # Only release sandbox tags after both connecting exits exist. On any
+        # partial failure the project remains built, with its sandbox reference
+        # and project tags available for staff reconciliation.
+        promoted_count = 0
+        if not errors:
+            for obj in ObjectDB.objects.get_by_tag(key=[project_tag, "sandbox"]):
+                if obj.id == container_id:
+                    continue
+                try:
+                    obj.tags.remove("sandbox")
+                    if obj in sandbox_rooms:
+                        promoted_count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to remove sandbox tag from object {obj.id}: {e}")
+                    errors.append(f"Object {obj.id}: {e}")
+
+        return not errors, {
             "promoted_rooms": promoted_count,
             "created_exits": created_exits,
             "entry_room_id": entry_room.id,
             "errors": errors if errors else None,
+            **(
+                {"error": "Promotion was incomplete; staff reconciliation is required.", "recovery_required": True}
+                if errors
+                else {}
+            ),
         }
 
     except Exception as e:
@@ -202,7 +219,7 @@ def _do_promotion_in_main_thread(
 
 def promote_project_to_live(
     project_id: int, connection_room_id: int, connection_direction: str
-) -> Tuple[bool, Dict[str, Any]]:
+) -> tuple[bool, dict[str, Any]]:
     """
     Promote a built project from sandbox to live world.
 
@@ -222,10 +239,7 @@ def promote_project_to_live(
         On success: result contains promoted_rooms, created_exits, entry_room_id
         On failure: result contains error message
     """
-    from django.utils import timezone
-
     from web.builder.models import BuildProject
-    from web.builder.sandbox_cleanup import cleanup_sandbox_for_project
 
     try:
         # Load and validate project
@@ -236,9 +250,7 @@ def promote_project_to_live(
 
         # Validate project status
         if project.status != "built":
-            return False, {
-                "error": f"Project must be in 'built' status (current: {project.status})"
-            }
+            return False, {"error": f"Project must be in 'built' status (current: {project.status})"}
 
         # Validate project has active sandbox
         if not project.sandbox_room_id:
@@ -247,10 +259,7 @@ def promote_project_to_live(
         # Validate direction
         if connection_direction.lower() not in DIRECTION_OPPOSITES:
             valid_directions = ", ".join(DIRECTION_OPPOSITES.keys())
-            return False, {
-                "error": f"Invalid direction '{connection_direction}'. "
-                f"Valid directions: {valid_directions}"
-            }
+            return False, {"error": f"Invalid direction '{connection_direction}'. Valid directions: {valid_directions}"}
 
         logger.info(
             f"Starting promotion for project {project_id}: "
@@ -265,71 +274,82 @@ def promote_project_to_live(
         def wrapper():
             nonlocal result, error
             try:
-                success, result = _do_promotion_in_main_thread(
-                    project_id, connection_room_id, connection_direction
-                )
+                success, result = _do_promotion_in_main_thread(project_id, connection_room_id, connection_direction)
                 if not success:
-                    error = result.get("error")
+                    error = result.get("error") or "Promotion failed."
+                    return
+                if result.get("errors"):
+                    result.update(
+                        error="Promotion was incomplete; staff reconciliation is required.", recovery_required=True
+                    )
+                    error = result["error"]
+                    return
+
+                # Finalize in the game thread. Never call the broad sandbox
+                # cleanup helper here: it deletes every project-tagged object,
+                # including the area and connecting exits just promoted.
+                with transaction.atomic():
+                    project.refresh_from_db()
+                    container_id = project.sandbox_room_id
+                    project.mark_live()
+                    containers = search.search_object(f"#{container_id}")
+                    if not containers:
+                        raise ValueError("Sandbox container disappeared; staff reconciliation is required.")
+                    container = containers[0]
+                    if (
+                        container.id == result.get("entry_room_id")
+                        or not container.tags.get(f"project_{project_id}")
+                        or not container.tags.get("sandbox")
+                    ):
+                        raise ValueError("Sandbox container identity changed; staff reconciliation is required.")
+                    container.delete()
+                    project.promoted_at = timezone.now()
+                    project.sandbox_room_id = None
+                    project.save(update_fields=["promoted_at", "sandbox_room_id"])
+
+                    from chronicle.services import record_event
+
+                    payload = {"project_name": project.name} if project.is_public else {}
+                    record_event(
+                        idempotency_key=f"builder:{project.pk}:builder.promoted:{project.promoted_at.isoformat()}",
+                        source_app="builder",
+                        source_type="BuildProject",
+                        source_id=str(project.pk),
+                        kind="builder.promoted",
+                        title="Builder project promoted",
+                        summary="A builder project was promoted to the live world.",
+                        payload=payload,
+                        visibility="public" if project.is_public else "staff",
+                        actor=project.user,
+                        participants=(),
+                        occurred_at=project.promoted_at,
+                    )
             except Exception as e:
                 error = str(e)
+                result = {**(result or {}), "error": error, "recovery_required": True}
                 logger.exception(f"Promotion wrapper error for project {project_id}")
             finally:
                 event.set()
 
         run_in_main_thread(wrapper)
-        event.wait(timeout=30)
+        if not event.wait(timeout=30):
+            # _do_promotion can populate result before project finalization is
+            # complete. The game-thread callback may still finish or fail;
+            # never claim success from that intermediate result.
+            return False, {
+                "error": "Promotion completion is pending; staff must check the project before retrying.",
+                "pending": True,
+                "recovery_required": True,
+            }
 
         if error:
-            return False, {"error": error}
+            return False, {**(result or {}), "error": error}
 
         if not result:
             return False, {"error": "Promotion timed out"}
 
-        # Promotion succeeded - clean up and update project
+        # Promotion and project finalization both succeeded.
         logger.info(f"Promotion successful for project {project_id}: {result}")
-
-        # Clean up the sandbox container room
-        cleanup_success, cleanup_result = cleanup_sandbox_for_project(project_id)
-        if not cleanup_success:
-            logger.warning(
-                f"Sandbox cleanup failed after promotion for project {project_id}: "
-                f"{cleanup_result.get('error', 'Unknown error')}"
-            )
-            # Don't fail the promotion if cleanup fails - rooms are already live
-
-        # Update project status to live
-        transition_succeeded = False
-        try:
-            project.mark_live()
-            transition_succeeded = True
-        except ValueError as e:
-            logger.error(f"Failed to mark project {project_id} as live: {e}")
-            # Don't fail - promotion succeeded even if status update failed
-
-        # Update promotion timestamp and clear sandbox reference
-        project.promoted_at = timezone.now()
-        project.sandbox_room_id = None
-        project.save(update_fields=["promoted_at", "sandbox_room_id"])
-
-        if transition_succeeded and not result.get("errors"):
-            from chronicle.services import record_event
-
-            payload = {"project_name": project.name} if project.is_public else {}
-            record_event(
-                idempotency_key=f"builder:{project.pk}:builder.promoted:{project.promoted_at.isoformat()}",
-                source_app="builder",
-                source_type="BuildProject",
-                source_id=str(project.pk),
-                kind="builder.promoted",
-                title="Builder project promoted",
-                summary="A builder project was promoted to the live world.",
-                payload=payload,
-                visibility="public" if project.is_public else "staff",
-                actor=project.user,
-                participants=(),
-                occurred_at=project.promoted_at,
-            )
-
         return True, result
 
     except Exception as e:

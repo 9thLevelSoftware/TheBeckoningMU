@@ -5,19 +5,18 @@ Handles hunting mechanics, prey selection, resonance determination, and complica
 """
 
 import random
-from .blood_utils import get_blood_potency_bonus, get_hunger_level, reduce_hunger, set_resonance
-from .clan_utils import get_clan
 
+from .blood_utils import get_hunger_level, reduce_hunger, set_resonance
 
 # Hunting difficulties by location type
 HUNTING_DIFFICULTIES = {
-    "club": 3,          # Nightclubs, bars, scenes
-    "street": 4,        # Streets, alleys, homeless areas
-    "residential": 5,   # Residential areas
-    "hospital": 6,      # Hospitals, medical facilities
-    "secured": 7,       # Gated communities, secured buildings
-    "rural": 4,         # Rural/wilderness areas
-    "default": 4        # Default difficulty
+    "club": 3,  # Nightclubs, bars, scenes
+    "street": 4,  # Streets, alleys, homeless areas
+    "residential": 5,  # Residential areas
+    "hospital": 6,  # Hospitals, medical facilities
+    "secured": 7,  # Gated communities, secured buildings
+    "rural": 4,  # Rural/wilderness areas
+    "default": 4,  # Default difficulty
 }
 
 # Resonance types and their emotional states
@@ -25,23 +24,23 @@ RESONANCE_TYPES = {
     "Choleric": {
         "emotions": ["angry", "violent", "passionate", "envious", "competitive"],
         "prey_types": ["bar fighter", "road rager", "abusive partner", "gang member", "sports fanatic"],
-        "disciplines": ["Celerity", "Potence"]
+        "disciplines": ["Celerity", "Potence"],
     },
     "Melancholic": {
         "emotions": ["sad", "depressed", "intellectual", "contemplative", "grieving"],
         "prey_types": ["mourner", "depressed artist", "struggling student", "lonely academic", "heartbroken lover"],
-        "disciplines": ["Fortitude", "Obfuscate"]
+        "disciplines": ["Fortitude", "Obfuscate"],
     },
     "Phlegmatic": {
         "emotions": ["calm", "lazy", "apathetic", "controlling", "medicated"],
         "prey_types": ["bureaucrat", "security guard", "exhausted worker", "stoner", "meditation practitioner"],
-        "disciplines": ["Auspex", "Dominate"]
+        "disciplines": ["Auspex", "Dominate"],
     },
     "Sanguine": {
         "emotions": ["happy", "lustful", "enthusiastic", "high", "flirty"],
         "prey_types": ["partygoer", "lover", "drug user", "optimist", "seducer"],
-        "disciplines": ["Presence", "Blood Sorcery"]
-    }
+        "disciplines": ["Presence", "Blood Sorcery"],
+    },
 }
 
 # Hunting complications
@@ -80,13 +79,12 @@ def determine_resonance(prey_description=None, location="street"):
     }
 
     # Get weighted probabilities for this location
-    weights = location_resonance_map.get(location, {"Choleric": 25, "Melancholic": 25, "Phlegmatic": 25, "Sanguine": 25})
+    weights = location_resonance_map.get(
+        location, {"Choleric": 25, "Melancholic": 25, "Phlegmatic": 25, "Sanguine": 25}
+    )
 
     # Choose resonance type based on weights
-    res_type = random.choices(
-        list(weights.keys()),
-        weights=list(weights.values())
-    )[0]
+    res_type = random.choices(list(weights.keys()), weights=list(weights.values()))[0]
 
     # Determine intensity (fleeting=1, intense=2, dyscrasia=3)
     # Base: 70% fleeting, 25% intense, 5% dyscrasia
@@ -110,7 +108,7 @@ def determine_resonance(prey_description=None, location="street"):
         "intensity": intensity,
         "intensity_name": intensity_names[intensity],
         "prey_description": prey_description,
-        "description": f"A {prey_description} with {res_type} resonance ({intensity_names[intensity]})"
+        "description": f"A {prey_description} with {res_type} resonance ({intensity_names[intensity]})",
     }
 
 
@@ -132,24 +130,33 @@ def roll_hunting(character, location="street", skill_bonus=0, predator_bonus=0):
             - complications: List of complications (if any)
             - message: Narrative message
     """
-    from world.v5_dice import V5DiceRoller
+    from dice.dice_roller import roll_v5_pool
 
     # Get hunting difficulty
     difficulty = HUNTING_DIFFICULTIES.get(location, HUNTING_DIFFICULTIES["default"])
 
     # Build dice pool (Wits + appropriate skill + bonuses)
-    wits = character.db.stats.get('attributes', {}).get('mental', {}).get('wits', 1)
+    wits = character.db.stats.get("attributes", {}).get("mental", {}).get("wits", 1)
     pool = wits + skill_bonus + predator_bonus
 
     # Roll dice
     hunger = get_hunger_level(character)
-    roller = V5DiceRoller(pool, hunger, difficulty)
-    result = roller.roll()
+    roll = roll_v5_pool(pool, min(hunger, pool), difficulty)
+    result = {
+        "success": roll.is_success,
+        "total_successes": roll.total_successes,
+        "messy_critical": roll.is_messy_critical,
+        "bestial_failure": roll.is_bestial_failure,
+        "regular_dice": roll.regular_dice,
+        "hunger_dice": roll.hunger_dice,
+    }
 
     # Check for complications (messy critical or bestial failure)
     complications = []
     if result["messy_critical"]:
-        complications.append(random.choice([c for c in HUNTING_COMPLICATIONS if c["severity"] in ["moderate", "severe"]]))
+        complications.append(
+            random.choice([c for c in HUNTING_COMPLICATIONS if c["severity"] in ["moderate", "severe"]])
+        )
     elif result["bestial_failure"]:
         complications.append(random.choice([c for c in HUNTING_COMPLICATIONS if c["severity"] == "severe"]))
     elif result["success"] and random.randint(1, 100) <= 20:  # 20% chance of minor complication even on success
@@ -162,7 +169,7 @@ def roll_hunting(character, location="street", skill_bonus=0, predator_bonus=0):
         "complications": complications,
         "messy_critical": result.get("messy_critical", False),
         "bestial_failure": result.get("bestial_failure", False),
-        "dice_result": result
+        "dice_result": result,
     }
 
 
@@ -190,7 +197,8 @@ def hunt_prey(character, location="street", skill_name=None, predator_type_bonus
     skill_bonus = 0
     if skill_name:
         from .trait_utils import get_trait_value
-        skill_bonus = get_trait_value(character, skill_name, category='skills')
+
+        skill_bonus = get_trait_value(character, skill_name, category="skills")
 
     # Roll for hunting
     hunt_result = roll_hunting(character, location, skill_bonus, predator_type_bonus)
@@ -202,8 +210,8 @@ def hunt_prey(character, location="street", skill_name=None, predator_type_bonus
             "resonance": None,
             "feeding_result": None,
             "complications": hunt_result["complications"],
-            "message": f"You fail to find suitable prey in the {location}. " +
-                      (f"Complication: {hunt_result['complications'][0]['desc']}" if hunt_result['complications'] else "")
+            "message": f"You fail to find suitable prey in the {location}. "
+            + (f"Complication: {hunt_result['complications'][0]['desc']}" if hunt_result["complications"] else ""),
         }
 
     # Determine prey and resonance
@@ -219,11 +227,7 @@ def hunt_prey(character, location="street", skill_name=None, predator_type_bonus
     new_hunger = reduce_hunger(character, hunger_reduction)
 
     # Set resonance from the prey
-    set_resonance(
-        character,
-        resonance_data["type"],
-        resonance_data["intensity"]
-    )
+    set_resonance(character, resonance_data["type"], resonance_data["intensity"])
 
     # Build narrative message
     message = f"You hunt in the {location} and find: {resonance_data['description']}.\n"
@@ -242,7 +246,7 @@ def hunt_prey(character, location="street", skill_name=None, predator_type_bonus
         "new_hunger": new_hunger,
         "complications": hunt_result["complications"],
         "message": message,
-        "hunt_roll": hunt_result
+        "hunt_roll": hunt_result,
     }
 
 
@@ -259,52 +263,46 @@ def get_predator_hunting_bonus(character):
             - preferred_locations: List of preferred hunting locations
             - special_ability: Special hunting ability (if any)
     """
-    vamp = character.db.vampire if hasattr(character.db, 'vampire') else {}
-    predator_type = vamp.get('predator_type', None)
+    vamp = character.db.vampire if hasattr(character.db, "vampire") else {}
+    predator_type = vamp.get("predator_type", None)
 
     predator_bonuses = {
         "Alleycat": {
             "bonus_dice": 1,
             "preferred_locations": ["street", "club"],
-            "special_ability": "Can hunt in dangerous areas with less risk"
+            "special_ability": "Can hunt in dangerous areas with less risk",
         },
         "Sandman": {
             "bonus_dice": 2,
             "preferred_locations": ["residential"],
-            "special_ability": "Can feed from sleeping victims without waking them"
+            "special_ability": "Can feed from sleeping victims without waking them",
         },
         "Scene Queen": {
             "bonus_dice": 1,
             "preferred_locations": ["club"],
-            "special_ability": "Can feed openly in scene without Masquerade risk"
+            "special_ability": "Can feed openly in scene without Masquerade risk",
         },
         "Siren": {
             "bonus_dice": 2,
             "preferred_locations": ["club", "residential"],
-            "special_ability": "Can seduce prey easily"
+            "special_ability": "Can seduce prey easily",
         },
         "Consensualist": {
             "bonus_dice": 0,
             "preferred_locations": ["residential", "hospital"],
-            "special_ability": "Cannot feed from unwilling vessels"
+            "special_ability": "Cannot feed from unwilling vessels",
         },
         "Bagger": {
             "bonus_dice": 0,
             "preferred_locations": ["hospital"],
-            "special_ability": "Can acquire blood bags instead of hunting"
+            "special_ability": "Can acquire blood bags instead of hunting",
         },
-        "Farmer": {
-            "bonus_dice": 1,
-            "preferred_locations": ["rural"],
-            "special_ability": "Can only feed from animals"
-        }
+        "Farmer": {"bonus_dice": 1, "preferred_locations": ["rural"], "special_ability": "Can only feed from animals"},
     }
 
-    return predator_bonuses.get(predator_type, {
-        "bonus_dice": 0,
-        "preferred_locations": ["street"],
-        "special_ability": None
-    })
+    return predator_bonuses.get(
+        predator_type, {"bonus_dice": 0, "preferred_locations": ["street"], "special_ability": None}
+    )
 
 
 def generate_hunting_opportunity(location="street"):
@@ -329,23 +327,23 @@ def generate_hunting_opportunity(location="street"):
         "Choleric": [
             "They're in a heated argument with someone",
             "They're clearly spoiling for a fight",
-            "They're cursing loudly at their phone"
+            "They're cursing loudly at their phone",
         ],
         "Melancholic": [
             "They're crying quietly on a bench",
             "They're staring listlessly into the distance",
-            "They're visiting a grave alone"
+            "They're visiting a grave alone",
         ],
         "Phlegmatic": [
             "They're half-asleep on public transit",
             "They're methodically working through paperwork",
-            "They're meditating in a quiet corner"
+            "They're meditating in a quiet corner",
         ],
         "Sanguine": [
             "They're laughing and dancing",
             "They're flirting with everyone they meet",
-            "They're clearly intoxicated and euphoric"
-        ]
+            "They're clearly intoxicated and euphoric",
+        ],
     }
 
     hook = random.choice(hooks[resonance_data["type"]])
@@ -360,5 +358,5 @@ def generate_hunting_opportunity(location="street"):
         "difficulty": HUNTING_DIFFICULTIES.get(location, 4),
         "hook": hook,
         "risks": potential_risks,
-        "location": location
+        "location": location,
     }

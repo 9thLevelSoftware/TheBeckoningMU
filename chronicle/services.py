@@ -80,14 +80,19 @@ def record_event(
     }
 
     def insert_event():
-        event, _created = ChronicleEvent.objects.get_or_create(
-            idempotency_key=idempotency_key,
-            defaults=values,
-        )
-        if participant_ids:
-            event.participants.add(*ObjectDB.objects.filter(pk__in=participant_ids))
-        if source_event_ids:
-            event.source_events.add(*ChronicleEvent.objects.filter(pk__in=source_event_ids))
+        with transaction.atomic():
+            event, created = ChronicleEvent.objects.get_or_create(
+                idempotency_key=idempotency_key,
+                defaults=values,
+            )
+            if not created:
+                return
+            if participant_ids:
+                event.participants.add(*ObjectDB.objects.filter(pk__in=participant_ids).values_list("pk", flat=True))
+            if source_event_ids:
+                event.source_events.add(
+                    *ChronicleEvent.objects.filter(pk__in=source_event_ids).values_list("pk", flat=True)
+                )
 
     transaction.on_commit(insert_event)
     return idempotency_key
@@ -127,6 +132,10 @@ def publish_event(event_id, staff_user):
     event = ChronicleEvent.objects.select_for_update().get(pk=event_id)
     if event.status != ChronicleEvent.Status.DRAFT:
         raise ValueError("Only draft Chronicle events can be published.")
+    if event.source_type == "ChronicleGenerationRequest":
+        from .generation import validate_generated_publication
+
+        validate_generated_publication(event)
     if event.supersedes_id:
         original = ChronicleEvent.objects.select_for_update().get(pk=event.supersedes_id)
         if original.status != ChronicleEvent.Status.PUBLISHED:

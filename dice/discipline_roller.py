@@ -6,19 +6,16 @@ calculating dice pools from character traits, applying Blood Potency bonuses,
 and performing Rouse checks.
 """
 
-from typing import Dict, Any, List, Optional, Tuple
-from .dice_roller import roll_v5_pool
-from .rouse_checker import perform_rouse_check, get_hunger_level
+from typing import Any
+
 from traits.models import DisciplinePower
 from traits.utils import get_character_trait_value
 
+from .dice_roller import roll_v5_pool
+from .rouse_checker import get_hunger_level, perform_rouse_check
 
-def roll_discipline_power(
-    character,
-    power_name: str,
-    difficulty: int = 0,
-    with_rouse: bool = True
-) -> Dict[str, Any]:
+
+def roll_discipline_power(character, power_name: str, difficulty: int = 0, with_rouse: bool = True) -> dict[str, Any]:
     """
     Roll a discipline power for a character.
 
@@ -63,20 +60,16 @@ def roll_discipline_power(
     # Look up the discipline power
     try:
         power = DisciplinePower.objects.get(name__iexact=power_name)
-    except DisciplinePower.DoesNotExist:
-        raise ValueError(f"Discipline power '{power_name}' not found in database")
+    except DisciplinePower.DoesNotExist as err:
+        raise ValueError(f"Discipline power '{power_name}' not found in database") from err
 
     # Get character's current Hunger
     hunger_before = get_hunger_level(character)
 
     # Perform Rouse check if required
     rouse_result = None
-    if with_rouse and power.cost and power.cost.lower() != 'free':
-        rouse_result = perform_rouse_check(
-            character,
-            reason=f"Activating {power.name}",
-            power_level=power.level
-        )
+    if with_rouse and power.cost and power.cost.lower() != "free":
+        rouse_result = perform_rouse_check(character, reason=f"Activating {power.name}", power_level=power.level)
 
     # Get updated Hunger after Rouse check
     hunger_after = get_hunger_level(character)
@@ -98,7 +91,7 @@ def roll_discipline_power(
 
     # Apply Blood Potency bonus
     bp_bonus = get_blood_potency_bonus(character, power.discipline.name)
-    pool_breakdown['Blood Potency Bonus'] = bp_bonus
+    pool_breakdown["Blood Potency Bonus"] = bp_bonus
     total_pool = base_pool + bp_bonus
 
     # Ensure pool is at least 1 (chance die)
@@ -106,11 +99,7 @@ def roll_discipline_power(
         total_pool = 1
 
     # Roll the dice pool
-    roll_result = roll_v5_pool(
-        pool_size=total_pool,
-        hunger=hunger_after,
-        difficulty=difficulty
-    )
+    roll_result = roll_v5_pool(pool_size=total_pool, hunger=hunger_after, difficulty=difficulty)
 
     # Format result message
     message = _format_discipline_roll_message(
@@ -119,25 +108,25 @@ def roll_discipline_power(
         total_pool=total_pool,
         rouse_result=rouse_result,
         roll_result=roll_result,
-        difficulty=difficulty
+        difficulty=difficulty,
     )
 
     return {
-        'power': power,
-        'power_name': power.name,
-        'dice_pool': total_pool,
-        'dice_pool_breakdown': pool_breakdown,
-        'blood_potency_bonus': bp_bonus,
-        'rouse_result': rouse_result,
-        'roll_result': roll_result,
-        'hunger_before': hunger_before,
-        'hunger_after': hunger_after,
-        'success': roll_result.is_success,
-        'message': message
+        "power": power,
+        "power_name": power.name,
+        "dice_pool": total_pool,
+        "dice_pool_breakdown": pool_breakdown,
+        "blood_potency_bonus": bp_bonus,
+        "rouse_result": rouse_result,
+        "roll_result": roll_result,
+        "hunger_before": hunger_before,
+        "hunger_after": hunger_after,
+        "success": roll_result.is_success,
+        "message": message,
     }
 
 
-def parse_dice_pool(pool_string: str) -> List[str]:
+def parse_dice_pool(pool_string: str) -> list[str]:
     """
     Parse a dice pool string into trait names.
 
@@ -162,13 +151,8 @@ def parse_dice_pool(pool_string: str) -> List[str]:
     if not pool_string:
         return []
 
-    # Handle alternative traits (separated by /)
-    # Take the first option before any '/'
-    if '/' in pool_string:
-        pool_string = pool_string.split('/')[0].strip()
-
-    # Split on '+' to get individual traits
-    traits = [trait.strip() for trait in pool_string.split('+')]
+    # Select the first alternative within each additive trait term.
+    traits = [term.split("/")[0].strip() for term in pool_string.split("+")]
 
     # Filter out empty strings
     traits = [t for t in traits if t]
@@ -176,7 +160,7 @@ def parse_dice_pool(pool_string: str) -> List[str]:
     return traits
 
 
-def calculate_pool_from_traits(character, trait_names: List[str]) -> Tuple[int, Dict[str, int]]:
+def calculate_pool_from_traits(character, trait_names: list[str]) -> tuple[int, dict[str, int]]:
     """
     Calculate total dice pool from a list of trait names.
 
@@ -190,7 +174,7 @@ def calculate_pool_from_traits(character, trait_names: List[str]) -> Tuple[int, 
             - breakdown_dict: Dict mapping trait names to their values
 
     Examples:
-        >>> total, breakdown = calculate_pool_from_traits(character, ['Strength', 'Brawl'])
+        >>> total, breakdown = calculate_pool_from_traits(character, ["Strength", "Brawl"])
         >>> # Returns (7, {'Strength': 4, 'Brawl': 3})
     """
     total = 0
@@ -227,7 +211,7 @@ def get_blood_potency_bonus(character, discipline_name: str) -> int:
         >>> get_blood_potency_bonus(character, "Auspex")
         2  # Character has BP 4
     """
-    blood_potency = get_character_trait_value(character, 'Blood Potency')
+    blood_potency = get_character_trait_value(character, "Blood Potency")
 
     # Calculate bonus based on BP level
     if blood_potency >= 10:
@@ -244,7 +228,7 @@ def get_blood_potency_bonus(character, discipline_name: str) -> int:
         return 0
 
 
-def can_use_power(character, power_name: str) -> Tuple[bool, str]:
+def can_use_power(character, power_name: str) -> tuple[bool, str]:
     """
     Check if a character can use a specific discipline power.
 
@@ -274,6 +258,7 @@ def can_use_power(character, power_name: str) -> Tuple[bool, str]:
 
     # Check if character knows the power
     from traits.models import CharacterPower
+
     if not CharacterPower.objects.filter(character=character, power=power).exists():
         return False, f"You don't know the power '{power.name}'"
 
@@ -287,8 +272,7 @@ def can_use_power(character, power_name: str) -> Tuple[bool, str]:
         amalgam_rating = get_character_trait_value(character, power.amalgam_discipline.name)
         if amalgam_rating < power.amalgam_level:
             return False, (
-                f"Requires {power.amalgam_discipline.name} {power.amalgam_level} "
-                f"(you have {amalgam_rating})"
+                f"Requires {power.amalgam_discipline.name} {power.amalgam_level} (you have {amalgam_rating})"
             )
 
     # Warn if at maximum Hunger (not a blocker, just a warning)
@@ -299,7 +283,7 @@ def can_use_power(character, power_name: str) -> Tuple[bool, str]:
     return True, "Can use power"
 
 
-def get_character_discipline_powers(character, discipline_name: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_character_discipline_powers(character, discipline_name: str | None = None) -> list[dict[str, Any]]:
     """
     Get list of discipline powers a character knows.
 
@@ -326,7 +310,7 @@ def get_character_discipline_powers(character, discipline_name: Optional[str] = 
     from traits.models import CharacterPower
 
     # Get all powers the character knows
-    char_powers = CharacterPower.objects.filter(character=character).select_related('power__discipline')
+    char_powers = CharacterPower.objects.filter(character=character).select_related("power__discipline")
 
     # Filter by discipline if specified
     if discipline_name:
@@ -338,27 +322,29 @@ def get_character_discipline_powers(character, discipline_name: Optional[str] = 
         power = char_power.power
         can_use, reason = can_use_power(character, power.name)
 
-        results.append({
-            'power': power,
-            'name': power.name,
-            'discipline': power.discipline.name,
-            'level': power.level,
-            'dice_pool': power.dice_pool,
-            'cost': power.cost,
-            'can_use': can_use,
-            'reason': reason
-        })
+        results.append(
+            {
+                "power": power,
+                "name": power.name,
+                "discipline": power.discipline.name,
+                "level": power.level,
+                "dice_pool": power.dice_pool,
+                "cost": power.cost,
+                "can_use": can_use,
+                "reason": reason,
+            }
+        )
 
     return results
 
 
 def _format_discipline_roll_message(
     power: DisciplinePower,
-    pool_breakdown: Dict[str, int],
+    pool_breakdown: dict[str, int],
     total_pool: int,
-    rouse_result: Optional[Dict[str, Any]],
+    rouse_result: dict[str, Any] | None,
     roll_result,
-    difficulty: int
+    difficulty: int,
 ) -> str:
     """
     Format a discipline power roll result for display.
@@ -382,19 +368,19 @@ def _format_discipline_roll_message(
 
     if power.description:
         # Show first line of description
-        desc_first_line = power.description.split('\n')[0][:80]
+        desc_first_line = power.description.split("\n")[0][:80]
         lines.append(f"|x{desc_first_line}|n")
 
     lines.append("")
 
     # Rouse check result
     if rouse_result:
-        if rouse_result['reroll_used']:
+        if rouse_result["reroll_used"]:
             lines.append(f"Rouse Check: |y{rouse_result['roll']}|n (Blood Potency reroll)")
         else:
             lines.append(f"Rouse Check: |y{rouse_result['roll']}|n")
 
-        if rouse_result['success']:
+        if rouse_result["success"]:
             lines.append(f"|gSuccess!|n Hunger remains at |r{rouse_result['hunger_after']}|n")
         else:
             lines.append(f"|rFailed.|n Hunger increases to |r{rouse_result['hunger_after']}|n")
@@ -403,7 +389,7 @@ def _format_discipline_roll_message(
     # Dice pool breakdown
     lines.append("|wDice Pool:|n")
     for trait_name, value in pool_breakdown.items():
-        if trait_name == 'Blood Potency Bonus' and value > 0:
+        if trait_name == "Blood Potency Bonus" and value > 0:
             lines.append(f"  {trait_name}: |y+{value}|n")
         else:
             lines.append(f"  {trait_name}: {value}")

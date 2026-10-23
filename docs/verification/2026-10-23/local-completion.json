@@ -1,0 +1,158 @@
+{
+  "completed_at_utc": "2026-10-23T17:05:18.850748+00:00",
+  "frozen_at_utc": "2026-10-23T17:00:09.515978+00:00",
+  "head": "704517626bb40bf66633f4bbac8689b7fe21052f",
+  "branch": "autoresearch/review-the-technology-and-features-of-this-game-20261002",
+  "source_sha256": {
+    "autoresearch.sh": "9d87ed28601aa39d99b1d3a15583d491eccc970bb53825ee29dd064dc00d6cfc",
+    "chronicle/generation.py": "6f28bb23b1b87588aecaf96b4ce99dcc386abf489d91aefa25929e7da6760f9b",
+    "chronicle/migrations/0002_chronicle_generation_request.py": "c66724e36aa823ef5b2ae83bf4b109efce0c2c723fdb28396bcc84f8f28270c1",
+    "chronicle/models.py": "d4fcbd7da37f7b6bee1a3e8e0866628aabf43fcffff57f7e15980231fd8b3ee3",
+    "chronicle/read_services.py": "f84b9ea950e0c885e319271357b9421d471edb60d83f66bf91ebfc08b1353c78",
+    "chronicle/services.py": "0561c57233f41b67c6ed3cf6dc645b05905466b933b6d0ffe7a7a234c4aff36c",
+    "chronicle/test_generation.py": "3c297667b10b458b0101c6c44d659df4ae631ab6629cc104624f6934845c400b",
+    "chronicle/test_permissions.py": "24c1baf53e2c6199b30d2fad0c223ca0d3f1a844dc29be9de6d0b4e4106d11ed",
+    "chronicle/test_transitions.py": "025b1f15cc13f7fd0ab26fd3949bd86b3ba1098a55e424b1ed343718819752ac",
+    "chronicle/tests.py": "91b2d19e851a9cba666477c0d01fad7690cce8a94d9bdc624bedaf84b0c5980c",
+    "chronicle/urls.py": "8c2a2ecd8abf7efc8961ff511b27eee5b2d76aa5f18e8a3de7ee3ac5b318a0a4",
+    "chronicle/views.py": "5b65c5770ac860713969a850b940b2cf06f2fba99096863a2e355e5f5f2e1b69",
+    "commands/v5/utils/blood_utils.py": "cbc5139346293ebf6772d923d95260290da42e2bf9d307cb88c938a0a01864ba",
+    "commands/v5/utils/hunting_utils.py": "a205d5f09f35bfb5d1106d61b3a8be52c8231e8c316a005fd5dd4a397a1dfe40",
+    "dice/discipline_roller.py": "641809b8df352aaf40e6beb8db8c5795d39b28962e8239d15b05f9736ce17303",
+    "dice/roll_result.py": "e3141f5638fa7b0f4d8f0e3061afd59acdfe5eaf9c6817c85993ec1ddcfcc5f1",
+    "dice/rouse_checker.py": "5b841ce78cad617c547d9e8552546016f3d32a23de807942b95d4414715f9201",
+    "dice/tests.py": "3f24485a4636dcb15f0b23d225886a9f0f4eefd497a18a187dae42acdcb0f89a",
+    "jobs/commands.py": "916ac27c2ee992fa91c31e9dad1ac9c48024c5ec784b729006298214d517d7d8",
+    "jobs/models.py": "ec2b7eb8168f4c8f0c7221716fbab355921a6b3a6f7087b9ffeff6a1196ed5ae",
+    "jobs/tests.py": "e67bb603cd3dfa3eb32800893730c9baaa1ded38466436fdb0f1dc615e8ed1de",
+    "jobs/utils.py": "9d3aa6e751edb6eeb6be9fd3930f228c0b42b7e7501a3eff92323ea95ddf8f64",
+    "mcp_server/test_oauth_flow.py": "e2a4b05e3aec177d3be9a3f308431fad0795d83bf738973ede57b8635b2fea1c",
+    "mcp_server/test_process_freshness.py": "afee329136dedcfe8eafe9382281ce1a8b861569b308bb9784f17c43afc9d1e8",
+    "narrative/services.py": "89a1dd320c48359406dd70f666b8a3546840ac2fe1cc624d664946ad5781e950",
+    "narrative/test_http_command.py": "9345800a690f83c1b5a646d066ff6ff0101c50c3ecaa7b96071f42982a122648",
+    "narrative/tests.py": "de48a981155707748b7104ce590c32fecd9af20d71dd5c343d145e888131765f",
+    "server/conf/at_server_startstop.py": "5a758fdace2bd835dfa382a0b91e6685264f9742b627d1b6a09d7bd4db8d6ffc",
+    "status/models.py": "499b84538644970bfade643957feb990e413e45c878ffe6123c68a00033bf75d",
+    "status/utils.py": "9d09748a06513eb1bbc4aa38af1240f0d303d30591c70f40804054d93805e2d6",
+    "tests/js/chargen.test.cjs": "ab04a985941538074d0764f270b9e9b5b26154f4ea1bc8aca2bb38a0ac1fe324",
+    "tests/support/README.md": "c9f588c30bbd37164a74cdc7629e0ae333bb52d8b6424c937a3c761271707e69",
+    "tests/support/__init__.py": "d39033603c341ff9ffba609746760e8da7afd260b26e0a88b069a1739eca41dd",
+    "tests/support/local_runtime.py": "4511c7f420d7f80c3c0acbe23a2a62cbafebbbd9c2bad20b1eab8c95478d2054",
+    "tests/test_character_vampire_data.py": "8eaa7d69ded7060aeffffe5c264ffdf4eb17dc1384ba65f596253360b5291e0a",
+    "tests/v5/test_blood_commands.py": "a78cef886581b1664f0ac8f6f98f51b91f3a2e8fffaa9967f4d01d677a07997f",
+    "tests/v5/test_blood_utils.py": "5c7fa2b1e612c684ce4b0ae9dcb37c6f9a304ac8ad63248fc95270c87dd1d056",
+    "traits/api.py": "e2127ce87463c60be191da831516e0c7551aab33e1af5c6052178d0cdf3b21e3",
+    "traits/management/commands/build_public_site_config.py": "fdcdd11bb3885dda877e1712f72a2584a245c91ac18f545101690a945feaf5d4",
+    "traits/test_chargen_flow.py": "0dcfdb99330145740165fdadac560124eefb62b02dc93548f3c57726bca57b7a",
+    "traits/test_import_export.py": "f28dc4bde23c4e9244b7f09b62aeb4568ce1ba476a17b38c1f0175078749a571",
+    "traits/test_public_site_config.py": "701bc33e2a26cbc7e0da2dd99b087e18fe9b71e9125ff520d4985db5f3681447",
+    "traits/test_web_bridge.py": "75a520a3df39b981c59f2033287d11a7095d69b9c1f7ff619444b5fcfdf73cd6",
+    "traits/tests.py": "c6c53b90de813fabff3c86d9c53c77523a000c4605e0a5d624f8bc45dcbfcae4",
+    "traits/utils.py": "9b08b91dfebcf3f188e5eb5874dcc8d4bf5d48633581f60c5262a4989816d6cc",
+    "traits/web_bridge.py": "ad3348a7b87fb653bff994c3995882d1e4ee98846177ee88ba8e666bdeff82c5",
+    "typeclasses/characters.py": "d8ecbb5ceed5df725de9e2055629065b19db3efbaa9ec6a51afe895311183ccc",
+    "web/builder/promotion.py": "11f659de982d0b9e6140c102abb8fb612e30e6941a3fa2686fc80abd7a88c083",
+    "web/static/chargen/codex-chargen.js": "9501f4225cd42f3a3aac28629967b4434a24a42c291a930b8149b4e0a7d70020",
+    "web/templates/chronicle/staff_ops.html": "5a5920fce803d3f5271f2cd00fae3bddb7ce85731c7d99505c8a772c4b81aa25",
+    "web/website/VampSite/README.md": "9f4fa9fe4a68b13af309c6daf0642aff8bf4f7131dcd1fbdcf4ae290a17e264a",
+    "web/website/VampSite/tests/game-link.test.cjs": "472a6952d62b7404878feb5fd40ffb10fc9095a801ee06700e512267e1972274",
+    "web/website/public_config.py": "1e0eff17b246c8242d96094e87de9b42151bf32b2a2f79a0f85043a9e605bd05"
+  },
+  "local_implementation_estimate_percent": 100,
+  "estimate_scope": "Remaining local code and planned local acceptance; not deployment readiness or test coverage",
+  "full_suite": {
+    "command": ".venv/Scripts/evennia.exe test --settings settings.py .",
+    "exit_code": 0,
+    "tests": 399,
+    "duration_seconds": 308.481,
+    "failures": 0,
+    "errors": 0,
+    "baseline_tests": 284,
+    "baseline_failures": 15,
+    "baseline_errors": 66,
+    "baseline_failing_cases_resolved": 81,
+    "log": "full-local-completion.log",
+    "log_sha256": "d1609a27d1255547ec4a8db6ca3f42cb87623d304c57cbdf3b2f641bac97984d",
+    "baseline_case_preservation": {
+      "unchanged_test_identities": 80,
+      "renamed_tests": {
+        "tests.v5.test_blood_utils.ResonanceDisplayTests.test_format_resonance_display_acute": "tests.v5.test_blood_utils.ResonanceDisplayTests.test_format_resonance_display_dyscrasia"
+      },
+      "rename_reason": "Intensity 3 follows the existing project label Dyscrasia rather than the obsolete Acute fixture expectation",
+      "removed_baseline_cases": 0
+    }
+  },
+  "javascript_checks": {
+    "passed": 15,
+    "static_entry_points": 5,
+    "chargen_initial_roundtrips": 6,
+    "chargen_retained_selections_regressions": 4,
+    "execution": "Actual scripts and handlers under Node VM DOM fixtures; targeted checks across final implementation; not deployed-browser testing",
+    "commands": [
+      "node --test web/website/VampSite/tests/game-link.test.cjs",
+      "node --test tests/js/chargen.test.cjs",
+      "node --test --test-name-pattern=\"retained edit selections\" tests/js/chargen.test.cjs"
+    ]
+  },
+  "quality": {
+    "ruff_lint": "pass",
+    "ruff_format": "pass",
+    "changed_python_files_checked": 44,
+    "exclusions": [
+      "Original untouched dice/roll_result.py WIP",
+      "Django-generated migration"
+    ],
+    "git_diff_check": "pass",
+    "repository_wide_style": "Existing baseline debt; no global-green claim"
+  },
+  "schema": {
+    "command": ".venv/Scripts/python.exe -m django makemigrations chronicle narrative traits jobs status --settings server.conf.settings --check --dry-run",
+    "exit_code": 0,
+    "model_drift": false,
+    "new_migration": "chronicle/migrations/0002_chronicle_generation_request.py",
+    "migrated_disposable_test_databases": true,
+    "migrated_existing_game_database": false,
+    "log": "local-completion-migrations.log"
+  },
+  "local_integration": {
+    "actual_hunt_to_twisted_http": true,
+    "delayed_provider_heartbeat": true,
+    "separate_process_mcp_writer": true,
+    "mcp_transport": "in-process SDK ASGI",
+    "actual_worker_thread_to_reactor": true,
+    "local_oauth_pkce_and_sdk": true,
+    "external_provider_calls": false
+  },
+  "review": {
+    "independent_agent": "audit_narrative_mcp",
+    "verdict": "ACCEPT",
+    "scope": "Frozen bounded source review; runtime evidence from coordinator/workers",
+    "material_findings_resolved": [
+      "Builder timeout could report success before finalization",
+      "Cached character ownership could permit former-owner resubmission",
+      "Browser resubmission omitted existing specialties and powers"
+    ]
+  },
+  "original_wip_preserved": {
+    "autoresearch.sh": true,
+    "dice/roll_result.py": true
+  },
+  "head_unchanged": true,
+  "committed": false,
+  "pushed": false,
+  "deployed": false,
+  "deployment_gates": [
+    "Real origin and static-host entry URLs",
+    "Production migrations and approved provider qualification",
+    "Deployed HTTPS/proxy/OAuth/MCP two-account acceptance"
+  ],
+  "environment": {
+    "python": "3.12.14",
+    "node": "v24.20.0",
+    "evennia": "6.1.0",
+    "Django": "6.0.8",
+    "mcp": "1.30.0",
+    "django-oauth-toolkit": "3.4.1",
+    "ruff": "0.16.9"
+  }
+}

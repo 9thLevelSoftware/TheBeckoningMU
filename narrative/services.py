@@ -1,3 +1,4 @@
+import hashlib
 import json
 from collections.abc import Mapping
 from urllib.parse import urlsplit
@@ -86,10 +87,14 @@ def set_consent(account, character, opted_in):
 
 def authorized_memory_context(session):
     """Return bounded approved facts and their IDs for the exact scene subject."""
+    return [{"id": str(fact.pk), "text": fact.text} for fact in _authorized_facts(session)[:MAX_MEMORY_FACTS]]
+
+
+def _authorized_facts(session):
     if session.persona_id is None:
-        return []
+        return MemoryFact.objects.none()
     now = timezone.now()
-    facts = (
+    return (
         MemoryFact.objects.filter(
             persona_id=session.persona_id,
             status=MemoryFact.Status.APPROVED,
@@ -105,9 +110,10 @@ def authorized_memory_context(session):
             )
         )
         .order_by("-created_at", "-id")
-        .distinct()[:MAX_MEMORY_FACTS]
+        .select_related("source_event")
+        .prefetch_related("source_event__participants")
+        .distinct()
     )
-    return [{"id": str(fact.pk), "text": fact.text} for fact in facts]
 
 
 def _authorized_fact_filter(now, character_id):
@@ -118,11 +124,84 @@ def _authorized_fact_filter(now, character_id):
 
 
 def active_consent(session):
-    account = _object_account(session.character)
+    # ObjectDB instances may be process-cached; ownership must come from persistence.
+    account_id = ObjectDB.objects.filter(pk=session.character_id).values_list("db_account_id", flat=True).first()
     return (
-        bool(account)
-        and NarrativeConsent.objects.filter(character_id=session.character_id, opted_in=True, account=account).exists()
+        bool(account_id)
+        and NarrativeConsent.objects.filter(
+            character_id=session.character_id, opted_in=True, account_id=account_id
+        ).exists()
     )
+
+
+def _fingerprint(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+def _fact_provenance(fact):
+    # Store hashes, never a second copy of private facts or source-event prose.
+    snapshot = {field.attname: getattr(fact, field.attname) for field in fact._meta.concrete_fields}
+    if fact.source_event_id:
+        event = fact.source_event
+        snapshot["source"] = {field.attname: getattr(event, field.attname) for field in event._meta.concrete_fields}
+        snapshot["participants"] = sorted(participant.pk for participant in event.participants.all())
+    return {"id": str(fact.pk), "fingerprint": _fingerprint(snapshot)}
+
+
+def _dependencies_current(session, dependencies):
+    if not isinstance(dependencies, list) or any(
+        not isinstance(item, dict)
+        or set(item) != {"id", "fingerprint"}
+        or not isinstance(item["id"], str)
+        or not item["id"].isdigit()
+        or not isinstance(item["fingerprint"], str)
+        for item in dependencies
+    ):
+        return False
+    expected = {item["id"]: item["fingerprint"] for item in dependencies}
+    if len(expected) != len(dependencies):
+        return False
+    # Inherited dependencies may no longer be among the newest 20 facts.
+    actual = {
+        item["id"]: item["fingerprint"]
+        for item in (_fact_provenance(fact) for fact in _authorized_facts(session).filter(pk__in=expected))
+    }
+    return actual == expected
+
+
+def _scene_provenance(session):
+    return _fingerprint(
+        {
+            "character": session.character_id,
+            "persona": session.persona_id,
+            "profile": session.persona.profile if session.persona_id else None,
+            "location": session.location,
+            "outcome": session.deterministic_outcome,
+        }
+    )
+
+
+def _resume_context(session):
+    """Legacy or revoked derived prose has no authority to enter another prompt."""
+    stored = session.resume_state if isinstance(session.resume_state, dict) else {}
+    state = {key: stored[key] for key in ("phase", "location") if key in stored}
+    previous = stored.get("last_response")
+    provenance = stored.get("last_response_provenance")
+    if (
+        isinstance(previous, str)
+        and previous
+        and isinstance(provenance, dict)
+        and provenance.get("version") == 1
+        and provenance.get("response") == _fingerprint(previous)
+        and provenance.get("scene") == _scene_provenance(session)
+        and _dependencies_current(session, provenance.get("dependencies"))
+    ):
+        state["last_response"] = previous
+        return state, provenance["dependencies"]
+    if "last_response" in stored or "last_response_provenance" in stored:
+        session.resume_state = state
+        session.save(update_fields=("resume_state", "updated_at"))
+    return state, []
 
 
 @implementer(IBodyProducer)
@@ -181,10 +260,10 @@ class TwistedChatProvider:
         return data["choices"][0]["message"]["content"]
 
 
-def _messages(session, action, facts):
+def _messages(session, action, facts, resume_context):
     outcome = json.dumps(session.deterministic_outcome, ensure_ascii=False)
     fact_lines = "\n".join(f"[{fact['id']}] {fact['text']}" for fact in facts) or "(none)"
-    state = json.dumps(session.resume_state, ensure_ascii=False)
+    state = json.dumps(resume_context, ensure_ascii=False)
     persona_profile = session.persona.profile if session.persona_id else "(no registered persona)"
     user = (
         f"Persona profile: {persona_profile}\nLocation: {session.location}\n"
@@ -230,29 +309,85 @@ def generate_story(session, action, provider=None, scheduler=None):
     if provider is None:
         raise RuntimeError("Narrative AI is not configured; no story request was sent.")
 
-    facts = authorized_memory_context(session)
-    allowed_ids = {fact["id"] for fact in facts}
     request = StoryGenerationRequest.objects.create(session=session, action_text=action)
     result = Deferred()
-
-    def schedule():
-        try:
-            deferred = provider.generate(_messages(session, action, facts))
-            deferred.addCallbacks(
-                lambda response: _accept_response(request.pk, session.pk, response, allowed_ids, result),
-                lambda failure: _reject_response(request.pk, failure, result),
-            )
-        except Exception as exc:
-            _mark_failed(request.pk, exc)
-            if not result.called:
-                result.errback(exc)
-
     dispatch = scheduler or reactor.callFromThread
-    dispatch(schedule)
+    dispatch(lambda request_id=request.pk: _dispatch_request(request_id, provider, result))
     return result
 
 
-def _accept_response(request_id, session_id, raw, allowed_ids, result):
+def _locked_request_scene(request_id):
+    # Opt-out/completion update sessions before requests; use the same lock order.
+    session_id = StoryGenerationRequest.objects.values_list("session_id", flat=True).get(pk=request_id)
+    session = StorySession.objects.select_for_update().get(pk=session_id)
+    request = StoryGenerationRequest.objects.select_for_update().get(pk=request_id)
+    return request, session
+
+
+def _validated_context(session, context):
+    resume_context, _inherited = _resume_context(session)
+    if (
+        context["scene"] != _scene_provenance(session)
+        or context["resume"] != _fingerprint(resume_context)
+        or not _dependencies_current(session, context["dependencies"])
+    ):
+        raise PermissionError("Story context is no longer authorized or has changed.")
+    return resume_context
+
+
+def _dispatch_request(request_id, provider, result):
+    """Reload authority on the reactor immediately before the actual outbound call."""
+    try:
+        with transaction.atomic():
+            request, session = _locked_request_scene(request_id)
+            _require_pending_authorization(request, session)
+            resume_context, inherited = _resume_context(session)
+            facts = list(_authorized_facts(session)[:MAX_MEMORY_FACTS])
+            dependencies = {item["id"]: item for item in inherited}
+            for fact in facts:
+                dependency = _fact_provenance(fact)
+                if dependency["id"] in dependencies and dependencies[dependency["id"]] != dependency:
+                    raise PermissionError("Inherited story context changed during dispatch.")
+                dependencies[dependency["id"]] = dependency
+            context = {
+                "dependencies": list(dependencies.values()),
+                "scene": _scene_provenance(session),
+                "resume": _fingerprint(resume_context),
+            }
+            prompt_facts = [{"id": str(fact.pk), "text": fact.text} for fact in facts]
+            messages = _messages(session, request.action_text, prompt_facts, resume_context)
+            # Recheck the complete prompt after assembly; a moderator may have edited
+            # facts, sources, persona or resume state while it was being loaded.
+            session.refresh_from_db()
+            _validated_context(session, context)
+            _require_pending_authorization(request, session, refresh=True)
+            deferred = provider.generate(messages)
+        deferred.addCallbacks(
+            lambda response: _accept_response(
+                request_id, response, {fact["id"] for fact in prompt_facts}, context, result
+            ),
+            lambda failure: _reject_response(request_id, failure, result),
+        )
+    except Exception as exc:
+        _mark_failed(request_id, exc)
+        if not result.called:
+            result.errback(exc)
+
+
+def _require_pending_authorization(request, session, refresh=False):
+    if refresh:
+        request.refresh_from_db(fields=("status", "action_text"))
+        session.refresh_from_db(fields=("status",))
+    if (
+        request.status != StoryGenerationRequest.Status.PENDING
+        or not request.action_text
+        or session.status != StorySession.Status.ACTIVE
+        or not active_consent(session)
+    ):
+        raise PermissionError("Story request is no longer authorized.")
+
+
+def _accept_response(request_id, raw, allowed_ids, context, result):
     try:
         value = json.loads(raw) if isinstance(raw, str) else raw
         if not isinstance(value, dict) or set(value) != {"prose", "citations"}:
@@ -265,17 +400,25 @@ def _accept_response(request_id, session_id, raw, allowed_ids, result):
         if len(citations) != len(set(citations)):
             raise ValueError("Response contains duplicate citation IDs.")
         with transaction.atomic():
-            request = StoryGenerationRequest.objects.select_for_update().get(pk=request_id)
-            session = StorySession.objects.select_for_update().get(pk=session_id)
-            if session.status != StorySession.Status.ACTIVE or not active_consent(session):
-                raise PermissionError("Story session closed or consent withdrawn.")
+            request, session = _locked_request_scene(request_id)
+            _require_pending_authorization(request, session)
+            resume_context = _validated_context(session, context)
             request.status = StoryGenerationRequest.Status.SUCCEEDED
             request.response = prose.strip()
             request.citations = citations
             request.action_text = ""
             request.completed_at = timezone.now()
             request.save(update_fields=("status", "response", "citations", "action_text", "completed_at"))
-            session.resume_state = {**session.resume_state, "last_response": request.response}
+            session.resume_state = {
+                **resume_context,
+                "last_response": request.response,
+                "last_response_provenance": {
+                    "version": 1,
+                    "scene": context["scene"],
+                    "dependencies": context["dependencies"],
+                    "response": _fingerprint(request.response),
+                },
+            }
             session.current_action = ""
             session.save(update_fields=("resume_state", "current_action", "updated_at"))
         if not result.called:
@@ -296,15 +439,17 @@ def _reject_response(request_id, failure, result):
 
 
 def _mark_failed(request_id, error):
-    request = StoryGenerationRequest.objects.filter(pk=request_id).first()
+    request = StoryGenerationRequest.objects.filter(pk=request_id, status=StoryGenerationRequest.Status.PENDING).first()
     if request is None:
         return
-    request.status = StoryGenerationRequest.Status.FAILED
-    request.error = f"{type(error).__name__}: narrative generation failed"
-    request.action_text = ""
-    request.completed_at = timezone.now()
-    request.save(update_fields=("status", "error", "action_text", "completed_at"))
-    StorySession.objects.filter(pk=request.session_id, status=StorySession.Status.ACTIVE).update(current_action="")
+    changed = StoryGenerationRequest.objects.filter(pk=request_id, status=StoryGenerationRequest.Status.PENDING).update(
+        status=StoryGenerationRequest.Status.FAILED,
+        error=f"{type(error).__name__}: narrative generation failed",
+        action_text="",
+        completed_at=timezone.now(),
+    )
+    if changed:
+        StorySession.objects.filter(pk=request.session_id, status=StorySession.Status.ACTIVE).update(current_action="")
 
 
 def recover_pending_requests(provider=None, scheduler=None):
@@ -325,29 +470,12 @@ def recover_pending_requests(provider=None, scheduler=None):
         if not request.action_text or session.status != StorySession.Status.ACTIVE or not active_consent(session):
             _mark_failed(request.pk, PermissionError("Pending request is no longer authorized"))
             continue
-        facts = authorized_memory_context(session)
-        allowed_ids = {fact["id"] for fact in facts}
         result = Deferred()
         result.addErrback(lambda _failure: None)
-
-        def schedule(
-            request_id=request.pk,
-            session_id=session.pk,
-            action=request.action_text,
-            context=facts,
-            citations=allowed_ids,
-            scene=session,
-            deferred_result=result,
-        ):
-            try:
-                deferred = provider.generate(_messages(scene, action, context))
-                deferred.addCallbacks(
-                    lambda response: _accept_response(request_id, session_id, response, citations, deferred_result),
-                    lambda failure: _reject_response(request_id, failure, deferred_result),
-                )
-            except Exception as exc:
-                _mark_failed(request_id, exc)
-
-        (scheduler or reactor.callFromThread)(schedule)
+        (scheduler or reactor.callFromThread)(
+            lambda request_id=request.pk, deferred_result=result: _dispatch_request(
+                request_id, provider, deferred_result
+            )
+        )
         resumed += 1
     return resumed

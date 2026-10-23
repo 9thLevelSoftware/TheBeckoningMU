@@ -1,13 +1,22 @@
 from collections.abc import Mapping
 
+from django.db.models.functions import Lower
+from evennia.objects.models import ObjectDB
+
 from boons.models import BoonLedger
 from status.models import CharacterStatus
 
 from .models import ChronicleEvent
-from .services import character_owned_by, participant_events, public_events
+from .services import characters_for_account, participant_events, public_events
+
+SUMMARY_ATTRIBUTES = ("stats", "vampire", "pools", "advantages")
 
 
 def _plain_json(value):
+    if isinstance(value, tuple) and (
+        (len(value) == 4 and value[0] == "__packed_dbobj__") or (len(value) == 3 and value[0] == "__packed_session__")
+    ):
+        raise TypeError("Object and session references are not character summary values.")
     if isinstance(value, Mapping):
         return {str(key): _plain_json(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
@@ -18,32 +27,51 @@ def _plain_json(value):
 
 
 def character_summary_for_account(account, character_id):
-    character = character_owned_by(account, character_id)
+    # Scalar projections bypass Evennia's process-local ObjectDB/Attribute idmapper
+    # caches. PickledObjectField decodes db_value without creating saving wrappers.
+    character = characters_for_account(account).filter(pk=character_id).values("id", "db_key").first()
     if character is None:
         return None
 
-    status = CharacterStatus.objects.filter(character=character).first()
-    ledger = BoonLedger.objects.filter(character=character).first()
+    attributes = dict(
+        ObjectDB.db_attributes.through.objects.filter(
+            objectdb_id=character["id"],
+            objectdb__db_account=account,
+            attribute__db_model__iexact="objectdb",
+            attribute__db_category__isnull=True,
+            attribute__db_attrtype__isnull=True,
+        )
+        .annotate(key=Lower("attribute__db_key"))
+        .filter(key__in=SUMMARY_ATTRIBUTES)
+        .values_list("key", "attribute__db_value")
+    )
+    status = (
+        CharacterStatus.objects.filter(character_id=character["id"], character__db_account=account)
+        .values("earned_status", "position_status", "temporary_status", "position__name")
+        .first()
+    )
+    ledger = (
+        BoonLedger.objects.filter(character_id=character["id"], character__db_account=account)
+        .values("total_debt_weight", "total_credit_weight", "net_weight")
+        .first()
+    )
     return {
-        "id": character.pk,
-        "name": character.key,
-        "stats": _plain_json(character.db.stats or {}),
-        "vampire": _plain_json(character.db.vampire or {}),
-        "pools": _plain_json(character.db.pools or {}),
-        "advantages": _plain_json(character.db.advantages or {}),
+        "id": character["id"],
+        "name": character["db_key"],
+        **{key: _plain_json(attributes.get(key) or {}) for key in SUMMARY_ATTRIBUTES},
         "status": None
         if status is None
         else {
-            "earned": status.earned_status,
-            "position": status.position.name if status.position_id else None,
-            "total": status.total_status,
+            "earned": status["earned_status"],
+            "position": status["position__name"],
+            "total": max(0, min(5, status["earned_status"] + status["position_status"] + status["temporary_status"])),
         },
         "boons": None
         if ledger is None
         else {
-            "owed": ledger.total_debt_weight,
-            "held": ledger.total_credit_weight,
-            "net": ledger.net_weight,
+            "owed": ledger["total_debt_weight"],
+            "held": ledger["total_credit_weight"],
+            "net": ledger["net_weight"],
         },
     }
 
@@ -61,11 +89,11 @@ def account_chronicle(account, limit=100):
 
 
 def character_chronicle_for_account(account, character_id, limit=100):
-    character = character_owned_by(account, character_id)
+    character = characters_for_account(account).filter(pk=character_id).values("id").first()
     if character is None:
         return None
     return ChronicleEvent.objects.filter(
-        participants=character,
+        participants__pk=character["id"],
         visibility=ChronicleEvent.Visibility.PARTICIPANTS,
         status=ChronicleEvent.Status.PUBLISHED,
     )[:limit]

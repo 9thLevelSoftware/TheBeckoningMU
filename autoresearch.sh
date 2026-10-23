@@ -13,20 +13,21 @@ else
     printf '%s\n' "No project Python environment found; install dependencies or provide uv." >&2
     exit 1
 fi
+
 "${BENCH_PYTHON[@]}" - <<'PY'
-import random
-import time
-
 import os
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "server.conf.settings")
-
-import django
-django.setup()
-
+import random
 import sys
+import time
 from pathlib import Path
 from types import ModuleType
 
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "server.conf.settings")
+import django
+
+django.setup()
+
+# Load the low-level dice modules without initializing command classes or server startup.
 benchmark_package = ModuleType("dice_benchmark")
 benchmark_package.__path__ = [str(Path("dice").resolve())]
 sys.modules["dice_benchmark"] = benchmark_package
@@ -53,10 +54,8 @@ for regular, hunger, difficulty, expected in behavior_cases:
     if actual != expected:
         raise AssertionError(f"Dice behavior mismatch for {regular=}, {hunger=}: {actual!r}")
 
-
 ITERATIONS = 30_000
 random.seed(211)
-
 successes = 0
 started = time.perf_counter()
 for _ in range(ITERATIONS):

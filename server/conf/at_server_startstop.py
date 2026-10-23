@@ -10,9 +10,12 @@ def at_server_start():
     This is called every time the server starts up, regardless of
     how it was shut down.
     """
+    from chronicle.generation import recover_pending_drafts
     from narrative.services import recover_pending_requests
 
     recover_pending_requests()
+    recover_pending_drafts()
+
 
 def at_server_stop():
     """

@@ -5,7 +5,11 @@ Tests the vampire data initialization, migration, and backward compatibility
 with Phase 5 dice system.
 """
 
+from collections.abc import Mapping
+from unittest.mock import patch
+
 from evennia.utils.test_resources import EvenniaTest
+
 from typeclasses.characters import Character
 
 
@@ -19,21 +23,21 @@ class VampireDataInitializationTestCase(EvenniaTest):
     def test_vampire_dict_initialization(self):
         """Test vampire data structure initializes correctly."""
         self.assertIsNotNone(self.char.db.vampire)
-        self.assertIsInstance(self.char.db.vampire, dict)
+        self.assertIsInstance(self.char.db.vampire, Mapping)
 
     def test_vampire_default_values(self):
         """Test vampire data has correct default values."""
         vampire = self.char.db.vampire
-        self.assertIsNone(vampire['clan'])
-        self.assertEqual(vampire['generation'], 13)
-        self.assertEqual(vampire['blood_potency'], 0)
-        self.assertEqual(vampire['hunger'], 1)
-        self.assertEqual(vampire['humanity'], 7)
-        self.assertIsNone(vampire['predator_type'])
-        self.assertIsNone(vampire['current_resonance'])
-        self.assertEqual(vampire['resonance_intensity'], 0)
-        self.assertIsNone(vampire['bane'])
-        self.assertIsNone(vampire['compulsion'])
+        self.assertIsNone(vampire["clan"])
+        self.assertEqual(vampire["generation"], 13)
+        self.assertEqual(vampire["blood_potency"], 0)
+        self.assertEqual(vampire["hunger"], 1)
+        self.assertEqual(vampire["humanity"], 7)
+        self.assertIsNone(vampire["predator_type"])
+        self.assertIsNone(vampire["current_resonance"])
+        self.assertEqual(vampire["resonance_intensity"], 0)
+        self.assertIsNone(vampire["bane"])
+        self.assertIsNone(vampire["compulsion"])
 
     def test_legacy_hunger_initialization(self):
         """Test legacy hunger attribute is initialized."""
@@ -41,7 +45,7 @@ class VampireDataInitializationTestCase(EvenniaTest):
 
     def test_hunger_sync_on_creation(self):
         """Test Hunger is synced between old and new locations."""
-        self.assertEqual(self.char.db.hunger, self.char.db.vampire['hunger'])
+        self.assertEqual(self.char.db.hunger, self.char.db.vampire["hunger"])
 
 
 class HungerPropertyTestCase(EvenniaTest):
@@ -53,28 +57,54 @@ class HungerPropertyTestCase(EvenniaTest):
 
     def test_hunger_getter(self):
         """Test hunger property retrieves from vampire dict."""
-        self.char.db.vampire['hunger'] = 3
+        self.char.db.vampire["hunger"] = 3
         self.assertEqual(self.char.hunger, 3)
+        self.assertEqual(self.char.db.hunger, 3)
+
+    def test_legacy_write_after_synchronization(self):
+        self.char.hunger = 2
+        self.char.db.hunger = 4
+        self.assertEqual(self.char.hunger, 4)
+        self.assertEqual(self.char.db.vampire["hunger"], 4)
+
+    def test_conflicting_writes_prefer_nested_hunger(self):
+        self.char.hunger = 2
+        self.char.db.hunger = 3
+        self.char.db.vampire["hunger"] = 4
+        self.assertEqual(self.char.hunger, 4)
+        self.assertEqual(self.char.db.hunger, 4)
+
+    def test_missing_sync_marker_preserves_nested_hunger(self):
+        self.char.attributes.remove("_hunger_sync")
+        self.char.db.vampire["hunger"] = 3
+        self.assertEqual(self.char.hunger, 3)
+        self.assertEqual(self.char.db.hunger, 3)
+
+    def test_missing_both_hunger_values_defaults_to_one(self):
+        self.char.db.vampire = None
+        self.char.attributes.remove("hunger")
+        self.assertEqual(self.char.hunger, 1)
+        self.assertEqual(self.char.db.hunger, 1)
 
     def test_hunger_setter(self):
         """Test hunger property sets both locations."""
         self.char.hunger = 3
         self.assertEqual(self.char.hunger, 3)
-        self.assertEqual(self.char.db.vampire['hunger'], 3)
+        self.assertEqual(self.char.db.vampire["hunger"], 3)
         self.assertEqual(self.char.db.hunger, 3)
 
     def test_hunger_clamping_min(self):
         """Test hunger property clamps to minimum 0."""
         self.char.hunger = -5
         self.assertEqual(self.char.hunger, 0)
-        self.assertEqual(self.char.db.vampire['hunger'], 0)
+        self.assertEqual(self.char.db.vampire["hunger"], 0)
         self.assertEqual(self.char.db.hunger, 0)
 
     def test_hunger_clamping_max(self):
         """Test hunger property clamps to maximum 5."""
         self.char.hunger = 10
         self.assertEqual(self.char.hunger, 5)
-        self.assertEqual(self.char.db.vampire['hunger'], 5)
+        self.assertEqual(self.char.db.vampire["hunger"], 5)
         self.assertEqual(self.char.db.hunger, 5)
 
     def test_hunger_property_without_vampire_dict(self):
@@ -100,7 +130,7 @@ class VampireDataMigrationTestCase(EvenniaTest):
 
         # Check vampire dict was created with migrated Hunger
         self.assertIsNotNone(char.db.vampire)
-        self.assertEqual(char.db.vampire['hunger'], 2)
+        self.assertEqual(char.db.vampire["hunger"], 2)
         self.assertEqual(char.db.hunger, 2)
 
     def test_migrate_without_hunger(self):
@@ -108,15 +138,15 @@ class VampireDataMigrationTestCase(EvenniaTest):
         # Create character without hunger attribute
         char = Character.objects.create(db_key="NoHungerCharacter")
         char.db.vampire = None
-        if hasattr(char.db, 'hunger'):
-            delattr(char.db, 'hunger')
+        if hasattr(char.db, "hunger"):
+            delattr(char.db, "hunger")
 
         # Migrate
         char.migrate_vampire_data()
 
         # Check vampire dict was created with default Hunger
         self.assertIsNotNone(char.db.vampire)
-        self.assertEqual(char.db.vampire['hunger'], 1)
+        self.assertEqual(char.db.vampire["hunger"], 1)
 
     def test_migrate_preserves_existing_vampire_data(self):
         """Test migration doesn't overwrite existing vampire dict."""
@@ -138,10 +168,10 @@ class VampireDataMigrationTestCase(EvenniaTest):
         char.migrate_vampire_data()
 
         # Check vampire dict is unchanged
-        self.assertEqual(char.db.vampire['clan'], "Ventrue")
-        self.assertEqual(char.db.vampire['generation'], 10)
-        self.assertEqual(char.db.vampire['blood_potency'], 3)
-        self.assertEqual(char.db.vampire['hunger'], 2)
+        self.assertEqual(char.db.vampire["clan"], "Ventrue")
+        self.assertEqual(char.db.vampire["generation"], 10)
+        self.assertEqual(char.db.vampire["blood_potency"], 3)
+        self.assertEqual(char.db.vampire["hunger"], 2)
 
     def test_migrate_syncs_hunger_from_legacy(self):
         """Test migration syncs Hunger from legacy location if different."""
@@ -161,10 +191,19 @@ class VampireDataMigrationTestCase(EvenniaTest):
         char.db.hunger = 3  # Updated value in legacy location
 
         # Migrate
-        char.migrate_vampire_data()
+        char.migrate_vampire_data(legacy_authoritative=True)
 
         # Check Hunger was synced
-        self.assertEqual(char.db.vampire['hunger'], 3)
+        self.assertEqual(char.db.vampire["hunger"], 3)
+
+    def test_migrate_unmarked_data_preserves_nested_hunger(self):
+        char = Character.objects.create(db_key="UnmarkedVampire")
+        char.attributes.remove("_hunger_sync")
+        char.db.vampire["hunger"] = 4
+        char.db.hunger = 2
+        char.migrate_vampire_data()
+        self.assertEqual(char.db.vampire["hunger"], 4)
+        self.assertEqual(char.db.hunger, 4)
 
 
 class BackwardCompatibilityTestCase(EvenniaTest):
@@ -195,11 +234,21 @@ class BackwardCompatibilityTestCase(EvenniaTest):
         self.char.db.hunger += 1
         hunger_after = self.char.db.hunger
 
-        # Check both locations are updated
         self.assertEqual(hunger_after, hunger_before + 1)
-        # Note: Direct db.hunger writes won't auto-sync to vampire dict,
-        # but property getter will always read from vampire dict first,
-        # so this is acceptable for migration period
+        self.assertEqual(self.char.hunger, hunger_after)
+        self.assertEqual(self.char.db.vampire["hunger"], hunger_after)
+
+    @patch("dice.rouse_checker.base_rouse_check", return_value={"roll": 3, "success": False})
+    def test_failed_rouse_check_updates_both_hunger_locations(self, mock_roll):
+        from dice.rouse_checker import perform_rouse_check
+
+        self.char.hunger = 2
+        result = perform_rouse_check(self.char)
+        mock_roll.assert_called_once_with()
+        self.assertEqual(result["hunger_before"], 2)
+        self.assertEqual(result["hunger_after"], 3)
+        self.assertEqual(self.char.db.vampire["hunger"], 3)
+        self.assertEqual(self.char.db.hunger, 3)
 
 
 class VampireDataIntegrationTestCase(EvenniaTest):
@@ -212,40 +261,40 @@ class VampireDataIntegrationTestCase(EvenniaTest):
     def test_chargen_flow(self):
         """Test character generation flow with vampire data."""
         # Simulate chargen setting vampire data
-        self.char.db.vampire['clan'] = 'Brujah'
-        self.char.db.vampire['predator_type'] = 'Alleycat'
-        self.char.db.vampire['generation'] = 12
-        self.char.db.vampire['blood_potency'] = 1
+        self.char.db.vampire["clan"] = "Brujah"
+        self.char.db.vampire["predator_type"] = "Alleycat"
+        self.char.db.vampire["generation"] = 12
+        self.char.db.vampire["blood_potency"] = 1
 
         # Verify data persists
-        self.assertEqual(self.char.db.vampire['clan'], 'Brujah')
-        self.assertEqual(self.char.db.vampire['predator_type'], 'Alleycat')
-        self.assertEqual(self.char.db.vampire['generation'], 12)
-        self.assertEqual(self.char.db.vampire['blood_potency'], 1)
+        self.assertEqual(self.char.db.vampire["clan"], "Brujah")
+        self.assertEqual(self.char.db.vampire["predator_type"], "Alleycat")
+        self.assertEqual(self.char.db.vampire["generation"], 12)
+        self.assertEqual(self.char.db.vampire["blood_potency"], 1)
 
     def test_humanity_modification(self):
         """Test modifying Humanity value."""
-        initial_humanity = self.char.db.vampire['humanity']
-        self.char.db.vampire['humanity'] = 5
+        initial_humanity = self.char.db.vampire["humanity"]
+        self.char.db.vampire["humanity"] = 5
 
-        self.assertEqual(self.char.db.vampire['humanity'], 5)
-        self.assertNotEqual(self.char.db.vampire['humanity'], initial_humanity)
+        self.assertEqual(self.char.db.vampire["humanity"], 5)
+        self.assertNotEqual(self.char.db.vampire["humanity"], initial_humanity)
 
     def test_resonance_tracking(self):
         """Test tracking blood resonance."""
-        self.char.db.vampire['current_resonance'] = 'Choleric'
-        self.char.db.vampire['resonance_intensity'] = 2
+        self.char.db.vampire["current_resonance"] = "Choleric"
+        self.char.db.vampire["resonance_intensity"] = 2
 
-        self.assertEqual(self.char.db.vampire['current_resonance'], 'Choleric')
-        self.assertEqual(self.char.db.vampire['resonance_intensity'], 2)
+        self.assertEqual(self.char.db.vampire["current_resonance"], "Choleric")
+        self.assertEqual(self.char.db.vampire["resonance_intensity"], 2)
 
     def test_bane_and_compulsion(self):
         """Test setting bane and compulsion."""
-        self.char.db.vampire['bane'] = 'Must feed from a specific type of prey'
-        self.char.db.vampire['compulsion'] = 'Rebel against authority'
+        self.char.db.vampire["bane"] = "Must feed from a specific type of prey"
+        self.char.db.vampire["compulsion"] = "Rebel against authority"
 
-        self.assertIsNotNone(self.char.db.vampire['bane'])
-        self.assertIsNotNone(self.char.db.vampire['compulsion'])
+        self.assertIsNotNone(self.char.db.vampire["bane"])
+        self.assertIsNotNone(self.char.db.vampire["compulsion"])
 
 
 class EdgeCaseTestCase(EvenniaTest):
@@ -284,17 +333,16 @@ class EdgeCaseTestCase(EvenniaTest):
 
         test_cases = [
             (-100, 0),  # Way too low
-            (-1, 0),    # Just below minimum
-            (6, 5),     # Just above maximum
-            (100, 5),   # Way too high
-            (0, 0),     # Valid minimum
-            (5, 5),     # Valid maximum
+            (-1, 0),  # Just below minimum
+            (6, 5),  # Just above maximum
+            (100, 5),  # Way too high
+            (0, 0),  # Valid minimum
+            (5, 5),  # Valid maximum
         ]
 
         for invalid, expected in test_cases:
             char.hunger = invalid
-            self.assertEqual(char.hunger, expected,
-                           f"hunger={invalid} should clamp to {expected}")
+            self.assertEqual(char.hunger, expected, f"hunger={invalid} should clamp to {expected}")
 
     def test_multiple_characters_independent(self):
         """Test multiple characters have independent vampire data."""
@@ -302,13 +350,13 @@ class EdgeCaseTestCase(EvenniaTest):
         char2 = Character.objects.create(db_key="Char2")
 
         char1.hunger = 2
-        char1.db.vampire['clan'] = 'Ventrue'
+        char1.db.vampire["clan"] = "Ventrue"
 
         char2.hunger = 4
-        char2.db.vampire['clan'] = 'Brujah'
+        char2.db.vampire["clan"] = "Brujah"
 
         # Verify independence
         self.assertEqual(char1.hunger, 2)
         self.assertEqual(char2.hunger, 4)
-        self.assertEqual(char1.db.vampire['clan'], 'Ventrue')
-        self.assertEqual(char2.db.vampire['clan'], 'Brujah')
+        self.assertEqual(char1.db.vampire["clan"], "Ventrue")
+        self.assertEqual(char2.db.vampire["clan"], "Brujah")

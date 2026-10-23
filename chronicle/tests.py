@@ -1,7 +1,15 @@
+from unittest.mock import patch
+
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from evennia.objects.models import ObjectDB
+from evennia.typeclasses.attributes import Attribute
+from evennia.utils.dbserialize import to_pickle
 from evennia.utils.test_resources import EvenniaTest
 
 from boons.utils import offer_boon
 from chronicle.models import ChronicleEvent
+from chronicle.read_services import character_chronicle_for_account, character_summary_for_account
 from chronicle.services import (
     correct_event,
     participant_events,
@@ -61,6 +69,62 @@ class ChronicleEventServiceTests(EvenniaTest):
         self.assertEqual(ChronicleEvent.objects.count(), 1)
         self.assertEqual(ChronicleEvent.objects.get().title, "First title")
         self.assertEqual(ChronicleEvent.objects.get().status, ChronicleEvent.Status.DRAFT)
+
+    def test_duplicate_delivery_cannot_expand_participants_or_sources(self):
+        source = self.record(key="source")
+        other_source = self.record(key="other-source")
+
+        def deliver(participant, source_event):
+            with self.captureOnCommitCallbacks(execute=True):
+                record_event(
+                    idempotency_key="private-transition",
+                    source_app="test",
+                    source_type="TestRecord",
+                    source_id="1",
+                    kind="scene.curated",
+                    title="Private transition",
+                    summary="Original participants only.",
+                    payload={},
+                    visibility=ChronicleEvent.Visibility.PARTICIPANTS,
+                    participants=(participant,),
+                    source_events=(source_event,),
+                )
+
+        deliver(self.char1, source)
+        event = ChronicleEvent.objects.get(idempotency_key="private-transition")
+        self.account.is_staff = True
+        self.account.save(update_fields=["is_staff"])
+        publish_event(event.pk, self.account)
+        deliver(self.char2, other_source)
+
+        self.assertCountEqual(event.participants.all(), [self.char1])
+        self.assertCountEqual(event.source_events.all(), [source])
+        self.assertFalse(participant_events(self.account2).filter(pk=event.pk).exists())
+
+    def test_relation_failure_rolls_back_committed_event_creation(self):
+        source = self.record(key="atomic-source")
+        manager = ChronicleEvent.source_events.related_manager_cls
+        with (
+            patch.object(manager, "add", side_effect=RuntimeError("relation insertion failed")),
+            self.assertRaisesMessage(RuntimeError, "relation insertion failed"),
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            record_event(
+                idempotency_key="failed-relations",
+                source_app="test",
+                source_type="TestRecord",
+                source_id="2",
+                kind="scene.curated",
+                title="Incomplete event",
+                summary="Must roll back with its participants.",
+                payload={},
+                visibility=ChronicleEvent.Visibility.PARTICIPANTS,
+                participants=(self.char1,),
+                source_events=(source,),
+            )
+
+        self.assertFalse(ChronicleEvent.objects.filter(idempotency_key="failed-relations").exists())
+        self.assertFalse(ChronicleEvent.participants.through.objects.exists())
 
     def test_participant_projection_is_account_scoped(self):
         event = self.record(
@@ -312,3 +376,115 @@ class ChronicleEventServiceTests(EvenniaTest):
         self.assertEqual(expected["total_debt_weight"], 0)
         self.assertEqual(ledger.total_debt_weight, 99)
         self.assertEqual(ledger.net_weight, 99)
+
+    def test_staff_console_redacts_staff_origin_memory_without_retaining_note(self):
+        from narrative.models import MemoryFact, NarrativePersona
+
+        npc = ObjectDB.objects.create(db_key="StaffMemoryNPC", db_typeclass_path="typeclasses.characters.Character")
+        fact = MemoryFact.objects.create(
+            persona=NarrativePersona.objects.create(character=npc),
+            text="Sensitive memory text.",
+            staff_entry="Sensitive staff provenance.",
+            visibility=MemoryFact.Visibility.STAFF,
+        )
+        self.account.is_staff = True
+        self.account.save(update_fields=["is_staff"])
+        self.client.force_login(self.account)
+
+        response = self.client.post(f"/staff/narrative-ops/memories/{fact.pk}/redact/")
+
+        self.assertEqual(response.status_code, 302)
+        fact.refresh_from_db()
+        self.assertEqual(fact.status, MemoryFact.Status.REDACTED)
+        self.assertEqual(fact.text, "")
+        self.assertEqual(fact.staff_entry, "[redacted staff entry]")
+        self.assertIsNone(fact.source_event_id)
+        self.assertNotContains(self.client.get("/staff/narrative-ops/"), "Sensitive staff provenance.")
+
+
+class CharacterPersistenceProjectionTests(EvenniaTest):
+    def test_summary_bypasses_cached_attributes_and_models_without_writing(self):
+        from boons.models import BoonLedger
+        from status.models import CamarillaPosition, CharacterStatus
+
+        old_stats = {"attributes": {"physical": {"strength": 1}}}
+        self.char1.db.stats = old_stats
+        self.char1.db.vampire = {"hunger": 1}
+        self.char1.db.pools = {"health": 3}
+        self.char1.db.advantages = {"merits": ["Old merit"]}
+        cached_attribute = self.char1.attributes.get("stats", return_obj=True)
+        self.assertEqual(self.char1.db.stats, old_stats)
+        old_name = self.char1.key
+        position = CamarillaPosition.objects.create(name="Old position")
+        status = CharacterStatus.objects.create(character=self.char1, earned_status=1, position=position)
+        ledger = BoonLedger.objects.create(character=self.char1, total_debt_weight=1)
+
+        # QuerySet.update represents another process: it changes persisted rows
+        # without refreshing this process's idmapper or Attribute handler caches.
+        updated = {
+            "stats": {"attributes": {"physical": {"strength": 4}}, "specialties": {"stealth": ("Quiet", "Dark")}},
+            "vampire": {"hunger": 3, "clan": "Ventrue"},
+            "pools": {"health": 7, "damage": [1, 0]},
+            "advantages": {"merits": ["New merit"], "backgrounds": {"allies": 2}},
+        }
+        for key, value in updated.items():
+            attribute = self.char1.attributes.get(key, return_obj=True)
+            Attribute.objects.filter(pk=attribute.pk).update(db_value=to_pickle(value))
+        ObjectDB.objects.filter(pk=self.char1.pk).update(db_key="Current persisted name")
+        CharacterStatus.objects.filter(pk=status.pk).update(earned_status=4, position_status=2, temporary_status=-1)
+        CamarillaPosition.objects.filter(pk=position.pk).update(name="Current persisted position")
+        BoonLedger.objects.filter(pk=ledger.pk).update(total_debt_weight=5, total_credit_weight=8, net_weight=3)
+
+        with CaptureQueriesContext(connection) as queries:
+            summary = character_summary_for_account(self.account, self.char1.pk)
+
+        self.assertTrue(queries)
+        self.assertTrue(all(query["sql"].lstrip().upper().startswith("SELECT") for query in queries))
+        expected_stats = {**updated["stats"], "specialties": {"stealth": ["Quiet", "Dark"]}}
+        self.assertEqual(summary["stats"], expected_stats)
+        for key in ("vampire", "pools", "advantages"):
+            self.assertEqual(summary[key], updated[key])
+        self.assertEqual(summary["name"], "Current persisted name")
+        self.assertEqual(summary["status"], {"earned": 4, "position": "Current persisted position", "total": 5})
+        self.assertEqual(summary["boons"], {"owed": 5, "held": 8, "net": 3})
+        self.assertEqual(self.char1.key, old_name)
+        self.assertEqual(cached_attribute.value, old_stats)
+        self.assertEqual(self.char1.db.stats, old_stats)
+        self.assertEqual(status.earned_status, 1)
+        self.assertEqual(position.name, "Old position")
+        self.assertEqual(ledger.total_debt_weight, 1)
+
+    def test_persisted_owner_transfer_denies_old_owner_and_reads_current_name(self):
+        self.assertEqual(self.char1.account, self.account)
+        self.assertIsNotNone(character_summary_for_account(self.account, self.char1.pk))
+        ObjectDB.objects.filter(pk=self.char1.pk).update(db_account_id=self.account2.pk, db_key="Transferred name")
+
+        self.assertEqual(self.char1.account, self.account)
+        self.assertIsNone(character_summary_for_account(self.account, self.char1.pk))
+        self.assertIsNone(character_chronicle_for_account(self.account, self.char1.pk))
+        summary = character_summary_for_account(self.account2, self.char1.pk)
+        self.assertEqual(summary["name"], "Transferred name")
+        self.assertEqual(summary["id"], self.char1.pk)
+        self.assertIsNotNone(character_chronicle_for_account(self.account2, self.char1.pk))
+
+    def test_summary_uses_only_default_regular_attributes_and_plain_shapes(self):
+        self.char1.db.stats = {"skills": {"stealth": 2}}
+        self.char1.attributes.add("stats", {"private": "categorized"}, category="staff")
+        self.char1.attributes.add("secret_staff_note", "Never projected")
+        nick = Attribute.objects.create(
+            db_key="stats", db_value=to_pickle({"private": "nick"}), db_model="objectdb", db_attrtype="nick"
+        )
+        self.char1.db_attributes.add(nick)
+
+        summary = character_summary_for_account(self.account, self.char1.pk)
+
+        self.assertEqual(summary["stats"], {"skills": {"stealth": 2}})
+        self.assertNotIn("secret_staff_note", summary)
+        self.assertEqual(set(summary), {"id", "name", "stats", "vampire", "pools", "advantages", "status", "boons"})
+
+    def test_summary_rejects_embedded_object_and_session_references(self):
+        for reference in (self.char2, ("__packed_session__", 1, 2)):
+            with self.subTest(reference=type(reference).__name__):
+                self.char1.db.stats = {"reference": reference}
+                with self.assertRaisesMessage(TypeError, "Object and session references"):
+                    character_summary_for_account(self.account, self.char1.pk)

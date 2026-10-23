@@ -60,6 +60,7 @@ class RollResult:
 
         # Result interpretation
         self.result_type = self._interpret_result()
+
     def _analyze_dice(self) -> tuple[int, bool, bool, bool, bool]:
         """Compute successes and V5 special-result flags in one pass."""
         successes = 0

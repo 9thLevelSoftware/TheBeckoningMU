@@ -8,6 +8,8 @@ creation commands.
 
 """
 
+from collections.abc import Mapping
+
 from evennia.objects.objects import DefaultCharacter
 
 from .objects import ObjectParent
@@ -41,42 +43,48 @@ class Character(ObjectParent, DefaultCharacter):
         # Initialize stats structure (attributes, skills, disciplines, specialties)
         self.db.stats = {
             "attributes": {
-                "physical": {
-                    "strength": 1,
-                    "dexterity": 1,
-                    "stamina": 1
-                },
-                "social": {
-                    "charisma": 1,
-                    "manipulation": 1,
-                    "composure": 1
-                },
-                "mental": {
-                    "intelligence": 1,
-                    "wits": 1,
-                    "resolve": 1
-                }
+                "physical": {"strength": 1, "dexterity": 1, "stamina": 1},
+                "social": {"charisma": 1, "manipulation": 1, "composure": 1},
+                "mental": {"intelligence": 1, "wits": 1, "resolve": 1},
             },
             "skills": {
                 "physical": {
-                    "athletics": 0, "brawl": 0, "craft": 0,
-                    "drive": 0, "firearms": 0, "melee": 0,
-                    "larceny": 0, "stealth": 0, "survival": 0
+                    "athletics": 0,
+                    "brawl": 0,
+                    "craft": 0,
+                    "drive": 0,
+                    "firearms": 0,
+                    "melee": 0,
+                    "larceny": 0,
+                    "stealth": 0,
+                    "survival": 0,
                 },
                 "social": {
-                    "animal_ken": 0, "etiquette": 0, "insight": 0,
-                    "intimidation": 0, "leadership": 0, "performance": 0,
-                    "persuasion": 0, "streetwise": 0, "subterfuge": 0
+                    "animal_ken": 0,
+                    "etiquette": 0,
+                    "insight": 0,
+                    "intimidation": 0,
+                    "leadership": 0,
+                    "performance": 0,
+                    "persuasion": 0,
+                    "streetwise": 0,
+                    "subterfuge": 0,
                 },
                 "mental": {
-                    "academics": 0, "awareness": 0, "finance": 0,
-                    "investigation": 0, "medicine": 0, "occult": 0,
-                    "politics": 0, "science": 0, "technology": 0
-                }
+                    "academics": 0,
+                    "awareness": 0,
+                    "finance": 0,
+                    "investigation": 0,
+                    "medicine": 0,
+                    "occult": 0,
+                    "politics": 0,
+                    "science": 0,
+                    "technology": 0,
+                },
             },
             "specialties": {},  # Format: {"skill_name": "specialty_name"}
             "disciplines": {},  # Format: {"discipline_name": {"level": 0, "powers": []}}
-            "approved": False  # For chargen approval workflow
+            "approved": False,  # For chargen approval workflow
         }
 
         # Initialize vampire vitals
@@ -90,12 +98,11 @@ class Character(ObjectParent, DefaultCharacter):
             "current_resonance": None,  # Tracks last feeding resonance
             "resonance_intensity": 0,  # 0=none, 1=fleeting, 2=intense, 3=dyscrasia
             "bane": None,  # Set based on clan
-            "compulsion": None  # Set based on clan
+            "compulsion": None,  # Set based on clan
         }
 
-        # Legacy hunger tracking (Phase 5 compatibility)
-        if not hasattr(self.db, 'hunger'):
-            self.db.hunger = 1
+        # Initialize both storage locations through the compatibility property.
+        self.hunger = 1
 
         # Initialize health and willpower pools
         self.db.pools = {
@@ -104,7 +111,7 @@ class Character(ObjectParent, DefaultCharacter):
             "current_health": 3,
             "current_willpower": 3,
             "superficial_damage": 0,
-            "aggravated_damage": 0
+            "aggravated_damage": 0,
         }
 
         # Initialize humanity system
@@ -112,14 +119,14 @@ class Character(ObjectParent, DefaultCharacter):
             "convictions": [],  # List of strings
             "touchstones": [],  # List of dicts: {"name": "...", "conviction_index": 0}
             "stains": 0,  # 0-10, track Humanity degradation
-            "chronicle_tenets": []  # Chronicle-specific moral guidelines
+            "chronicle_tenets": [],  # Chronicle-specific moral guidelines
         }
 
         # Initialize advantages (backgrounds, merits, flaws)
         self.db.advantages = {
             "backgrounds": {},  # Format: {"background_name": dots}
             "merits": {},  # Format: {"merit_name": dots}
-            "flaws": {}  # Format: {"flaw_name": dots}
+            "flaws": {},  # Format: {"flaw_name": dots}
         }
 
         # Initialize experience tracking
@@ -127,7 +134,7 @@ class Character(ObjectParent, DefaultCharacter):
             "total_earned": 0,
             "total_spent": 0,
             "current": 0,
-            "history": []  # List of dicts: {"type": "earned/spent", "amount": X, "reason": "..."}
+            "history": [],  # List of dicts: {"type": "earned/spent", "amount": X, "reason": "..."}
         }
 
         # Initialize active effects (discipline powers, conditions)
@@ -139,21 +146,27 @@ class Character(ObjectParent, DefaultCharacter):
             "completed": False,
             "current_step": None,  # Tracks which step of chargen they're on
             "approved": False,
-            "approval_job_id": None
+            "approval_job_id": None,
         }
 
-    def migrate_vampire_data(self):
+    def migrate_vampire_data(self, legacy_authoritative=False):
         """Migrate old character data to new vampire structure.
 
-        Called to upgrade existing characters to Phase 6 structure.
+        Called to upgrade existing characters to Phase 6 structure. Existing
+        nested data wins unless legacy_authoritative is explicitly requested.
         """
+        legacy_hunger = self.db.hunger
+        hunger = self.hunger
+        if legacy_authoritative and legacy_hunger is not None:
+            hunger = legacy_hunger
+
         # Initialize vampire dict if missing
         if not self.db.vampire:
             self.db.vampire = {
                 "clan": None,
                 "generation": 13,
                 "blood_potency": 0,
-                "hunger": getattr(self.db, 'hunger', 1),  # Migrate from old location
+                "hunger": hunger,
                 "humanity": 7,
                 "predator_type": None,
                 "current_resonance": None,
@@ -162,37 +175,40 @@ class Character(ObjectParent, DefaultCharacter):
                 "compulsion": None,
             }
 
-        # Sync old hunger location with new
-        if hasattr(self.db, 'hunger'):
-            self.db.vampire['hunger'] = self.db.hunger
+        self.hunger = hunger
 
     @property
     def hunger(self):
         """Property for easy hunger access.
 
-        Prioritizes vampire dict but falls back to legacy location if vampire dict
-        is missing. Syncs values if they differ.
+        Reconciles direct legacy and nested writes against the last synchronized
+        value. Nested data wins when both changed or no marker exists. The
+        private persistent marker survives reloads; new callers should use this
+        property instead of writing either Attribute directly.
         """
-        if self.db.vampire:
-            # Check if legacy hunger exists and differs from vampire dict
-            legacy_hunger = getattr(self.db, 'hunger', None)
-            vampire_hunger = self.db.vampire.get('hunger', 1)
-
-            # If legacy hunger is set and differs, sync to vampire dict
-            if legacy_hunger is not None and legacy_hunger != vampire_hunger:
-                self.db.vampire['hunger'] = legacy_hunger
-                return legacy_hunger
-
-            return vampire_hunger
-        return getattr(self.db, 'hunger', 1)
+        vampire = self.db.vampire
+        nested = vampire.get("hunger") if isinstance(vampire, Mapping) else None
+        legacy = self.db.hunger
+        synced = self.db._hunger_sync
+        if nested is None:
+            value = legacy if legacy is not None else 1
+        elif synced is not None and nested == synced and legacy is not None:
+            value = legacy
+        else:
+            value = nested
+        self.hunger = value
+        return max(0, min(5, value))
 
     @hunger.setter
     def hunger(self, value):
         """Set hunger level."""
         value = max(0, min(5, value))  # Clamp 0-5
-        if self.db.vampire:
-            self.db.vampire['hunger'] = value
-        self.db.hunger = value  # Keep legacy location synced
+        if isinstance(self.db.vampire, Mapping) and self.db.vampire.get("hunger") != value:
+            self.db.vampire["hunger"] = value
+        if self.db.hunger != value:
+            self.db.hunger = value
+        if self.db._hunger_sync != value:
+            self.db._hunger_sync = value
 
     def get_display_shortdesc(self, looker=None, **kwargs):
         if self.db.shortdesc:
@@ -226,9 +242,7 @@ class Character(ObjectParent, DefaultCharacter):
                 time_str = f"|G{minutes}m|n"
             elif minutes > 15 and minutes < 20:
                 time_str = f"|y{minutes}m|n"
-            elif minutes > 20 and minutes < 30:
-                time_str = f"|r{minutes}m|n"
-            elif minutes >= 30:
+            elif minutes > 20 and minutes < 30 or minutes >= 30:
                 time_str = f"|r{minutes}m|n"
             else:
                 time_str = f"|g{minutes}m|n"
@@ -244,11 +258,10 @@ class Character(ObjectParent, DefaultCharacter):
         name = super().get_display_name(looker, **kwargs)
 
         # Staff can see more info
-        if looker.check_permstring("Builder"):
-            if self.db.vampire and self.db.vampire.get("clan"):
-                clan = self.db.vampire["clan"]
-                hunger = self.db.vampire.get("hunger", 0)
-                name = f"{name} ({clan}, H:{hunger})"
+        if looker.check_permstring("Builder") and self.db.vampire and self.db.vampire.get("clan"):
+            clan = self.db.vampire["clan"]
+            hunger = self.db.vampire.get("hunger", 0)
+            name = f"{name} ({clan}, H:{hunger})"
 
         return name
 
