@@ -273,6 +273,9 @@ Tzimisce, Ravnos, Salubri) are not available.
 - Web chargen: the game website's |y/character-creation/|n page
 - Character approval status: the website's character creation page
   lists your characters, and you are told in game when staff decide
+- Open the official game website and choose "Create a Character"; sign in to submit
+  through the Django character-creation and staff-approval workflow.
+- Retired static pages redirect to the official character creation page when available; otherwise they display an unavailable notice and never claim submission.
 
 |yStaff Assistance|n
 - |wjob/submit Requests <title> = <question>|n for help (|wbuckets|n lists

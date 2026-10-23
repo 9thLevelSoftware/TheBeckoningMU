@@ -135,11 +135,11 @@ def split_bucket_and_title(text):
 def get_bucket(caller, bucket_name):
     """
     Fetches a Bucket by name with error handling.
-    
+
     Args:
         caller: The calling character
         bucket_name: Bucket name string
-    
+
     Returns:
         Bucket object or None, messaging the caller on failure.
     """
@@ -154,11 +154,11 @@ def get_bucket(caller, bucket_name):
 def get_account(caller, account_name):
     """
     Fetches an AccountDB by username with error handling.
-    
+
     Args:
         caller: The calling character
         account_name: Account username string
-    
+
     Returns:
         AccountDB object or None, messaging the caller on failure.
     """
@@ -178,6 +178,32 @@ def _is_party(account, job):
         job.creator_id == account.id
         or job.assigned_to_id == account.id
         or job.players.filter(id=account.id).exists()
+    )
+
+
+def job_participant_characters(job):
+    """Capture account ownership from applications, never current puppet links."""
+    from evennia.objects.models import ObjectDB
+
+    from traits.models import CharacterBio
+
+    account_ids = {job.creator_id, job.assigned_to_id, *job.players.values_list("pk", flat=True)} - {None}
+    owned_ids = CharacterBio.objects.filter(account_id__in=account_ids).values_list("character_id", flat=True)
+    return ObjectDB.objects.filter(pk__in=owned_ids)
+
+
+def record_job_transition(job, kind, caller):
+    """Record safe metadata only after the authoritative job write succeeds."""
+    from chronicle.services import record_event
+
+    label = kind.removeprefix("job.")
+    record_event(
+        idempotency_key=f"jobs:{job.pk}:{kind}:{job.updated_at.isoformat()}",
+        source_app="jobs", source_type="Job", source_id=str(job.pk), kind=kind,
+        title=f"Job {label}", summary=f"A job was {label}.",
+        payload={"job_state": job.status, "job_priority": job.priority},
+        visibility="staff" if kind == "job.reopened" else "participants",
+        actor=account_of(caller), participants=job_participant_characters(job), occurred_at=job.updated_at,
     )
 
 
@@ -225,13 +251,13 @@ def format_job_view(job, viewer):
         player_names = [p.username for p in players]
         output += f"|wAssigned to:|n {', '.join(player_names)}\n"
     else:
-        output += f"|wAssigned to:|n None\n"
+        output += "|wAssigned to:|n None\n"
 
     # Completion status
     if job.completed:
-        output += f"|wCompleted:|n Yes\n"
+        output += "|wCompleted:|n Yes\n"
     else:
-        output += f"|wCompleted:|n No\n"
+        output += "|wCompleted:|n No\n"
 
     output += "\n|wDescription:|n\n"
     output += f"{job.description}\n"
@@ -282,9 +308,7 @@ def format_job_list(jobs, title="Jobs"):
     output += "|c*" + "=" * 78 + "*|n\n"
 
     # Header row (ID=4, Title=28, Bucket=15, Status=8, Assigned=15 = 70 + 4 spaces = 74)
-    header_content = "|w{:<4} {:<28} {:<15} {:<8} {:<15}|n".format(
-        "ID", "Title", "Bucket", "Status", "Assigned"
-    )
+    header_content = "|w{:<4} {:<28} {:<15} {:<8} {:<15}|n".format("ID", "Title", "Bucket", "Status", "Assigned")
     output += f"|c|||n {header_content} |c|||n\n"
     output += "|c*" + "=" * 78 + "*|n\n"
 
@@ -309,13 +333,7 @@ def format_job_list(jobs, title="Jobs"):
         if job.completed:
             status = "CLOSED"
 
-        row_content = "|w{:<4} {:<28} {:<15} {:<8} {:<15}|n".format(
-            str(job.sequence_number),
-            job.title[:28],
-            job.bucket.name[:15],
-            status[:8],
-            assigned
-        )
+        row_content = f"|w{str(job.sequence_number):<4} {job.title[:28]:<28} {job.bucket.name[:15]:<15} {status[:8]:<8} {assigned:<15}|n"
         output += f"|c|||n {row_content} |c|||n\n"
 
     output += "|c*" + "=" * 78 + "*|n\n"
@@ -336,7 +354,7 @@ def format_bucket_list(buckets):
         return "No buckets found."
 
     # Box border header
-    output = "\n|c*" + "=" * 78 + "*|n\n"
+    output = "\n|wJob Buckets|n\n|c*" + "=" * 78 + "*|n\n"
 
     # Header row (Name=20, Jobs=8, Description=44 = 72 + 2 spaces = 74)
     header_content = "|w{:<20} {:<8} {:<44}|n".format("Name", "Jobs", "Description")

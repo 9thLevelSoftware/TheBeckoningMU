@@ -47,6 +47,9 @@ class CmdHunt(default_cmds.MuxCommand):
         +hunt <hunting ground>=alt          (your predator type's alternative pool)
         +hunt/staffed <hunting ground>
         +hunt/reset <character>             (staff: allow another hunt now)
+        +hunt/story opt-in | opt-out
+        +hunt/story start [hunting ground] [persona #dbref]
+        +hunt/story resume [action] | complete
 
     Hunting grounds and their difficulty (QR p.12):
         slum      2  slums, Skid Row, housing projects
@@ -78,6 +81,9 @@ class CmdHunt(default_cmds.MuxCommand):
     help_category = "V5"
 
     def func(self):
+        if "story" in self.switches:
+            self._story_hunt()
+            return
         caller = self.caller
         if "reset" in self.switches:
             self._reset()
@@ -124,6 +130,147 @@ class CmdHunt(default_cmds.MuxCommand):
         if result["complication"]:
             output.append(f"|rComplication:|n {result['complication']['desc']} (the Storyteller decides what follows)")
         caller.msg("\n".join(output))
+
+    def _story_hunt(self):
+        """Run the opt-in prose-only hunt flow with deterministic mechanics."""
+        from narrative.models import NarrativeConsent, NarrativePersona, StorySession
+        from narrative.services import (
+            configured_provider,
+            generate_story,
+            set_consent,
+            start_session,
+            validate_persona_character,
+        )
+        from traits.models import CharacterBio
+
+        caller = self.caller
+        account = getattr(caller, "account", None)
+        if not account or not getattr(caller, "id", None):
+            caller.msg("|rA logged-in character is required for story hunting.|n")
+            return
+        if not CharacterBio.objects.filter(character=caller, account=account).exists():
+            caller.msg("|rOnly the character's owning account may manage its story hunt.|n")
+            return
+        words = self.args.strip().split(maxsplit=1) if self.args else []
+        verb = words[0].lower() if words else "resume"
+        rest = words[1] if len(words) > 1 else ""
+
+        if verb in ("opt-in", "optin", "on"):
+            set_consent(account, caller, True)
+            caller.msg("Story hunting is enabled. Use |w+ hunt/story start [location]|n to begin; no AI request was made.")
+            return
+        if verb in ("opt-out", "optout", "off"):
+            set_consent(account, caller, False)
+            caller.msg("Story hunting is disabled and your active story session is closed.")
+            return
+        consent = NarrativeConsent.objects.filter(account=account, character=caller, opted_in=True).first()
+        if consent is None:
+            caller.msg("Story hunting is opt-in. Use |w+ hunt/story opt-in|n before any story request.")
+            return
+
+        if verb == "complete":
+            session = caller.narrative_sessions.filter(status=StorySession.Status.ACTIVE).first()
+            if session is None:
+                caller.msg("You have no active story session.")
+                return
+            session.complete()
+            caller.msg("Your story session is complete; its raw player action text was expired.")
+            return
+        if configured_provider() is None:
+            caller.msg("|rNarrative AI is not configured. No story request was sent.|n")
+            return
+
+        if verb == "start":
+            start_parts = rest.split()
+            location = find_ground(start_parts[0]) if start_parts else "downtown"
+            persona = None
+            if len(start_parts) > 2:
+                caller.msg("Usage: +hunt/story start [hunting ground] [persona #dbref]")
+                return
+            if len(start_parts) > 1:
+                dbref = start_parts[1].lstrip("#")
+                if not dbref.isdigit():
+                    caller.msg("Use a registered persona ObjectDB id, for example: +hunt/story start downtown #123.")
+                    return
+                persona = NarrativePersona.objects.filter(character_id=int(dbref)).first()
+                if persona is None:
+                    caller.msg("|rNo registered narrative persona has that ObjectDB id.|n")
+                    return
+                try:
+                    validate_persona_character(persona.character)
+                except ValueError as exc:
+                    caller.msg(f"|r{exc}|n")
+                    return
+            if location is None:
+                caller.msg(f"|rInvalid location. Valid locations: {GROUND_LIST}|n")
+                return
+            session = caller.narrative_sessions.filter(status=StorySession.Status.ACTIVE).first()
+            if session is None:
+                if not caller.attributes.has("vampire") or not caller.is_kindred:
+                    caller.msg("|rYou are not a vampire!|n")
+                    return
+                hunger = caller.hunger
+                if hunger == 0:
+                    caller.msg("|gYou are fully sated. You do not need to hunt right now.|n")
+                    return
+                try:
+                    result = self._resolve_story_hunt(location)
+                except ValueError as exc:
+                    caller.msg(f"|y{exc}|n")
+                    return
+                session = start_session(caller, location, result, persona=persona)
+            action = f"Begin the hunt scene at {location}."
+        else:
+            session = caller.narrative_sessions.filter(status=StorySession.Status.ACTIVE).first()
+            if session is None:
+                caller.msg("You have no active story session. Use |w+ hunt/story start [location]|n.")
+                return
+            action = rest if verb == "resume" and rest else (
+                "Resume the scene." if verb == "resume" else self.args.strip()
+            )
+        session.current_action = action
+        session.save(update_fields=("current_action", "updated_at"))
+        try:
+            deferred = generate_story(session, action)
+        except (RuntimeError, PermissionError, ValueError) as exc:
+            session.current_action = ""
+            session.save(update_fields=("current_action", "updated_at"))
+            caller.msg(f"|r{exc}|n")
+            return
+        caller.msg("|wYour action is being woven into the hunt scene...|n")
+
+        def show_prose(prose):
+            caller.msg("|w[AI-generated narrative]|n")
+            caller.msg(f"|c{prose.replace('|', '||')}|n")
+            return prose
+
+        def show_error(_failure):
+            caller.msg("|rThe story request failed; it has been recorded and no additional hunt mechanics were changed.|n")
+            return None
+
+        deferred.addCallbacks(show_prose, show_error)
+
+    def _resolve_story_hunt(self, ground):
+        """Resolve the ordinary hunt once; later story turns only use its snapshot."""
+        from dice.commands import forget_roll
+
+        caller = self.caller
+        hunger_before = caller.hunger
+        forget_roll(caller)
+        result = hunt(caller, ground)
+        if result["refused"]:
+            raise ValueError(result["refused"])
+        feeding = result["feeding"] or {}
+        complication = result["complication"]
+        return {
+            "hunting_success": bool(result["success"]),
+            "location": ground,
+            "hunger_before": hunger_before,
+            "hunger_after": caller.hunger,
+            "hunger_reduction": feeding.get("slaked", 0),
+            "resonance": result["resonance"],
+            "complications": [complication] if complication else [],
+        }
 
     def _reset(self):
         from dice.commands import _is_staff

@@ -82,6 +82,14 @@ page. Submit your character there for staff approval (see |whelp chargen|n).
   - Disputes (|w+boon/dispute|n) are ruled on by a Harpy or staff
     (see |whelp boons-guide|n)
 
+|yChronicle and Story Assistance|n
+
+  - Read staff-published entries at |w/chronicle/|n on the game website.
+  - Sign in to view your own participant entries at |w/chronicle/mine/|n.
+  - Optional AI-assisted hunt stories require explicit |w+hunt/story opt-in|n.
+  - The AI adds prose only; the ordinary |w+hunt|n path remains deterministic.
+  - Read |whelp hunt|n and |w+news policy|n before opting in.
+
 |w═══════════════════════════════════════════════════════════════════|n
 
 |cSTEP 5: ADVANCED FEATURES|n

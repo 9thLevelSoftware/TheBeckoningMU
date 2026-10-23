@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}The Beckoning Chronicle{% endblock %}</title>
+    <style>
+        :root { color-scheme: dark; font-family: Georgia, serif; background: #0d0d12; color: #d8d4ca; }
+        body { margin: 0; line-height: 1.55; }
+        header, main { max-width: 900px; margin: 0 auto; padding: 1rem 1.25rem; }
+        header { display: flex; flex-wrap: wrap; gap: 1rem; border-bottom: 1px solid #4a0e0e; }
+        a { color: #c9a84c; }
+        h1, h2 { color: #d7bd82; }
+        article { padding: 1rem 0; border-bottom: 1px solid #34313a; }
+        time, .scope { color: #aaa293; font-size: .9rem; }
+        .notice { padding: .8rem; border-left: 3px solid #8b1a1a; background: #141419; }
+    </style>
+</head>
+<body>
+<header>
+    <a href="/">The Beckoning</a>
+    <a href="{% url 'chronicle_public' %}">Public Chronicle</a>
+    {% if user.is_authenticated %}<a href="{% url 'chronicle_mine' %}">My Chronicle</a>{% endif %}
+    {% if can_manage_stories %}<a href="{% url 'narrative_ops' %}">Story Operations</a>{% endif %}
+</header>
+<main>{% block content %}{% endblock %}</main>
+</body>
+</html>

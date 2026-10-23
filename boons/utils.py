@@ -131,7 +131,31 @@ def offer_boon(debtor, creditor, boon_type, description, witnesses=None, is_publ
 
     boon.save()
 
+    _record_transition(boon, (True, ""), "boon.offered", debtor)
+
     return (True, boon, f"Boon offered: {debtor.key} will owe {creditor.key} a {boon_type} boon.")
+
+
+def _record_transition(boon, result, kind, actor=None):
+    """Capture successful state changes while retaining the boon's consent rules."""
+    if result[0] and (kind != "boon.fulfilled" or boon.status == "fulfilled"):
+        from chronicle.services import record_event
+
+        occurred_at = {
+            "boon.offered": boon.created_date,
+            "boon.accepted": boon.accepted_date,
+            "boon.called_in": boon.called_in_date,
+            "boon.fulfilled": boon.fulfilled_date,
+        }.get(kind, boon.modified_date)
+        label = kind.removeprefix("boon.").replace("_", " ")
+        record_event(
+            idempotency_key=f"boons:{boon.pk}:{kind}:{occurred_at.isoformat()}",
+            source_app="boons", source_type="Boon", source_id=str(boon.pk), kind=kind,
+            title=f"Boon {label}", summary=f"A boon was {label}.", payload={"boon_type": boon.boon_type},
+            visibility="public" if boon.is_public else "participants", actor=getattr(actor, "account", None),
+            participants=(boon.debtor, boon.creditor), occurred_at=occurred_at,
+        )
+    return result
 
 
 def accept_boon(boon_id, character=None):
@@ -154,7 +178,7 @@ def accept_boon(boon_id, character=None):
     if character and boon.creditor != character:
         return (False, "Only the character the boon is owed to can accept it.")
 
-    return boon.accept()
+    return _record_transition(boon, boon.accept(), "boon.accepted", character)
 
 
 def decline_boon(boon_id, reason="", character=None):
@@ -178,7 +202,7 @@ def decline_boon(boon_id, reason="", character=None):
     if character and boon.creditor != character:
         return (False, "Only the character the boon is owed to can decline it.")
 
-    return boon.decline(reason)
+    return _record_transition(boon, boon.decline(reason), "boon.declined", character)
 
 
 def call_in_boon(boon_id, description, character=None):
@@ -202,7 +226,7 @@ def call_in_boon(boon_id, description, character=None):
     if character and boon.creditor != character:
         return (False, "Only the creditor can call in this boon.")
 
-    return boon.call_in(description)
+    return _record_transition(boon, boon.call_in(description), "boon.called_in", character)
 
 
 def fulfill_boon(boon_id, description, character):
@@ -224,7 +248,7 @@ def fulfill_boon(boon_id, description, character):
     except Boon.DoesNotExist:
         return (False, "Boon not found.")
 
-    return boon.confirm_fulfilled(character, description)
+    return _record_transition(boon, boon.confirm_fulfilled(character, description), "boon.fulfilled", character)
 
 
 def force_fulfill_boon(boon_id, description="", actor=None):
@@ -244,7 +268,7 @@ def force_fulfill_boon(boon_id, description="", actor=None):
         allowed, message = can_resolve(actor, boon)
         if not allowed:
             return (False, message)
-    return boon.fulfill(description, by=actor.key if actor else "")
+    return _record_transition(boon, boon.fulfill(description, by=actor.key if actor else ""), "boon.fulfilled", actor)
 
 
 def cancel_boon(boon_id, reason="", character=None):
@@ -268,7 +292,7 @@ def cancel_boon(boon_id, reason="", character=None):
         allowed, message = can_resolve(character, boon)
         if not allowed:
             return (False, message)
-    return boon.cancel(reason, by=character.key if character else "")
+    return _record_transition(boon, boon.cancel(reason, by=character.key if character else ""), "boon.canceled", character)
 
 
 def uphold_boon(boon_id, reason="", actor=None):
@@ -310,7 +334,7 @@ def dispute_boon(boon_id, reason, character=None):
     if character and character not in (boon.debtor, boon.creditor):
         return (False, "Only the debtor or creditor can dispute this boon.")
 
-    return boon.dispute(reason, by=character.key if character else "")
+    return _record_transition(boon, boon.dispute(reason, by=character.key if character else ""), "boon.disputed", character)
 
 
 def acknowledge_boon(boon_id, harpy_character):
@@ -329,7 +353,11 @@ def acknowledge_boon(boon_id, harpy_character):
     except Boon.DoesNotExist:
         return (False, "Boon not found.")
 
-    return boon.acknowledge_by_harpy(harpy_character)
+    already_acknowledged = Boon.objects.filter(pk=boon.pk).values_list("acknowledged_by_harpy", flat=True).get()
+    result = boon.acknowledge_by_harpy(harpy_character)
+    if already_acknowledged:
+        return result
+    return _record_transition(boon, result, "boon.acknowledged", harpy_character)
 
 
 def get_boons_owed_by(character, status=None):

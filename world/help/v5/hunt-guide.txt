@@ -66,3 +66,22 @@ With the Herd background you can slake up to your Herd dots of Hunger once
 a week with no hunting roll (+background); the same Hunger floor applies.
 
 |ySee also:|n help hunger-guide, help rouse, help frenzy-guide, help backgrounds-guide, help v5-rules-guide
+
+|WOPT-IN AI STORY HUNT (OPTIONAL)|n
+
+The story switch adds generated prose around the normal deterministic hunt, so
+the usual dice and Hunger rules still apply. Provider output cannot alter that
+result or other character state. A configured provider is required; if it is
+unavailable, use ordinary |w+hunt|n instead.
+
+|ySyntax:|n
+  |w+hunt/story opt-in|n                         - Enable story requests for this character
+  |w+hunt/story start <location> [persona #id]|n - Resolve a hunt and start/resume a story
+  |w+hunt/story resume [action]|n                - Continue an active story
+  |w+hunt/story <action>|n                       - Submit an action to the active story
+  |w+hunt/story complete|n                       - Close the active story
+  |w+hunt/story opt-out|n                        - Withdraw consent and close the story
+
+AI requests contain your submitted action and only approved, authorized scene
+facts. Generated prose is not a rules ruling or public Chronicle entry. Staff
+must approve any memory fact or public story separately.

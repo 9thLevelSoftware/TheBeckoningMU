@@ -209,6 +209,19 @@ class JobModelTests(TestCase):
         self.assertEqual(job.players.count(), 2)
         self.assertIn(self.account1, job.players.all())
         self.assertIn(self.account2, job.players.all())
+
+    def test_rolled_back_allocation_does_not_consume_sequence_number(self):
+        with self.assertRaisesMessage(RuntimeError, "cancel creation"), transaction.atomic():
+            Job.objects.create(bucket=self.bucket, creator=self.account1, title="Rolled back")
+            raise RuntimeError("cancel creation")
+        job = Job.objects.create(bucket=self.bucket, creator=self.account1, title="Committed")
+        self.assertEqual(job.sequence_number, 1)
+
+    def test_explicit_sequence_number_is_preserved_and_followed(self):
+        explicit = Job.objects.create(bucket=self.bucket, creator=self.account1, title="Imported", sequence_number=8)
+        next_job = Job.objects.create(bucket=self.bucket, creator=self.account1, title="Next")
+        self.assertEqual(explicit.sequence_number, 8)
+        self.assertEqual(next_job.sequence_number, 9)
     
     def test_job_tags_relationship(self):
         """Test job-tags many-to-many relationship."""

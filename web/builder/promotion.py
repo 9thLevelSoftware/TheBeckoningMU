@@ -196,9 +196,10 @@ def promote_unit(
         leftover_rooms, leftover_exits, _ = recorded_objects(project)
         delete_recorded(leftover_rooms, leftover_exits)
 
+        promoted_at = timezone.now()
         updated = BuildProject.objects.filter(pk=project_id, status="built").update(
             status="live",
-            promoted_at=timezone.now(),
+            promoted_at=promoted_at,
             sandbox_room_id=None,
             built_object_ids={},
             updated_at=timezone.now(),
@@ -216,6 +217,28 @@ def promote_unit(
         except Exception:
             logger.exception("Promotion undo: could not restore the sandbox tags")
         raise
+
+    # Promotion is already live. Chronicle capture must never enter the
+    # compensation path and restore sandbox tags on a committed live area.
+    try:
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"builder:{project.pk}:builder.promoted:{promoted_at.isoformat()}",
+            source_app="builder",
+            source_type="BuildProject",
+            source_id=str(project.pk),
+            kind="builder.promoted",
+            title="Builder project promoted",
+            summary="A builder project was promoted to the live world.",
+            payload={"project_name": project.name} if project.is_public else {},
+            visibility="public" if project.is_public else "staff",
+            actor=project.user,
+            participants=(),
+            occurred_at=promoted_at,
+        )
+    except Exception:
+        logger.exception("Chronicle capture failed after promoting project %s", project_id)
 
     logger.info(
         "Promoted project %s: %s rooms, %s exits, connected to #%s going %s",

@@ -1,0 +1,372 @@
+{
+  "date": "2026-10-23",
+  "head": "704517626bb40bf66633f4bbac8689b7fe21052f",
+  "branch": "autoresearch/review-the-technology-and-features-of-this-game-20261002",
+  "initial_worktree": {
+    "autoresearch.sh": "9d87ed28601aa39d99b1d3a15583d491eccc970bb53825ee29dd064dc00d6cfc",
+    "dice/roll_result.py": "e3141f5638fa7b0f4d8f0e3061afd59acdfe5eaf9c6817c85993ec1ddcfcc5f1",
+    "BECKONING_CHRONICLE_PLAN.md": "5cfd02e38f5784179287c494db8c0892076141e2dd447a82f3d85f481fda7198"
+  },
+  "full_suite": {
+    "command": ".venv/Scripts/evennia.exe test --settings settings.py .",
+    "tests": 284,
+    "failures": 15,
+    "errors": 66,
+    "cases": [
+      {
+        "kind": "ERROR",
+        "test": "test_create_bucket (jobs.tests.CmdBucketCreateTests.test_create_bucket)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_delete_bucket_with_jobs (jobs.tests.CmdBucketDeleteTests.test_delete_bucket_with_jobs)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_delete_empty_bucket (jobs.tests.CmdBucketDeleteTests.test_delete_empty_bucket)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_view_bucket (jobs.tests.CmdBucketViewTests.test_view_bucket)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_list_buckets (jobs.tests.CmdBucketsTests.test_list_buckets)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_assign_job (jobs.tests.CmdJobAssignTests.test_assign_job)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_claim_already_assigned (jobs.tests.CmdJobClaimTests.test_claim_already_assigned)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_claim_job (jobs.tests.CmdJobClaimTests.test_claim_job)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_add_comment (jobs.tests.CmdJobCommentTests.test_add_comment)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_add_comment_no_args (jobs.tests.CmdJobCommentTests.test_add_comment_no_args)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_delete_job (jobs.tests.CmdJobDeleteTests.test_delete_job)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_complete_already_completed (jobs.tests.CmdJobDoneTests.test_complete_already_completed)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_complete_job (jobs.tests.CmdJobDoneTests.test_complete_job)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_add_public_comment (jobs.tests.CmdJobPublicTests.test_add_public_comment)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_reopen_job (jobs.tests.CmdJobReopenTests.test_reopen_job)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_create_job (jobs.tests.CmdJobSubmitTests.test_create_job)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_create_job_no_args (jobs.tests.CmdJobSubmitTests.test_create_job_no_args)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_view_job (jobs.tests.CmdJobViewTests.test_view_job)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_view_job_no_args (jobs.tests.CmdJobViewTests.test_view_job_no_args)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_view_nonexistent_job (jobs.tests.CmdJobViewTests.test_view_nonexistent_job)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_list_all_jobs (jobs.tests.CmdJobsTests.test_list_all_jobs)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_list_bucket_jobs (jobs.tests.CmdJobsTests.test_list_bucket_jobs)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_list_nonexistent_bucket (jobs.tests.CmdJobsTests.test_list_nonexistent_bucket)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_list_my_jobs (jobs.tests.CmdMyJobsTests.test_list_my_jobs)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_dice_system_compatibility (tests.test_character_vampire_data.BackwardCompatibilityTestCase.test_dice_system_compatibility)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_bloodsurge_bonus_equals_blood_potency (tests.v5.test_blood_commands.CmdBloodSurgeTestCase.test_bloodsurge_bonus_equals_blood_potency)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_bloodsurge_no_arguments (tests.v5.test_blood_commands.CmdBloodSurgeTestCase.test_bloodsurge_no_arguments)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_bloodsurge_performs_rouse_check (tests.v5.test_blood_commands.CmdBloodSurgeTestCase.test_bloodsurge_performs_rouse_check)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_bloodsurge_shows_duration (tests.v5.test_blood_commands.CmdBloodSurgeTestCase.test_bloodsurge_shows_duration)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_bloodsurge_shows_rouse_result (tests.v5.test_blood_commands.CmdBloodSurgeTestCase.test_bloodsurge_shows_rouse_result)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_bloodsurge_success (tests.v5.test_blood_commands.CmdBloodSurgeTestCase.test_bloodsurge_success)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_bestial_failure (tests.v5.test_blood_commands.CmdFeedTestCase.test_feed_bestial_failure)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_broadcasts_to_room (tests.v5.test_blood_commands.CmdFeedTestCase.test_feed_broadcasts_to_room)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_cannot_reduce_below_zero (tests.v5.test_blood_commands.CmdFeedTestCase.test_feed_cannot_reduce_below_zero)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_invalid_resonance (tests.v5.test_blood_commands.CmdFeedTestCase.test_feed_invalid_resonance)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_messy_critical (tests.v5.test_blood_commands.CmdFeedTestCase.test_feed_messy_critical)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_no_arguments (tests.v5.test_blood_commands.CmdFeedTestCase.test_feed_no_arguments)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_reduction_scales_with_successes (tests.v5.test_blood_commands.CmdFeedTestCase.test_feed_reduction_scales_with_successes)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_regular_failure (tests.v5.test_blood_commands.CmdFeedTestCase.test_feed_regular_failure)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_sets_resonance (tests.v5.test_blood_commands.CmdFeedTestCase.test_feed_sets_resonance)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_success_reduces_hunger (tests.v5.test_blood_commands.CmdFeedTestCase.test_feed_success_reduces_hunger)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_uses_hunger_dice (tests.v5.test_blood_commands.CmdFeedTestCase.test_feed_uses_hunger_dice)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_valid_resonances (tests.v5.test_blood_commands.CmdFeedTestCase.test_feed_valid_resonances)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_basic_display (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_basic_display)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_expired_resonance_not_shown (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_expired_resonance_not_shown)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_expired_surge_not_shown (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_expired_surge_not_shown)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_level_high_message (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_level_high_message)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_level_low_message (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_level_low_message)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_level_max_message (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_level_max_message)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_level_moderate_message (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_level_moderate_message)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_level_zero_message (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_level_zero_message)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_shows_remaining_surge_time (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_shows_remaining_surge_time)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_shows_visual_indicator (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_shows_visual_indicator)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_with_blood_surge_display (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_with_blood_surge_display)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_with_both_resonance_and_surge (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_with_both_resonance_and_surge)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_with_resonance_display (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_with_resonance_display)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_without_blood_surge (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_without_blood_surge)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_without_resonance (tests.v5.test_blood_commands.CmdHungerTestCase.test_hunger_without_resonance)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_bloodsurge_requires_character (tests.v5.test_blood_commands.CommandPermissionsTests.test_bloodsurge_requires_character)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_feed_requires_character (tests.v5.test_blood_commands.CommandPermissionsTests.test_feed_requires_character)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_hunger_requires_character (tests.v5.test_blood_commands.CommandPermissionsTests.test_hunger_requires_character)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_activate_blood_surge_performs_rouse_check (tests.v5.test_blood_utils.BloodSurgeManagementTests.test_activate_blood_surge_performs_rouse_check)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_activate_blood_surge_stores_data (tests.v5.test_blood_utils.BloodSurgeManagementTests.test_activate_blood_surge_stores_data)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_activate_blood_surge_success (tests.v5.test_blood_utils.BloodSurgeManagementTests.test_activate_blood_surge_success)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_blood_surge_replaces_previous (tests.v5.test_blood_utils.EdgeCaseTests.test_blood_surge_replaces_previous)"
+      },
+      {
+        "kind": "ERROR",
+        "test": "test_trait_unique_name (traits.tests.TraitModelTestCase.test_trait_unique_name)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_parse_dice_pool (dice.tests.DisciplineRollerTestCase.test_parse_dice_pool)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_format_job_list_with_jobs (jobs.tests.UtilityFunctionTests.test_format_job_list_with_jobs)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_hunger_sync_on_creation (tests.test_character_vampire_data.VampireDataInitializationTestCase.test_hunger_sync_on_creation)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_legacy_hunger_initialization (tests.test_character_vampire_data.VampireDataInitializationTestCase.test_legacy_hunger_initialization)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_vampire_dict_initialization (tests.test_character_vampire_data.VampireDataInitializationTestCase.test_vampire_dict_initialization)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_migrate_preserves_existing_vampire_data (tests.test_character_vampire_data.VampireDataMigrationTestCase.test_migrate_preserves_existing_vampire_data)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_migrate_without_hunger (tests.test_character_vampire_data.VampireDataMigrationTestCase.test_migrate_without_hunger)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_blood_surge_bonus_equals_blood_potency (tests.v5.test_blood_utils.BloodSurgeManagementTests.test_blood_surge_bonus_equals_blood_potency)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_get_blood_potency_bonus (tests.v5.test_blood_utils.BloodSurgeManagementTests.test_get_blood_potency_bonus)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_hunger_edge_case_zero_to_five (tests.v5.test_blood_utils.HungerManagementTests.test_hunger_edge_case_zero_to_five)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_increase_hunger_clamps_to_five (tests.v5.test_blood_utils.HungerManagementTests.test_increase_hunger_clamps_to_five)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_increase_hunger_default_amount (tests.v5.test_blood_utils.HungerManagementTests.test_increase_hunger_default_amount)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_increase_hunger_normal (tests.v5.test_blood_utils.HungerManagementTests.test_increase_hunger_normal)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_format_resonance_display_acute (tests.v5.test_blood_utils.ResonanceDisplayTests.test_format_resonance_display_acute)"
+      },
+      {
+        "kind": "FAIL",
+        "test": "test_concurrent_job_creation (jobs.tests.JobRaceConditionTests.test_concurrent_job_creation)"
+      }
+    ],
+    "log_sha256": "bdaf08426826e02ee94d0ed750efa85e759ca09cc27772f200206b73bc2236e0"
+  },
+  "dice_comparison": {
+    "baseline": "0885bfc",
+    "test_labels": [
+      "dice.tests.RollResultTestCase",
+      "dice.tests.DiceRollerTestCase"
+    ],
+    "baseline_tests": 23,
+    "current_tests": 23,
+    "baseline_passed": true,
+    "current_passed": true,
+    "benchmark_checksum": 144143,
+    "baseline_rolls_per_second": 345010.8,
+    "current_rolls_per_second": 373794.05,
+    "timing_note": "One sample under concurrent test load; not a rigorous performance claim."
+  },
+  "lint": {
+    "ruff_check_errors": 514,
+    "ruff_format_files": 101
+  },
+  "migrations": {
+    "command": ".venv/Scripts/python.exe -m django makemigrations chronicle narrative --settings server.conf.settings --check --dry-run",
+    "pending_model_changes": false,
+    "applied_to_live_database": false
+  },
+  "local_log_directory": "C:\\Users\\dasbl\\AppData\\Local\\Temp\\beckoning-resume-20261023-01a16979",
+  "runner_notes": [
+    "Evennia --settings server.conf.settings doubles the prefix and exits 0 without testing; use settings.py.",
+    "Evennia makemigrations launcher attempts superuser bootstrap on this unconfigured database. Django direct dry-run succeeds without changing the database."
+  ]
+}

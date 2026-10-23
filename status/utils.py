@@ -4,7 +4,7 @@ Status System Utility Functions
 Helper functions for managing Status, calculating bonuses, and handling positions.
 """
 
-from .models import CharacterStatus, CamarillaPosition, StatusRequest
+from .models import CamarillaPosition, CharacterStatus, StatusRequest, _status_atomic, _track_status_instance
 
 
 def get_or_create_character_status(character):
@@ -20,14 +20,15 @@ def get_or_create_character_status(character):
     char_status, created = CharacterStatus.objects.get_or_create(
         character=character,
         defaults={
-            'earned_status': 0,
-            'position_status': 0,
-            'temporary_status': 0,
-            'sect': 'Camarilla',
-            'reputation': ''
-        }
+            "earned_status": 0,
+            "position_status": 0,
+            "temporary_status": 0,
+            "sect": "Camarilla",
+            "reputation": "",
+        },
     )
 
+    _track_status_instance(char_status)
     return char_status
 
 
@@ -95,6 +96,7 @@ def get_status_bonus(character, context="social"):
     return base_bonus
 
 
+@_status_atomic
 def set_earned_status(character, value, reason="", changed_by=None):
     """
     Set character's earned Status.
@@ -119,13 +121,31 @@ def set_earned_status(character, value, reason="", changed_by=None):
         char_status.add_status_history(
             change,
             reason or f"Status adjusted to {char_status.earned_status}",
-            str(changed_by) if changed_by else "System"
+            str(changed_by) if changed_by else "System",
         )
 
     char_status.save()
+    if change != 0:
+        from chronicle.services import record_event
+
+        record_event(
+            idempotency_key=f"status:{char_status.pk}:status.changed:{char_status.modified_date.isoformat()}",
+            source_app="status",
+            source_type="CharacterStatus",
+            source_id=str(char_status.pk),
+            kind="status.changed",
+            title="Earned status changed",
+            summary="A character's earned Status changed.",
+            payload={"old_value": old_value, "new_value": char_status.earned_status},
+            visibility="participants",
+            actor=getattr(changed_by, "account", None),
+            participants=(character,),
+            occurred_at=char_status.modified_date,
+        )
     return char_status
 
 
+@_status_atomic
 def modify_earned_status(character, change, reason="", changed_by=None):
     """
     Modify character's earned Status by a delta.
@@ -145,6 +165,7 @@ def modify_earned_status(character, change, reason="", changed_by=None):
     return set_earned_status(character, new_value, reason, changed_by)
 
 
+@_status_atomic
 def assign_position(character, position_name, assigned_by=None):
     """
     Assign a Camarilla position to a character.
@@ -177,14 +198,31 @@ def assign_position(character, position_name, assigned_by=None):
     if position.is_unique:
         old_holders = CharacterStatus.objects.filter(position=position)
         for old_holder in old_holders:
+            _track_status_instance(old_holder)
             old_holder.position = None
             old_holder.position_status = 0
             old_holder.add_status_history(
                 -position.status_granted,
                 f"Removed from position: {position.name}",
-                str(assigned_by) if assigned_by else "System"
+                str(assigned_by) if assigned_by else "System",
             )
             old_holder.save()
+            from chronicle.services import record_event
+
+            record_event(
+                idempotency_key=f"status:{old_holder.pk}:position.removed:{old_holder.modified_date.isoformat()}",
+                source_app="status",
+                source_type="CharacterStatus",
+                source_id=str(old_holder.pk),
+                kind="position.removed",
+                title="Position removed",
+                summary="A character's position was removed.",
+                payload={"position": position.name},
+                visibility="participants",
+                actor=getattr(assigned_by, "account", None),
+                participants=(old_holder.character,),
+                occurred_at=old_holder.modified_date,
+            )
 
     # Assign position
     char_status.position = position
@@ -193,13 +231,30 @@ def assign_position(character, position_name, assigned_by=None):
     char_status.add_status_history(
         position.status_granted,
         f"Appointed to position: {position.name}",
-        str(assigned_by) if assigned_by else "System"
+        str(assigned_by) if assigned_by else "System",
     )
     char_status.save()
+    from chronicle.services import record_event
+
+    record_event(
+        idempotency_key=f"status:{char_status.pk}:position.assigned:{char_status.modified_date.isoformat()}",
+        source_app="status",
+        source_type="CharacterStatus",
+        source_id=str(char_status.pk),
+        kind="position.assigned",
+        title="Position assigned",
+        summary="A character was appointed to a position.",
+        payload={"position": position.name},
+        visibility="participants",
+        actor=getattr(assigned_by, "account", None),
+        participants=(character,),
+        occurred_at=char_status.modified_date,
+    )
 
     return (True, f"{character.key} appointed as {position.name}.")
 
 
+@_status_atomic
 def remove_position(character, removed_by=None):
     """
     Remove character's position.
@@ -216,17 +271,32 @@ def remove_position(character, removed_by=None):
     if not char_status or not char_status.position:
         return (False, f"{character.key} does not hold a position.")
 
+    _track_status_instance(char_status)
     position_name = char_status.position.name
     status_lost = char_status.position_status
 
     char_status.position = None
     char_status.position_status = 0
     char_status.add_status_history(
-        -status_lost,
-        f"Removed from position: {position_name}",
-        str(removed_by) if removed_by else "System"
+        -status_lost, f"Removed from position: {position_name}", str(removed_by) if removed_by else "System"
     )
     char_status.save()
+    from chronicle.services import record_event
+
+    record_event(
+        idempotency_key=f"status:{char_status.pk}:position.removed:{char_status.modified_date.isoformat()}",
+        source_app="status",
+        source_type="CharacterStatus",
+        source_id=str(char_status.pk),
+        kind="position.removed",
+        title="Position removed",
+        summary="A character's position was removed.",
+        payload={"position": position_name},
+        visibility="participants",
+        actor=getattr(removed_by, "account", None),
+        participants=(character,),
+        occurred_at=char_status.modified_date,
+    )
 
     return (True, f"{character.key} removed from position: {position_name}.")
 
@@ -238,7 +308,7 @@ def get_all_positions():
     Returns:
         QuerySet: Active positions ordered by hierarchy
     """
-    return CamarillaPosition.objects.filter(is_active=True).order_by('-hierarchy_level', 'name')
+    return CamarillaPosition.objects.filter(is_active=True).order_by("-hierarchy_level", "name")
 
 
 def get_position_holders(position_name):
@@ -283,10 +353,10 @@ def create_status_request(character, request_type, reason, **kwargs):
         character=character,
         request_type=request_type,
         reason=reason,
-        requested_change=kwargs.get('requested_change', 0),
-        requested_position=kwargs.get('requested_position', None),
-        ooc_notes=kwargs.get('ooc_notes', ''),
-        status='pending'
+        requested_change=kwargs.get("requested_change", 0),
+        requested_position=kwargs.get("requested_position"),
+        ooc_notes=kwargs.get("ooc_notes", ""),
+        status="pending",
     )
 
     return request
@@ -299,7 +369,7 @@ def get_pending_status_requests():
     Returns:
         QuerySet: Pending requests
     """
-    return StatusRequest.objects.filter(status='pending').order_by('-created_date')
+    return StatusRequest.objects.filter(status="pending").order_by("-created_date")
 
 
 def get_character_status_requests(character, status=None):
@@ -318,7 +388,7 @@ def get_character_status_requests(character, status=None):
     if status:
         requests = requests.filter(status=status)
 
-    return requests.order_by('-created_date')
+    return requests.order_by("-created_date")
 
 
 def format_status_display(character):
@@ -334,7 +404,7 @@ def format_status_display(character):
     char_status = get_character_status(character)
 
     if not char_status:
-        return f"|wNo Status record|n"
+        return "|wNo Status record|n"
 
     # Simple header
     output = []
@@ -363,7 +433,7 @@ def format_status_display(character):
     if char_status.position:
         output.append(f"\n|wPosition:|n {char_status.position.name}")
         if char_status.position.title:
-            output.append(f"  \"{char_status.position.title}\"")
+            output.append(f'  "{char_status.position.title}"')
         output.append(f"  Status Granted: {char_status.position.status_granted}")
 
     # Sect
@@ -376,7 +446,7 @@ def format_status_display(character):
 
     # Reputation (if set)
     if char_status.reputation:
-        output.append(f"\n|wReputation:|n")
+        output.append("\n|wReputation:|n")
         output.append(f"{char_status.reputation}")
 
     return "\n".join(output)
@@ -397,7 +467,7 @@ def initialize_default_positions():
             "description": "Ruler of the city domain, arbiter of the Traditions",
             "is_unique": True,
             "requires_status": 2,
-            "sect": "Camarilla"
+            "sect": "Camarilla",
         },
         {
             "name": "Primogen",
@@ -407,7 +477,7 @@ def initialize_default_positions():
             "description": "Clan representative on the Primogen Council",
             "is_unique": False,
             "requires_status": 1,
-            "sect": "Camarilla"
+            "sect": "Camarilla",
         },
         {
             "name": "Sheriff",
@@ -417,7 +487,7 @@ def initialize_default_positions():
             "description": "Enforcer of the Prince's will and Traditions",
             "is_unique": True,
             "requires_status": 1,
-            "sect": "Camarilla"
+            "sect": "Camarilla",
         },
         {
             "name": "Scourge",
@@ -427,7 +497,7 @@ def initialize_default_positions():
             "description": "Hunter of unauthorized vampires and Thin-Bloods",
             "is_unique": True,
             "requires_status": 0,
-            "sect": "Camarilla"
+            "sect": "Camarilla",
         },
         {
             "name": "Keeper of Elysium",
@@ -437,7 +507,7 @@ def initialize_default_positions():
             "description": "Guardian of Elysium and enforcer of its neutrality",
             "is_unique": True,
             "requires_status": 1,
-            "sect": "Camarilla"
+            "sect": "Camarilla",
         },
         {
             "name": "Whip",
@@ -447,7 +517,7 @@ def initialize_default_positions():
             "description": "Assistant to a Primogen, enforcer of clan discipline",
             "is_unique": False,
             "requires_status": 0,
-            "sect": "Camarilla"
+            "sect": "Camarilla",
         },
         {
             "name": "Harpy",
@@ -457,7 +527,7 @@ def initialize_default_positions():
             "description": "Arbiter of social standing and boons",
             "is_unique": False,
             "requires_status": 1,
-            "sect": "Camarilla"
+            "sect": "Camarilla",
         },
         {
             "name": "Seneschal",
@@ -467,16 +537,13 @@ def initialize_default_positions():
             "description": "Second to the Prince, acts in their absence",
             "is_unique": True,
             "requires_status": 2,
-            "sect": "Camarilla"
+            "sect": "Camarilla",
         },
     ]
 
     created_count = 0
     for pos_data in default_positions:
-        position, created = CamarillaPosition.objects.get_or_create(
-            name=pos_data["name"],
-            defaults=pos_data
-        )
+        position, created = CamarillaPosition.objects.get_or_create(name=pos_data["name"], defaults=pos_data)
         if created:
             created_count += 1
 
@@ -486,6 +553,7 @@ def initialize_default_positions():
 # =============================================================================
 # FORMATTING FUNCTIONS (Presentation Layer)
 # =============================================================================
+
 
 def format_character_status(character, char_status):
     """
@@ -525,7 +593,7 @@ def format_character_status(character, char_status):
     if char_status.position:
         output.append(f"\n|wPosition:|n {char_status.position.name}")
         if char_status.position.title:
-            output.append(f"  \"{char_status.position.title}\"")
+            output.append(f'  "{char_status.position.title}"')
         output.append(f"  {char_status.position.description}")
 
     # Sect
@@ -538,7 +606,7 @@ def format_character_status(character, char_status):
 
     # Reputation
     if char_status.reputation:
-        output.append(f"\n|wReputation:|n")
+        output.append("\n|wReputation:|n")
         output.append(f"{char_status.reputation}")
 
     return "\n".join(output)
@@ -560,11 +628,11 @@ def format_status_history(char_status):
     output.append("|c*" + "=" * 78 + "*|n\n")
 
     for entry in reversed(char_status.status_history[-10:]):  # Last 10 entries
-        date = entry.get('date', 'Unknown')[:10]  # Just the date part
-        change = entry.get('change', 0)
-        reason = entry.get('reason', 'No reason given')
-        changed_by = entry.get('changed_by', 'Unknown')
-        new_total = entry.get('new_total', 0)
+        date = entry.get("date", "Unknown")[:10]  # Just the date part
+        change = entry.get("change", 0)
+        reason = entry.get("reason", "No reason given")
+        changed_by = entry.get("changed_by", "Unknown")
+        new_total = entry.get("new_total", 0)
 
         change_str = f"|g+{change}|n" if change > 0 else f"|r{change}|n" if change < 0 else "±0"
 
@@ -607,7 +675,7 @@ def format_positions_list(positions):
         bonus_str = f"+{position.status_granted}" if position.status_granted > 0 else str(position.status_granted)
         description = position.description[:44] + "..." if len(position.description) > 44 else position.description
 
-        row_content = "|w{:<20} {:<8} {:<44}|n".format(position.name, bonus_str, description)
+        row_content = f"|w{position.name:<20} {bonus_str:<8} {description:<44}|n"
         output.append(f"|c|||n {row_content} |c|||n")
 
         # Holder info (if any)
@@ -618,7 +686,7 @@ def format_positions_list(positions):
             holder_line = f"{holder_line:<74}"
             output.append(f"|c|||n {holder_line} |c|||n")
         elif position.is_unique:
-            vacant_line = f"  (Vacant)"
+            vacant_line = "  (Vacant)"
             vacant_line = f"{vacant_line:<74}"
             output.append(f"|c|||n {vacant_line} |c|||n")
 
@@ -652,7 +720,7 @@ def format_position_detail(position):
     output.append(f"|wHierarchy Level:|n {position.hierarchy_level}")
 
     # Description
-    output.append(f"\n|wDescription:|n")
+    output.append("\n|wDescription:|n")
     output.append(f"{position.description}")
 
     # Requirements
@@ -661,16 +729,16 @@ def format_position_detail(position):
 
     # Unique/Multiple
     if position.is_unique:
-        output.append(f"\n|wType:|n Unique position (only one holder)")
+        output.append("\n|wType:|n Unique position (only one holder)")
     else:
-        output.append(f"\n|wType:|n Multiple holders allowed")
+        output.append("\n|wType:|n Multiple holders allowed")
 
     # Current holders
     if holders.exists():
-        output.append(f"\n|wCurrent Holder(s):|n")
+        output.append("\n|wCurrent Holder(s):|n")
         for holder in holders:
             output.append(f"  {holder.character.key}")
     else:
-        output.append(f"\n(Currently vacant)")
+        output.append("\n(Currently vacant)")
 
     return "\n".join(output)

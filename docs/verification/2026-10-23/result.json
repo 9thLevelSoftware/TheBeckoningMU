@@ -1,0 +1,58 @@
+{
+  "date": "2026-10-23",
+  "environment": {
+    "python": "3.12.14",
+    "evennia": "6.1.0",
+    "Django": "6.0.8",
+    "mcp": "1.30.0",
+    "django-oauth-toolkit": "3.4.1",
+    "ruff": "0.16.9"
+  },
+  "full_suite": {
+    "command": ".venv/Scripts/evennia.exe test --settings settings.py .",
+    "tests": 311,
+    "seconds": 289.838,
+    "failures": 15,
+    "errors": 66,
+    "new_failing_cases": [],
+    "resolved_failing_cases": [],
+    "failing_case_set_unchanged": true,
+    "log_sha256": "d406922c05691ed59000c98922eeefd99962efd517de92486ac71e01ee345245"
+  },
+  "feature_test_counts": {
+    "chronicle/tests.py": 22,
+    "narrative/tests.py": 34,
+    "mcp_server/tests.py": 16,
+    "mcp_server/test_oauth_flow.py": 3
+  },
+  "feature_failures": [],
+  "provider_transport_smoke": {
+    "endpoint": "loopback HTTP only",
+    "success": true,
+    "http_503_rejected": true,
+    "malformed_envelope_rejected": true,
+    "actual_hunt_command_tested_with_http_provider": false
+  },
+  "review": {
+    "verdict": "ACCEPT",
+    "scope": "Frozen bounded source delta; no material supported findings",
+    "independent_agent": "audit_narrative_mcp"
+  },
+  "scoped_ruff_lint_and_format": "passed (worker-owned files and new OAuth test)",
+  "original_wip_preserved": {
+    "autoresearch.sh": true,
+    "dice/roll_result.py": true
+  },
+  "changed_python_sha256": {
+    "chronicle/services.py": "a5071386a45932a6e6c623fc019481d442312e148f88a32f2f66d567cac03a9f",
+    "chronicle/read_services.py": "f84b9ea950e0c885e319271357b9421d471edb60d83f66bf91ebfc08b1353c78",
+    "chronicle/views.py": "487a31bf42af21adbb1153c4855704054447753263210ceee5959ec2e54bbae0",
+    "chronicle/tests.py": "91b2d19e851a9cba666477c0d01fad7690cce8a94d9bdc624bedaf84b0c5980c",
+    "narrative/services.py": "89a1dd320c48359406dd70f666b8a3546840ac2fe1cc624d664946ad5781e950",
+    "narrative/tests.py": "de48a981155707748b7104ce590c32fecd9af20d71dd5c343d145e888131765f",
+    "mcp_server/test_oauth_flow.py": "e2a4b05e3aec177d3be9a3f308431fad0795d83bf738973ede57b8635b2fea1c"
+  },
+  "production_migrations_applied": false,
+  "live_deployment_qualified": false,
+  "local_log_directory": "C:\\Users\\dasbl\\AppData\\Local\\Temp\\beckoning-resume-20261023-01a16979"
+}

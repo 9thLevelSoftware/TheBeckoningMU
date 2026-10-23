@@ -4,11 +4,67 @@ Django Models for Status System
 Tracks Camarilla positions, Status ratings, and status change requests.
 """
 
-from django.db import models
+from contextvars import ContextVar
+from functools import wraps
+
+from django.db import models, transaction
 from evennia.typeclasses.models import SharedMemoryModel
 
 # Request types that can be stored but have no implementation yet.
 UNSUPPORTED_REQUEST_TYPES = ("sect_change",)
+
+
+_status_changes = ContextVar("status_changes", default=None)
+
+
+def _track_status_instance(instance):
+    """Register a status object before an operation can mutate its cached fields."""
+    changes = _status_changes.get()
+    if changes is not None:
+        changes.setdefault(id(instance), (instance, instance.pk, instance._state.db))
+
+
+def _restore_status_instances(changes):
+    """Repair only affected Python instances after their SQL transaction rolls back."""
+    for instance, primary_key, database in changes.values():
+        fields = [field.attname for field in instance._meta.concrete_fields]
+        persisted = type(instance).objects.using(database).filter(pk=primary_key).values(*fields).first()
+        instance._state.fields_cache.clear()
+        instance._prefetched_objects_cache = {}
+        if persisted is None:
+            # The row was created inside the rolled-back operation. Do not
+            # leave its now-nonexistent identity available through idmapper.
+            instance.flush_from_cache(force=True)
+            instance.pk = None
+            instance._state.adding = True
+        else:
+            # refresh_from_db constructs a model through the same idmapper and
+            # can return this stale instance. Scalar values avoid that path;
+            # __dict__ assignment also avoids any saving field descriptors.
+            instance.__dict__.update(persisted)
+
+
+def _status_atomic(operation):
+    """Keep status rows and the operation's idmapper instances consistent on failure."""
+
+    @wraps(operation)
+    def wrapped(*args, **kwargs):
+        parent_changes = _status_changes.get()
+        changes = {}
+        token = _status_changes.set(changes)
+        try:
+            try:
+                with transaction.atomic():
+                    return operation(*args, **kwargs)
+            except Exception:
+                _restore_status_instances(changes)
+                raise
+        finally:
+            _status_changes.reset(token)
+            if parent_changes is not None:
+                parent_changes.update(changes)
+
+    return wrapped
 
 
 class CamarillaPosition(SharedMemoryModel):
@@ -250,6 +306,7 @@ class StatusRequest(SharedMemoryModel):
     def __str__(self):
         return f"{self.character.key} - {self.request_type} ({self.status})"
 
+    @_status_atomic
     def approve(self, staff_member, reason=""):
         """
         Approve a pending request and apply it.
@@ -270,6 +327,11 @@ class StatusRequest(SharedMemoryModel):
         from django.db import transaction
         from django.utils import timezone
 
+        _track_status_instance(self)
+        from .utils import get_character_status
+
+        current_status = get_character_status(self.character)
+        old_value = current_status.earned_status if current_status else 0
         with transaction.atomic():
             current = type(self).objects.filter(pk=self.pk).values_list("status", flat=True).first()
             if self.status != "pending" or current != "pending":
@@ -278,13 +340,30 @@ class StatusRequest(SharedMemoryModel):
             success, message = self._apply_change(staff_member)
             if not success:
                 transaction.set_rollback(True)
-                return (False, message)
 
-            self.status = "approved"
-            self.reviewed_by = staff_member
-            self.resolution_reason = reason
-            self.resolved_date = timezone.now()
-            self.save()
+            if success:
+                self.status = "approved"
+                self.reviewed_by = staff_member
+                self.resolution_reason = reason
+                self.resolved_date = timezone.now()
+                self.save()
+        if not success:
+            _restore_status_instances(_status_changes.get() or {})
+            return (False, message)
+        from chronicle.services import record_event
+
+        payload = {}
+        if self.requested_position:
+            payload["position"] = self.requested_position.name
+        if self.request_type == "earned_status":
+            payload.update(old_value=old_value, new_value=get_character_status(self.character).earned_status)
+        record_event(
+            idempotency_key=f"status:{self.pk}:status.request_approved:{self.resolved_date.isoformat()}",
+            source_app="status", source_type="StatusRequest", source_id=str(self.pk), kind="status.request_approved",
+            title="Status request approved", summary="A status request was approved.", payload=payload,
+            visibility="participants", actor=getattr(staff_member, "account", None), participants=(self.character,),
+            occurred_at=self.resolved_date,
+        )
         return (True, message)
 
     def deny(self, staff_member, reason=""):

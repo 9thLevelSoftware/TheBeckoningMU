@@ -10,6 +10,7 @@ from .models import Job, Bucket, Comment
 from evennia.accounts.models import AccountDB
 from django.conf import settings
 from django.db import Error as DbError
+from django.db import transaction
 from . import utils
 
 COMMAND_DEFAULT_CLASS = class_from_module(settings.COMMAND_DEFAULT_CLASS)
@@ -139,8 +140,10 @@ class CmdJobClaim(COMMAND_DEFAULT_CLASS):
             return
         
         # Claim the job
-        job.players.add(utils.account_of(self.caller))
-        job.save()
+        with transaction.atomic():
+            job.players.add(utils.account_of(self.caller))
+            job.save()
+        utils.record_job_transition(job, "job.claimed", self.caller)
         
         self.caller.msg(f"You have claimed job {job.ref}: {job.title}")
 
@@ -186,6 +189,7 @@ class CmdJobDone(COMMAND_DEFAULT_CLASS):
         job.completed = True
         job.status = "CLOSED"
         job.save()
+        utils.record_job_transition(job, "job.completed", self.caller)
         
         self.caller.msg(f"Job {job.ref}: {job.title} has been marked as complete.")
 
@@ -376,6 +380,7 @@ class CmdJobSubmit(COMMAND_DEFAULT_CLASS):
                 creator=utils.account_of(self.caller),
                 status="OPEN"
             )
+            utils.record_job_transition(job, "job.created", self.caller)
             self.caller.msg(f"Job {job.ref} created: {job.title}")
         except DbError as e:
             self.caller.msg(f"A database error occurred while creating the job: {e}")
@@ -429,6 +434,7 @@ class CmdJobCreate(COMMAND_DEFAULT_CLASS):
                 creator=utils.account_of(self.caller),
                 status="OPEN"
             )
+            utils.record_job_transition(job, "job.created", self.caller)
             self.caller.msg(f"Job {job.ref} created: {job.title}")
         except DbError as e:
             self.caller.msg(f"A database error occurred while creating the job: {e}")
@@ -510,6 +516,7 @@ class CmdJobReopen(COMMAND_DEFAULT_CLASS):
         job.completed = False
         job.status = "OPEN"
         job.save()
+        utils.record_job_transition(job, "job.reopened", self.caller)
         
         self.caller.msg(f"Job {job.ref}: {job.title} has been reopened.")
 
