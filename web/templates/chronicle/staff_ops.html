@@ -62,20 +62,6 @@
     {% endif %}
 
     <section>
-        <h2>Boon-ledger discrepancies</h2>
-        <p>This report compares the cached ledger with a read-only recalculation. It never changes records.</p>
-        {% for discrepancy in boon_ledger_discrepancies %}
-        <details>
-            <summary>{{ discrepancy.character }}</summary>
-            <pre>Stored: {{ discrepancy.stored }}
-Expected: {{ discrepancy.expected }}</pre>
-        </details>
-        {% empty %}
-        <p>No discrepancies found.</p>
-        {% endfor %}
-    </section>
-
-    <section>
         <h2>Unpublished drafts</h2>
         {% for event in draft_events %}
         <article id="event-{{ event.pk }}" style="border-top:1px solid #444;padding:12px 0;">

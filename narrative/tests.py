@@ -8,6 +8,8 @@ from evennia.objects.models import ObjectDB
 from evennia.utils.test_resources import EvenniaCommandTest
 from twisted.internet.defer import Deferred, fail, succeed
 
+from traits.models import CharacterBio
+
 from .models import (
     MemoryFact,
     NarrativeConsent,
@@ -31,6 +33,8 @@ class NarrativeStoryTests(TestCase):
             db_typeclass_path="typeclasses.characters.Character",
             db_account=self.other_account,
         )
+        CharacterBio.objects.create(character=self.character, account=self.account)
+        CharacterBio.objects.create(character=self.other_character, account=self.other_account)
         self.npc = ObjectDB.objects.create(db_key="NarrativeNPC", db_typeclass_path="typeclasses.characters.Character")
         self.persona = NarrativePersona.objects.create(character=self.npc, profile="A reserved night-shift clerk.")
         self.session = StorySession.objects.create(
@@ -113,8 +117,8 @@ class NarrativeStoryTests(TestCase):
         caller = self.character
         caller.msg = Mock()
         hunger_before = get_hunger(caller)
-        command = type("CommandStub", (), {"caller": caller, "args": "start street"})()
-        with patch("commands.v5.hunt.hunt_prey") as hunt:
+        command = type("CommandStub", (), {"caller": caller, "args": "start downtown"})()
+        with patch("commands.v5.hunt.hunt") as hunt:
             CmdHunt._story_hunt(command)
         hunt.assert_not_called()
         self.assertEqual(get_hunger(caller), hunger_before)
@@ -362,7 +366,7 @@ class NarrativePrivacyTests(TestCase):
     def test_queued_changed_owner_never_sends_player_text(self):
         queued = []
         self._request(queued.append)
-        ObjectDB.objects.filter(pk=self.character.pk).update(db_account=self.other_account)
+        CharacterBio.objects.filter(character=self.character).update(account=self.other_account)
         queued[0]()
         self.assertEqual(self.messages, [])
 
@@ -551,6 +555,15 @@ class NarrativePrivacyTests(TestCase):
 
 
 class NarrativeCommandDispatchTests(EvenniaCommandTest):
+    def setUp(self):
+        super().setUp()
+        self.char1.predator_type = "Alleycat"
+        self.char1.hunger = 5
+        self.char1.set_trait("Strength", 4)
+        self.char1.set_trait("Brawl", 3)
+        CharacterBio.objects.create(character=self.char1, account=self.char1.account, status="approved")
+        NarrativeConsent.objects.create(account=self.char1.account, character=self.char1, opted_in=True)
+
     def test_hunt_story_switch_runs_and_persists_a_normal_hunt(self):
         from commands.v5.hunt import CmdHunt
 
@@ -559,33 +572,61 @@ class NarrativeCommandDispatchTests(EvenniaCommandTest):
                 return succeed(json.dumps({"prose": "A shadow moves.", "citations": []}))
 
         caller = self.char1
-        caller.db.vampire = {"predator_type": "Alleycat", "hunger": 1}
-        NarrativeConsent.objects.create(account=caller.account, character=caller, opted_in=True)
-        outcome = {
-            "hunting_success": True,
-            "old_hunger": 1,
-            "new_hunger": 2,
-            "hunger_reduction": 1,
-            "resonance": {"type": "sanguine"},
-            "complications": [],
-        }
-
         with (
             patch("narrative.services.configured_provider", return_value=StubProvider()),
             patch("narrative.services.reactor.callFromThread", side_effect=lambda callback: callback()),
-            patch("commands.v5.hunt.get_predator_hunting_bonus", return_value={"bonus_dice": 1}),
-            patch("commands.v5.hunt.hunt_prey", return_value=outcome) as hunt,
+            patch("dice.dice_roller.randint", return_value=8) as dice,
         ):
             output = self.call(
                 CmdHunt(),
-                "/story start street",
+                "/story start downtown",
                 cmdstring="+hunt",
                 caller=caller,
             )
+            self.call(CmdHunt(), "/story resume I watch.", caller=caller)
+            self.call(CmdHunt(), "/story start downtown", caller=caller)
 
-        self.assertEqual(hunt.call_count, 1, output)
+        self.assertEqual(dice.call_count, 7, output)
         session = StorySession.objects.get(character=caller, status=StorySession.Status.ACTIVE)
-        request = StoryGenerationRequest.objects.get(session=session)
-        self.assertEqual(session.deterministic_outcome["hunger_after"], 2)
+        request = StoryGenerationRequest.objects.filter(session=session).latest("id")
+        self.assertEqual(session.deterministic_outcome["hunger_before"], 5)
+        self.assertEqual(session.deterministic_outcome["hunger_after"], 3)
+        self.assertEqual(session.deterministic_outcome["hunger_reduction"], 2)
+        self.assertEqual(caller.hunger, 3)
+        self.assertIsNotNone(caller.last_hunt)
         self.assertEqual(request.response, "A shadow moves.")
         self.assertIn("[AI-generated narrative]", output)
+
+    def test_story_hunt_refusals_use_current_rules_without_request_or_dice(self):
+        from commands.v5.hunt import CmdHunt
+
+        cases = (
+            ("street", 5, None, "Invalid location"),
+            ("downtown", 1, None, "without a kill"),
+            ("downtown", 5, timezone.now().timestamp(), "already hunted"),
+        )
+        for ground, hunger, last_hunt, message in cases:
+            with self.subTest(ground=ground, hunger=hunger, last_hunt=last_hunt):
+                self.char1.hunger = hunger
+                self.char1.last_hunt = last_hunt
+                with (
+                    patch("narrative.services.configured_provider", return_value=Mock()),
+                    patch("dice.dice_roller.randint", side_effect=AssertionError("Unexpected roll")),
+                ):
+                    output = self.call(CmdHunt(), f"/story start {ground}", caller=self.char1)
+                self.assertIn(message, output)
+                self.assertEqual(self.char1.hunger, hunger)
+                self.assertFalse(StorySession.objects.exists())
+                self.assertFalse(StoryGenerationRequest.objects.exists())
+
+    def test_stale_consent_cannot_hunt_after_application_ownership_changes(self):
+        from commands.v5.hunt import CmdHunt
+
+        CharacterBio.objects.filter(character=self.char1).update(account=self.account2)
+        with patch("dice.dice_roller.randint", side_effect=AssertionError("Unexpected roll")):
+            output = self.call(CmdHunt(), "/story start downtown", caller=self.char1)
+        self.assertIn("owning account", output)
+        self.assertEqual(self.char1.hunger, 5)
+        self.assertIsNone(self.char1.last_hunt)
+        self.assertFalse(StorySession.objects.exists())
+        self.assertFalse(StoryGenerationRequest.objects.exists())

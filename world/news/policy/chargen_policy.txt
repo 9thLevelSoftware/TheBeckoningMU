@@ -8,32 +8,40 @@
 |c1. CHARACTER APPROVAL PROCESS|n
 
 |yApproval Required|n
-- ALL characters must be approved by staff before play
-- Use web chargen OR in-game |w+chargen|n system
-- Submit with |w+chargen/finalize|n or web "Submit for Approval"
-- Approval typically within 24-48 hours
+- Characters are created only on the game website (|w/character-creation/|n)
+- A character can't be played (|wic|n), roll or spend XP until staff approve it
+- The website checks every V5 creation rule before it accepts a character
 
 |yWhat Staff Reviews|n
 - Concept fits V5 Vampire theme
-- Mechanical stats are legal and balanced
 - Background is realistic and grounded
 - Character doesn't break game continuity
 - No "special snowflake" concepts without approval
+- A staff member never approves their own character (Admins excepted,
+  and every approval records who made it). Approving a character made on
+  your own second account counts as approving your own: it is forbidden.
+  The approval page shows the address each application came from and
+  flags one that matches the reviewer's.
 
 |yRevisions|n
-- Staff may request changes before approval
-- Check your |w+jobs|n for staff feedback
-- Resubmit after making requested changes
-- Usually approved within 1-2 revision rounds
+- Staff may reject a character with notes saying what to change
+- You are told in game; edit and resubmit it on the website
+- You can delete your own character at any time, approved or not, with
+  |wchardelete <name>|n (this cannot be undone)
+- Staff can revoke an approval; the character is taken out of play.
+  Revoking only pauses play: your sheet, XP and everything bought in play
+  are kept. Resubmit it on the website (you may update the concept,
+  sire, ambition, desire and background) and staff review it as it stands
 
 |w═══════════════════════════════════════════════════════════════════|n
 
 |c2. CHARACTER CONCEPT GUIDELINES|n
 
 |yAppropriate Concepts|n
-- Newly-Embraced vampires (neonates)
-- Thin-Bloods (Duskborn)
-- Ancillae (100-300 years old, with strong justification)
+- Childer: Embraced within the last 15 years (12th-13th generation),
+  or thin-bloods (14th-16th generation)
+- Neonates: Embraced between 1940 and a decade ago (12th-13th generation)
+- Ancillae: Embraced between 1780 and 1940 (10th-11th generation)
 - Characters who fit the V5 modern nights setting
 - Concepts that create RP opportunities for others
 
@@ -46,7 +54,6 @@
 - Werewolves, Mages, or other supernatural types (Vampire game only)
 
 |yGrey Area (Requires Staff Approval)|n
-- Ancillae (older than 100 years)
 - Characters with exotic bloodlines
 - Characters involved in major historical events
 - Characters with unusual merits or flaws
@@ -57,40 +64,19 @@
 
 |c3. MECHANICAL GUIDELINES|n
 
-|yStarting Character Stats|n
+The website enforces the V5 core-book creation rules: age (Childer,
+Neonate or Ancilla), attribute and skill distributions, specialties,
+Disciplines, predator type, advantages and flaws, Convictions and
+starting values. They are listed in full in |whelp chargen|n; that list
+is kept in step with the website's checks, so it is not repeated here.
 
-|wAttributes:|n
-- 1 dot in all attributes for free
-- Assign 7/5/3 dots across Physical/Social/Mental
-- No attribute above 3 at character creation (rare exceptions)
-
-|wSkills:|n
-- Assign 13/9/5 dots across Talents/Skills/Knowledges
-- No skill above 3 at character creation (without justification)
-- At least one specialty (dot represents specialized training)
-
-|wDisciplines:|n
-- 2 dots in-clan disciplines (e.g., 2/0/0 or 1/1/0)
-- Caitiff: 2 dots in any disciplines (with justification)
-- Thin-Bloods: Thin-Blood Alchemy instead
-- Out-of-clan disciplines require strong IC justification
-
-|wBackgrounds:|n
-- 3 dots total to distribute
-- Resources 3+ requires justification (you're rich!)
-- Herd 3+ means significant mortal blood supply
-- Allies/Contacts: Define who they are
-
-|wAdvantages:|n
-- Humanity starts at 7 (adjust with merits/flaws if desired)
-- Willpower = Composure + Resolve (max 10)
-- Health levels standard for vampires
-- Blood Potency 0-1 for neonates
-
-|wMerits & Flaws:|n
-- Balanced - don't min-max
-- Must have RP justification
-- Some require staff approval (check merit descriptions)
+|yHouse notes|n
+- Ancillae take more advantage and flaw dots (9 and 4) but start at
+  Humanity -1. Ancilla is a standard choice on the form and is
+  reviewed like any other character
+- Instanced backgrounds (Allies, Contacts, Influence, Mawla, Retainers,
+  Status) need a note saying who or what they are
+- A Clan Curse flaw names the clan whose Bane you carry
 
 |w═══════════════════════════════════════════════════════════════════|n
 
@@ -128,12 +114,13 @@
 |c5. CLAN SELECTION|n
 
 |yAvailable Clans|n
-All 13 V5 core clans are available:
+The V5 core book's clans:
 
-|wCamarilla:|n Ventrue, Toreador, Tremere, Malkavian, Nosferatu, Brujah
-|wIndependent:|n Banu Haqim, Gangrel, Ravnos, Hecata, Lasombra
-|wAnarch:|n Ministry, Tzimisce
-|wClanless:|n Caitiff, Thin-Bloods
+|wClans:|n Brujah, Gangrel, Malkavian, Nosferatu, Toreador, Tremere, Ventrue
+|wClanless:|n Caitiff, Thin-Blood
+
+Clans from later books (Banu Haqim, Ministry, Lasombra, Hecata,
+Tzimisce, Ravnos, Salubri) are not available.
 
 |yConsider Before Choosing|n
 - Clan banes and how they affect RP
@@ -143,9 +130,8 @@ All 13 V5 core clans are available:
 
 |yDifficult Clans for New Players|n
 - |yMalkavian|n: Requires maturity to play mental illness well
-- |yNosferatu|n: Social penalty (Hideous) limits some RP
-- |yTzimisce|n: Complex mechanics and alien mindset
-- |yHecata|n: Death-focused, niche roleplay
+- |yNosferatu|n: Repulsive flaw and no Looks merits limit some RP
+- |yThin-Blood|n: Fragile, distrusted, and built from merit/flaw pairs
 
 |yGood Starter Clans|n
 - |gVentrue|n: Leadership, political play
@@ -158,21 +144,22 @@ All 13 V5 core clans are available:
 |c6. PREDATOR TYPE|n
 
 |yRequired Choice|n
-- ALL characters must choose a Predator Type
-- Defines how you feed and your relationship with Hunger
-- Affects starting dots in certain skills/disciplines
+- Every character takes a Predator Type, except thin-bloods (none) and
+  Childer (optional)
+- It gives a specialty, a Discipline dot, and fixed backgrounds,
+  merits or flaws; some change Humanity or Blood Potency
 
 |yAvailable Predator Types|n
-- |wAlleycat|n - Street predator, opportunistic feeding
-- |wBagger|n - Feed on blood bags, hospitals
+- |wAlleycat|n - Take blood by force or threat
+- |wBagger|n - Blood bags, corpses and other preserved blood (not Ventrue)
 - |wBlood Leech|n - Feed on other vampires
-- |wClercestory|n - Feed on your herd, sustainable
-- |wConsensusalist|n - Feed only with permission
-- |wFarmer|n - Feed on animals
-- |wOsmosis|n - Feed during sex
-- |wSandman|n - Break into homes, sleeping victims
-- |wSiren|n - Seduction and willing victims
-- |wScene Queen|n - Feed at clubs and parties
+- |wCleaver|n - Feed covertly on your own mortal family or friends
+- |wConsensualist|n - Feed only with consent
+- |wFarmer|n - Feed on animals only (not Ventrue, Blood Potency 2 or lower)
+- |wOsiris|n - Feed on the followers of your cult, band or fandom
+- |wSandman|n - Feed on sleeping victims
+- |wScene Queen|n - Feed within a subculture where you have status
+- |wSiren|n - Feed under the guise of sex or seduction (not Nosferatu)
 
 |yConsiderations|n
 - How does this fit your Humanity?
@@ -212,7 +199,7 @@ All 13 V5 core clans are available:
 - What do you value most?
 - Examples: "Never harm children", "Protect the weak", "Always repay debts"
 
-|yTouchstones (Max = Humanity ÷ 2)|n
+|yTouchstones (one per Conviction)|n
 - Mortals who anchor your Humanity
 - People you care about
 - Connections to mortal world
@@ -254,10 +241,10 @@ All 13 V5 core clans are available:
 |c10. AFTER APPROVAL|n
 
 |yFirst Steps|n
-1. Read |w+news general/welcome|n and |w+news general/getting_started|n
-2. Post introduction on |w+bbs introductions|n
-3. Set your |w@desc me|n with full description
-4. Find RP! Use |w+who|n and |w+bbs rp|n
+1. Read |wnews general/welcome|n and |wnews general/getting_started|n
+2. Post an introduction with |w+bbpost introductions=<title>/<text>|n
+3. Set your description with |wsetdesc <description>|n
+4. Find RP! Use |wwho|n and |w+bbs rp|n
 5. Join or form a Coterie with |w+coterie|n
 
 |yIC Integration|n
@@ -267,8 +254,10 @@ All 13 V5 core clans are available:
 - Build your story from there
 
 |yOngoing Development|n
-- Use |w+xp/spend|n to improve your character over time
-- All major changes (new disciplines, major merits) need |w+job|n request
+- Use |w+spend <type> <name>|n to improve your character over time
+  (see |whelp xp-guide|n and |w+xp/costs|n)
+- Out-of-clan Disciplines and story-heavy merits need a staff job
+  first (|wjob/submit Requests <title> = <description>|n)
 - Character growth should be reflected in RP
 
 |w═══════════════════════════════════════════════════════════════════|n
@@ -276,18 +265,22 @@ All 13 V5 core clans are available:
 |cCHARGEN HELP & RESOURCES|n
 
 |yIn-Game Help|n
-- |w+help chargen|n - Chargen command help
-- |w+help v5|n - V5 mechanics overview
-- |w+help <clan>|n - Specific clan info
+- |whelp chargen|n - How character creation works
+- |whelp v5-rules-guide|n - V5 rules summary
+- |whelp clans|n - The clans, their banes and Disciplines
 
 |yWeb Resources|n
+- Web chargen: the game website's |y/character-creation/|n page
+- Character approval status: the website's character creation page
+  lists your characters, and you are told in game when staff decide
 - Open the official game website and choose "Create a Character"; sign in to submit
   through the Django character-creation and staff-approval workflow.
-- Retired static pages only redirect when `PUBLIC_GAME_BASE_URL` is configured; otherwise they display an unavailable notice and never claim submission.
+- Retired static pages redirect to the official character creation page when available; otherwise they display an unavailable notice and never claim submission.
 
 |yStaff Assistance|n
-- |w+job/create chargen=<question>|n for help
-- Ask on |w+bbs chargen|n for advice from community
+- |wjob/submit Requests <title> = <question>|n for help (|wbuckets|n lists
+  the buckets you can use; |w+myjobs|n lists your jobs)
+- Ask the community for advice on the chargen board (|w+bbpost chargen=<title>/<question>|n)
 - Page staff if online for quick questions
 
 |w═══════════════════════════════════════════════════════════════════|n

@@ -1,5 +1,7 @@
 """SDK reads in a cached companion process observe separate-process writes."""
 
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -21,3 +23,7 @@ class SeparateProcessFreshnessTests(SimpleTestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('"gate": "mcp-process-freshness"', result.stdout)
         self.assertIn('"passed": true', result.stdout)
+        evidence = json.loads(result.stdout.strip().splitlines()[-1])
+        self.assertEqual(len(evidence["writer_pids"]), 2)
+        self.assertNotEqual(evidence["reader_pid"], os.getpid())
+        self.assertTrue(all(pid != evidence["reader_pid"] for pid in evidence["writer_pids"]))

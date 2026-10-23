@@ -51,6 +51,8 @@ def initialize():
 def fixtures():
     import evennia
 
+    from traits.models import CharacterBio
+
     accounts = [
         evennia.create_account(f"LocalAccount{index}", email=None, password="local-fixture-only") for index in (1, 2)
     ]
@@ -58,11 +60,16 @@ def fixtures():
     for index, account in enumerate(accounts, 1):
         character = evennia.create_object("typeclasses.characters.Character", key=f"LocalCharacter{index}", nohome=True)
         character.account = account
-        character.db.stats = {
-            "attributes": {"mental": {"wits": 4}},
-            "skills": {"social": {"streetwise": 3}, "physical": {"stealth": 3}},
-        }
-        character.db.vampire = {"hunger": 5, "clan": "Brujah", "predator_type": "Alleycat"}
+        character.set_trait("Strength", 4)
+        character.set_trait("Brawl", 3)
+        character.set_trait("Wits", 4)
+        character.set_trait("Streetwise", 3)
+        character.set_trait("Stealth", 3)
+        character.hunger = 5
+        character.blood_potency = 1
+        character.clan = "Brujah"
+        character.predator_type = "Alleycat"
+        CharacterBio.objects.create(character=character, account=account, status="approved")
         characters.append(character)
     return accounts, characters
 
@@ -150,11 +157,11 @@ def narrative_http():
     @defer.inlineCallbacks
     def exercise(_reactor):
         try:
-            command("/story start street")
+            command("/story start downtown")
             assert "opt-in" in str(character.msg.call_args)
             command("/story opt-in")
             assert NarrativeConsent.objects.get(character=character).opted_in
-            for action in ("start street", "resume I wait.", "complete"):
+            for action in ("start downtown", "resume I wait.", "complete"):
                 command("/story " + action)
             assert StorySession.objects.count() == StoryGenerationRequest.objects.count() == 0
             assert get_hunger(character) == 5
@@ -169,11 +176,11 @@ def narrative_http():
                 patch("commands.v5.utils.hunting_utils.random.choices", return_value=["Sanguine"]),
                 patch("commands.v5.utils.hunting_utils.random.choice", side_effect=lambda values: values[0]),
             ):
-                command("/story start street")
+                command("/story start downtown")
                 session = StorySession.objects.get(character=character, status="active")
                 outcome = dict(session.deterministic_outcome)
-                assert outcome["hunger_before"] == 5 and outcome["hunger_after"] == 2
-                assert get_hunger(character) == 2 and dice.call_count == 8, (get_hunger(character), dice.call_count)
+                assert outcome["hunger_before"] == 5 and outcome["hunger_after"] == 3
+                assert get_hunger(character) == 3 and dice.call_count == 7, (get_hunger(character), dice.call_count)
                 first = yield wait_for_request()
                 assert first.status == "succeeded" and first.action_text == ""
                 assert first.response == "A local shadow moves. |r"
@@ -187,21 +194,32 @@ def narrative_http():
                     assert (bool(request.response)) == (mode == "valid")
                     session.refresh_from_db()
                     assert session.deterministic_outcome == outcome
-                    assert get_hunger(character) == 2 and dice.call_count == 8
+                    assert get_hunger(character) == 3 and dice.call_count == 7
                 assert "A local shadow moves." in endpoint.received[1]["messages"][-1]["content"]
-                command("/story start street")  # existing session must not resolve a second hunt
+                command("/story start downtown")  # existing session must not resolve a second hunt
                 yield wait_for_request()
-                assert dice.call_count == 8 and StorySession.objects.count() == 1
+                assert dice.call_count == 7 and StorySession.objects.count() == 1
                 command("/story complete")
                 session.refresh_from_db()
                 assert session.status == "completed" and session.current_action == ""
                 assert not session.requests.exclude(action_text="").exists()
+                # Closing a scene does not bypass the ordinary hunt cooldown.
+                command("/story start downtown")
+                assert "already hunted" in str(character.msg.call_args)
+                assert StorySession.objects.count() == 1 and dice.call_count == 7
                 command("/story opt-out")
                 assert not NarrativeConsent.objects.get(character=character).opted_in
                 # Ordinary deterministic hunting continues to work without any provider.
                 settings.NARRATIVE_AI = {}
-                command(" street")
-                assert dice.call_count == 16 and get_hunger(character) == 0
+                command(" downtown")
+                assert "already hunted" in str(character.msg.call_args)
+                assert dice.call_count == 7 and get_hunger(character) == 3
+                character.last_hunt -= 25 * 3600  # a later night's ordinary hunt
+                command(" downtown")
+                assert dice.call_count == 14 and get_hunger(character) == 1
+                command(" downtown")
+                assert "without a kill" in str(character.msg.call_args)
+                assert dice.call_count == 14 and get_hunger(character) == 1
                 assert StoryGenerationRequest.objects.count() == 7
             assert len(endpoint.received) == len(endpoint.heartbeats) == 7
             print(json.dumps({"gate": "command-http", "requests": 7, "heartbeats_while_pending": 7, "passed": True}))
@@ -216,25 +234,32 @@ def write_fixture(database, phase):
     from evennia.objects.models import ObjectDB
 
     evennia._init()
-    from boons.models import BoonLedger
+    from boons.models import Boon
     from chronicle.models import ChronicleEvent
     from status.models import CamarillaPosition, CharacterStatus
 
     character = ObjectDB.objects.get(db_key="LocalCharacter1" if phase == "update" else "Persisted new name")
     if phase == "update":
-        character.db.stats = {"skills": {"stealth": 4}}
-        character.db.vampire = {"hunger": 2}
-        character.db.pools = {"health": 7}
-        character.db.advantages = {"merits": ["Current merit"]}
+        character.set_trait("Stealth", 4)
+        character.set_trait("Stamina", 4)
+        character.hunger = 2
+        character.set_damage("health", superficial=1, aggravated=2)
+        character.set_advantage("merits", "Beautiful", 0)
+        character.set_advantage("merits", "Stunning", 4)
         ObjectDB.objects.filter(pk=character.pk).update(db_key="Persisted new name")
         CharacterStatus.objects.filter(character=character).update(earned_status=3, position_status=1)
         CamarillaPosition.objects.update(name="Persisted new position")
-        BoonLedger.objects.filter(character=character).update(total_debt_weight=5, total_credit_weight=8, net_weight=3)
+        Boon.objects.filter(debtor=character).update(boon_type="life")
+        Boon.objects.filter(creditor=character).update(status="accepted")
+        other = ObjectDB.objects.get(db_key="LocalCharacter2")
+        Boon.objects.create(debtor=other, creditor=character, boon_type="life", status="accepted")
     else:
         from evennia.accounts.models import AccountDB
 
+        from traits.models import CharacterBio
+
         owner = AccountDB.objects.get(username="LocalAccount2")
-        ObjectDB.objects.filter(pk=character.pk).update(db_account_id=owner.pk)
+        CharacterBio.objects.filter(character=character).update(account=owner)
         ChronicleEvent.objects.filter(idempotency_key="local-private").update(summary="Fresh private event")
     print(json.dumps({"writer_pid": os.getpid(), "phase": phase}))
 
@@ -250,20 +275,23 @@ def mcp_freshness(database):
     from mcp.client.streamable_http import streamable_http_client
     from oauth2_provider.models import AccessToken, Application
 
-    from boons.models import BoonLedger
+    from boons.models import Boon
     from chronicle.models import ChronicleEvent
     from mcp_server.app import create_application
     from mcp_server.auth import OAUTH_SCOPES
     from status.models import CamarillaPosition, CharacterStatus
+    from traits.models import CharacterBio
 
     (account, account2), (character, foreign) = fixtures()
-    character.db.pools = {"health": 1}
-    character.db.advantages = {"merits": ["Old merit"]}
+    character.set_damage("health", superficial=1)
+    character.set_advantage("merits", "Beautiful", 2)
     cached_stats = character.db.stats
     cached_name = character.key
+    cached_bio = CharacterBio.objects.get(character=character)
     position = CamarillaPosition.objects.create(name="Old position")
     status = CharacterStatus.objects.create(character=character, earned_status=1, position=position)
-    ledger = BoonLedger.objects.create(character=character, total_debt_weight=1)
+    debt = Boon.objects.create(debtor=character, creditor=foreign, boon_type="trivial", status="accepted")
+    credit = Boon.objects.create(debtor=foreign, creditor=character, boon_type="major", status="offered")
     event = ChronicleEvent.objects.create(
         idempotency_key="local-private",
         source_app="staff",
@@ -326,14 +354,20 @@ def mcp_freshness(database):
 
                 initial = await call("get_my_character_summary")
                 assert initial["name"] == cached_name and initial["vampire"]["hunger"] == 5
+                assert initial["boons"] == {"owed": 1, "held": 0, "net": -1}
                 assert (await session.call_tool("get_my_character_summary", {"character_id": foreign.pk})).isError
                 write("update")
                 current = await call("get_my_character_summary")
                 assert current["name"] == "Persisted new name"
-                assert current["stats"] == {"skills": {"stealth": 4}}
-                assert current["vampire"] == {"hunger": 2}
-                assert current["pools"] == {"health": 7}
-                assert current["advantages"] == {"merits": ["Current merit"]}
+                assert current["stats"]["skills"]["physical"]["stealth"] == 4
+                assert current["stats"]["attributes"]["physical"]["stamina"] == 4
+                assert current["stats"]["attributes"]["physical"]["strength"] == 4
+                assert current["vampire"]["hunger"] == 2 and current["vampire"]["clan"] == "Brujah"
+                assert current["pools"] == {
+                    "health": {"superficial": 1, "aggravated": 2},
+                    "willpower": {"superficial": 0, "aggravated": 0},
+                }
+                assert current["advantages"]["merits"] == {"Stunning": 4}
                 assert current["status"] == {"earned": 3, "position": "Persisted new position", "total": 4}
                 assert current["boons"] == {"owed": 5, "held": 8, "net": 3}
                 status_result = await call("get_my_status_and_boons")
@@ -358,7 +392,11 @@ def mcp_freshness(database):
 
     async_to_sync(exercise)()
     assert character.key == cached_name and character.db.stats == cached_stats and character.account.pk == account.pk
-    assert status.earned_status == 1 and position.name == "Old position" and ledger.total_debt_weight == 1
+    assert character.hunger == 5 and character.damage["health"] == {"superficial": 1, "aggravated": 0}
+    assert character.advantages["merits"] == {"Beautiful": 2}
+    assert cached_bio.account_id == account.pk
+    assert status.earned_status == 1 and position.name == "Old position"
+    assert debt.boon_type == "trivial" and credit.status == "offered"
     print(
         json.dumps(
             {"gate": "mcp-process-freshness", "reader_pid": os.getpid(), "writer_pids": writer_pids, "passed": True}

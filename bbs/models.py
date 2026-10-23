@@ -2,9 +2,17 @@
 BBS (Bulletin Board System) models for Evennia MUD.
 """
 
-from django.db import models
+import threading
+from contextlib import nullcontext
+
+from django.db import IntegrityError, models, transaction
 from django.db.models import Max
 from evennia.accounts.models import AccountDB
+
+# Same scheme as jobs.models._SEQUENCE_LOCK: serializes post numbering between
+# threads of this process when no outer transaction is open. It doesn't cover
+# other processes or a server database.
+_SEQUENCE_LOCK = threading.Lock()
 
 
 class Board(models.Model):
@@ -121,14 +129,33 @@ class Post(models.Model):
         return f"{self.board.name}/{self.sequence_number}: {self.title}"
     
     def save(self, *args, **kwargs):
-        """Auto-increment sequence_number per board."""
-        if not self.pk and not self.sequence_number:
-            # Get the highest sequence number for this board
-            max_seq = Post.objects.filter(board=self.board).aggregate(
-                Max('sequence_number')
-            )['sequence_number__max']
-            self.sequence_number = (max_seq or 0) + 1
-        super().save(*args, **kwargs)
+        """
+        Allocate the next per-board sequence number for a new post.
+
+        The max is read and the row inserted in one savepoint, retried once
+        if another writer took the number first (IntegrityError).
+        """
+        if self.pk or self.sequence_number:
+            super().save(*args, **kwargs)
+            return
+
+        connection = transaction.get_connection()
+        lock = nullcontext() if connection.in_atomic_block else _SEQUENCE_LOCK
+        with lock:
+            for attempt in range(2):
+                try:
+                    with transaction.atomic():
+                        max_seq = Post.objects.filter(board=self.board).aggregate(
+                            Max("sequence_number")
+                        )["sequence_number__max"]
+                        self.sequence_number = (max_seq or 0) + 1
+                        super().save(*args, **kwargs)
+                    return
+                except IntegrityError:
+                    self.sequence_number = None
+                    self.pk = None
+                    if attempt:
+                        raise
     
     def get_author_name(self, viewer=None):
         """
@@ -175,17 +202,7 @@ class Comment(models.Model):
         help_text="Content of the comment"
     )
     created_at = models.DateTimeField(auto_now_add=True)
-    read_perm = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="Permission required to read this comment (blank = inherit from post)"
-    )
-    write_perm = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="Permission required to reply to this comment (blank = inherit from post)"
-    )
-    
+
     class Meta:
         app_label = 'bbs'
         ordering = ['created_at']

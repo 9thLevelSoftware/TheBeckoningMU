@@ -16,7 +16,8 @@ from .services import public_events, publish_event
 class ChronicleGenerationTests(TestCase):
     def setUp(self):
         self.staff = get_user_model().objects.create_user(username="draft-staff", password="test", is_staff=True)
-        self.player = get_user_model().objects.create_user(username="draft-player", password="test")
+        self.staff.permissions.add("Builder")
+        self.player = get_user_model().objects.create_user(username="draft-player", password="test", is_staff=True)
         self.source = ChronicleEvent.objects.create(
             idempotency_key="generation-source",
             source_app="staff",
@@ -59,10 +60,16 @@ class ChronicleGenerationTests(TestCase):
         value.update(kwargs)
         self.responses[-1].callback(json.dumps(value))
 
+    def revoke_builder(self):
+        # Simulate another process changing the permission while this actor's
+        # Evennia permission handler still holds its original Builder tag.
+        self.assertTrue(self.staff.permissions.has("Builder"))
+        self.staff.db_tags.through.objects.filter(accountdb_id=self.staff.pk, tag__db_tagtype="permission").delete()
+
     def test_staff_required_even_with_stale_actor_permissions(self):
         with self.assertRaises(PermissionError):
             self.request(actor=self.player)
-        get_user_model().objects.filter(pk=self.staff.pk).update(is_staff=False)
+        self.revoke_builder()
         with self.assertRaises(PermissionError):
             self.request()
         self.assertFalse(ChronicleGenerationRequest.objects.exists())
@@ -157,14 +164,14 @@ class ChronicleGenerationTests(TestCase):
                 queued = []
                 request = self.request(scheduler=queued.append)
                 if revoke == "actor":
-                    get_user_model().objects.filter(pk=self.staff.pk).update(is_staff=False)
+                    self.revoke_builder()
                 else:
                     ChronicleEvent.objects.filter(pk=self.source.pk).update(status="redacted")
                 queued[0]()
                 request.refresh_from_db()
                 self.assertEqual(request.status, "failed")
                 self.assertEqual(len(self.sent), 0)
-                get_user_model().objects.filter(pk=self.staff.pk).update(is_staff=True)
+                self.staff.permissions.add("Builder")
 
     def test_edit_during_prompt_assembly_prevents_dispatch(self):
         build_messages = generation._messages
@@ -187,12 +194,12 @@ class ChronicleGenerationTests(TestCase):
                 if change == "source":
                     ChronicleEvent.objects.filter(pk=self.source.pk).update(summary="Edited source.")
                 else:
-                    get_user_model().objects.filter(pk=self.staff.pk).update(is_staff=False)
+                    self.revoke_builder()
                 self.respond()
                 request.refresh_from_db()
                 self.assertEqual(request.status, "failed")
                 self.assertIsNone(request.draft_event)
-                get_user_model().objects.filter(pk=self.staff.pk).update(is_staff=True)
+                self.staff.permissions.add("Builder")
 
     def test_duplicate_submission_dispatch_and_callback_are_idempotent(self):
         key = uuid4()

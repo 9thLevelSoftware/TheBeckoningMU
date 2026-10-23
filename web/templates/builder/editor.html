@@ -420,6 +420,10 @@
                             <textarea id="room-desc" class="form-control form-control-sm"
                                       placeholder="Room description..." style="min-height: 80px; resize: vertical;"></textarea>
                         </div>
+                        <div class="form-check">
+                            <input type="checkbox" id="room-entry" class="form-check-input">
+                            <label class="form-check-label" for="room-entry">Entry room (the live world connects here; default: the first room)</label>
+                        </div>
                     </div>
                 </div>
 
@@ -621,11 +625,15 @@
     </div>
 </div>
 
+{{ project_data_obj|json_script:"map-data" }}
 <script>
-    // Project data
+    // Project data. The map is builder-controlled, so it arrives through
+    // json_script (which escapes <, > and &) and is parsed, never inlined.
     let projectId = {{ project_id|default:"null" }};
+    let projectVersion = {{ project_version|default:"null" }};
     let canEdit = {{ can_edit|yesno:"true,false" }};
-    let mapData = {{ project_data|safe }};
+    const isOwner = {{ is_owner|yesno:"true,false" }};
+    let mapData = JSON.parse(document.getElementById('map-data').textContent);
     let projectStatus = '{{ project_status|default:"new" }}';
 
     // Editor state
@@ -815,6 +823,7 @@
         const room = mapData.rooms[id];
         document.getElementById('room-name').value = room.name || '';
         document.getElementById('room-desc').value = room.description || '';
+        document.getElementById('room-entry').checked = room.is_entry === true;
         document.getElementById('room-notes').value = room.builder_notes || '';
 
         // V5 settings
@@ -857,6 +866,13 @@
 
         document.getElementById('room-desc').oninput = function(e) {
             room.description = e.target.value;
+            markDirty();
+        };
+
+        document.getElementById('room-entry').onchange = function(e) {
+            // Only one room can be the entry room.
+            Object.values(mapData.rooms).forEach(r => { delete r.is_entry; });
+            if (e.target.checked) room.is_entry = true;
             markDirty();
         };
 
@@ -1322,6 +1338,7 @@
                 },
                 body: JSON.stringify({
                     id: projectId,
+                    version: projectVersion,
                     name: name,
                     map_data: mapData
                 })
@@ -1331,6 +1348,7 @@
 
             if (result.status === 'success') {
                 projectId = result.id;
+                projectVersion = result.version;
                 markClean();
                 document.getElementById('save-status').innerHTML = '<i class="bi bi-check-lg" style="color: var(--builder-success);"></i>';
                 setTimeout(() => {
@@ -1379,7 +1397,7 @@
 
     function updateSidebarButtons() {
         const footer = document.querySelector('.sidebar-footer');
-        if (!footer || !canEdit) return;
+        if (!footer || !isOwner) return;
 
         let html = '';
 
@@ -1388,14 +1406,10 @@
             if (projectId) {
                 html += '<button class="btn btn-ghost w-100 mb-2" onclick="submitForReview()"><i class="bi bi-send"></i> Submit for Review</button>';
             }
-            if (projectId) {
-                html += '<a href="/builder/export/' + projectId + '/" class="btn btn-ghost w-100"><i class="bi bi-download"></i> Export .ev File</a>';
-            }
         } else if (projectStatus === 'submitted') {
             html += '<div class="alert mb-0 py-2 text-center" style="background: rgba(212,160,23,0.1); color: var(--builder-warning); border: 1px solid rgba(212,160,23,0.2); border-radius: 8px;">Awaiting Review</div>';
         } else if (projectStatus === 'approved') {
             html += '<button class="btn btn-accent w-100 mb-2" onclick="buildToSandbox()"><i class="bi bi-hammer"></i> Build to Sandbox</button>';
-            html += '<a href="/builder/export/' + projectId + '/" class="btn btn-ghost w-100"><i class="bi bi-download"></i> Export .ev File</a>';
         } else if (projectStatus === 'built') {
             html += '<div class="alert mb-0 py-2 text-center" style="background: rgba(56,139,253,0.1); color: var(--builder-info); border: 1px solid rgba(56,139,253,0.2); border-radius: 8px;">Built — test in sandbox</div>';
         } else if (projectStatus === 'live') {
@@ -1405,38 +1419,18 @@
         footer.innerHTML = html;
     }
 
-    async function submitForReview() {
+    function submitForReview() {
         if (!projectId) {
             alert('Please save the project first.');
             return;
         }
-
-        const notes = prompt('Notes for staff reviewers (optional):');
-        if (notes === null) return;
-
-        try {
-            const response = await fetch(`/builder/api/project/${projectId}/submit/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                body: JSON.stringify({ notes: notes || '' })
-            });
-
-            const result = await response.json();
-
-            if (result.status === 'success') {
-                projectStatus = 'submitted';
-                canEdit = false;
-                updateStatusBanner();
-                alert('Project submitted for review! You cannot edit while under review.');
-            } else {
-                alert('Error: ' + (result.error || 'Failed to submit'));
-            }
-        } catch (err) {
-            alert('Error submitting: ' + err.message);
+        if (isDirty) {
+            alert('Please save your changes before submitting.');
+            return;
         }
+        // The submit dialog on the dashboard collects the live room and
+        // direction this area connects to; reviewers approve that too.
+        window.location.href = "{% url 'builder:dashboard' %}?submit=" + encodeURIComponent(projectId);
     }
 
     async function buildToSandbox() {
@@ -1528,32 +1522,37 @@
             return;
         }
 
-        let html = '';
+        container.replaceChildren();
         for (const trigger of triggers) {
             const typeLabel = {
                 'entry': 'On Entry',
                 'exit': 'On Exit',
                 'timed': 'Timed',
-                'interaction': 'On Interaction'
-            }[trigger.type] || trigger.type;
+                'interaction': 'On Look'
+            }[trigger.type] || String(trigger.type);
+            const enabled = trigger.enabled !== false;
 
-            const enabledClass = trigger.enabled !== false ? '' : 'text-muted';
-            const badge = trigger.enabled !== false ?
-                '<span class="badge bg-success">On</span>' :
-                '<span class="badge bg-secondary">Off</span>';
+            const row = document.createElement('div');
+            row.className = 'd-flex justify-content-between align-items-center mb-2 p-2' + (enabled ? '' : ' text-muted');
+            row.style.cssText = 'cursor: pointer; border: 1px solid var(--builder-border); border-radius: 6px;';
+            row.addEventListener('click', () => editTrigger(trigger.id));
 
-            html += `
-                <div class="d-flex justify-content-between align-items-center mb-2 p-2 ${enabledClass}" style="cursor: pointer; border: 1px solid var(--builder-border); border-radius: 6px;" onclick="editTrigger('${trigger.id}')">
-                    <div>
-                        <strong>${typeLabel}</strong>
-                        <div class="small" style="color: var(--builder-muted);">${trigger.action || 'No action'}</div>
-                    </div>
-                    ${badge}
-                </div>
-            `;
+            const info = document.createElement('div');
+            const label = document.createElement('strong');
+            label.textContent = typeLabel;
+            const action = document.createElement('div');
+            action.className = 'small';
+            action.style.color = 'var(--builder-muted)';
+            action.textContent = trigger.action || 'No action';
+            info.append(label, action);
+
+            const badge = document.createElement('span');
+            badge.className = 'badge ' + (enabled ? 'bg-success' : 'bg-secondary');
+            badge.textContent = enabled ? 'On' : 'Off';
+
+            row.append(info, badge);
+            container.appendChild(row);
         }
-
-        container.innerHTML = html;
     }
 
     // Add new trigger
@@ -1641,12 +1640,6 @@
         const container = document.getElementById('conditions-container');
         const rowId = 'cond_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
-        // Build condition type options
-        let typeOptions = '<option value="">-- Select Condition --</option>';
-        for (const [key, info] of Object.entries(triggerMetadata.conditions || {})) {
-            const selected = condition && condition.type === key ? ' selected' : '';
-            typeOptions += `<option value="${key}"${selected}>${info.label}</option>`;
-        }
 
         const div = document.createElement('div');
         div.className = 'condition-row mb-3 p-2';
@@ -1656,7 +1649,6 @@
             <div class="row g-2">
                 <div class="col-12">
                     <select class="form-select form-select-sm" onchange="onConditionTypeChange('${rowId}')" id="${rowId}_type">
-                        ${typeOptions}
                     </select>
                 </div>
                 <div class="col-12" id="${rowId}_params">
@@ -1667,6 +1659,13 @@
                 <i class="bi bi-trash3"></i> Remove Condition
             </button>
         `;
+
+        const typeSelect = div.querySelector(`#${rowId}_type`);
+        typeSelect.add(new Option('-- Select Condition --', ''));
+        for (const [key, info] of Object.entries(triggerMetadata.conditions || {})) {
+            const selected = !!(condition && condition.type === key);
+            typeSelect.add(new Option(info.label || key, key, selected, selected));
+        }
 
         container.appendChild(div);
 
@@ -1688,38 +1687,37 @@
         }
 
         const conditionInfo = triggerMetadata.conditions[conditionType];
-        let html = '';
+        paramsContainer.replaceChildren();
 
         for (const [paramKey, paramInfo] of Object.entries(conditionInfo.parameters || {})) {
             const value = existingParams ? existingParams[paramKey] : '';
+            let field = null;
 
             if (paramInfo.type === 'select') {
-                let options = '';
+                field = document.createElement('select');
+                field.className = 'form-select form-select-sm condition-param';
                 for (const opt of paramInfo.options || []) {
-                    const selected = value === opt ? ' selected' : '';
-                    options += `<option value="${opt}"${selected}>${opt}</option>`;
+                    field.add(new Option(opt, opt, value === opt, value === opt));
                 }
-                html += `
-                    <div class="mt-2">
-                        <label class="form-label small">${paramKey}</label>
-                        <select class="form-select form-select-sm condition-param" data-param="${paramKey}">
-                            ${options}
-                        </select>
-                    </div>
-                `;
             } else if (paramInfo.type === 'number') {
-                const min = paramInfo.min !== undefined ? ` min="${paramInfo.min}"` : '';
-                const max = paramInfo.max !== undefined ? ` max="${paramInfo.max}"` : '';
-                html += `
-                    <div class="mt-2">
-                        <label class="form-label small">${paramKey}</label>
-                        <input type="number" class="form-control form-control-sm condition-param" data-param="${paramKey}" value="${value}"${min}${max}>
-                    </div>
-                `;
+                field = document.createElement('input');
+                field.type = 'number';
+                field.className = 'form-control form-control-sm condition-param';
+                if (paramInfo.min !== undefined) field.min = paramInfo.min;
+                if (paramInfo.max !== undefined) field.max = paramInfo.max;
+                field.value = value === undefined || value === null ? '' : value;
             }
-        }
+            if (!field) continue;
+            field.dataset.param = paramKey;
 
-        paramsContainer.innerHTML = html;
+            const wrapper = document.createElement('div');
+            wrapper.className = 'mt-2';
+            const label = document.createElement('label');
+            label.className = 'form-label small';
+            label.textContent = paramKey;
+            wrapper.append(label, field);
+            paramsContainer.appendChild(wrapper);
+        }
     }
 
     // Save trigger
@@ -1825,15 +1823,15 @@
                         <option value="entry">On Entry (when someone enters)</option>
                         <option value="exit">On Exit (when someone leaves)</option>
                         <option value="timed">Timed (repeating interval)</option>
-                        <option value="interaction">On Interaction (look, use, etc.)</option>
+                        <option value="interaction">On Look (someone looks at the room, including on arrival)</option>
                     </select>
                 </div>
 
                 <div class="mb-3" id="interval-field" style="display: none;">
                     <label class="form-label">Interval (seconds)</label>
                     <input type="number" class="form-control" id="trigger-interval"
-                           min="10" value="300">
-                    <div class="form-text">Minimum 10 seconds. 300 = 5 minutes.</div>
+                           min="60" value="300">
+                    <div class="form-text">Minimum 60 seconds. 300 = 5 minutes. At most 10 triggers per room and 30 timed triggers per project.</div>
                 </div>
 
                 <div class="mb-3">

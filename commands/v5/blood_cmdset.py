@@ -13,7 +13,7 @@ class BloodCmdSet(CmdSet):
     Blood system commands for vampire resource management.
 
     Includes commands for:
-    - Feeding on mortals (feed)
+    - Recording a feeding from a staff-run scene (feed, staff only)
     - Blood Surge activation (bloodsurge, surge)
     - Hunger status display (hunger)
     """

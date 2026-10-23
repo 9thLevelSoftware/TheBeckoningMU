@@ -1,744 +1,582 @@
 """
-Web API endpoints for enhanced character creation and trait management.
-Provides JSON-based endpoints for web-based character applications.
+JSON API for web character creation and staff approval (mounted at /api/traits/).
+
+The website form is the only way to make a player character. Every request
+here is authorized with Evennia permission strings (web.permissions.has_perm),
+never Django's is_staff:
+
+- a character's owner is traits.CharacterBio.account;
+- Builders review applications, but never their own (Admins may, and the
+  reviewer is recorded either way); only Admins revoke an approval.
+
+Rules live in world/rules_chargen.py and read world/v5_data.py. Anything that
+changes the game world runs as one unit on the reactor (traits/utils.py,
+handed over with web.main_thread.call_in_main_thread); views only parse,
+validate and read before the hand-off.
 """
 
 import json
 
-from django.db import models, transaction
 from django.http import JsonResponse
-from django.utils import timezone
 from django.views import View
-from evennia.accounts.models import AccountDB
-from evennia.objects.models import ObjectDB
+from evennia.utils import logger
 
-from .models import CharacterBio, CharacterPower, CharacterTrait, DisciplinePower, Trait, TraitCategory
-from .utils import (
-    enhanced_import_character_from_json,
-    export_character_to_json,
-    get_available_traits_for_character,
+from traits.models import CharacterBio
+from traits.utils import (
+    ChargenError,
+    approve_unit,
+    clean_ip,
+    create_character_unit,
+    name_problem,
+    over_character_limit,
+    reject_unit,
+    resubmit_revoked_unit,
+    resubmit_unit,
+    revoke_unit,
+    same_origin,
 )
-from .web_bridge import game_thread_write
+from web.main_thread import call_in_main_thread
+from web.permissions import has_perm
+from world import v5_data
+from world.rules_chargen import (
+    CONVICTION_RANGE,
+    REQUIRED_TEXT,
+    TEXT_LIMITS,
+    SubmissionError,
+    parse_submission,
+    validate_v5_creation,
+)
+
+REVIEW_ACTIONS = {"approve": "approved", "reject": "rejected", "revoke": "revoked"}
 
 
-def load_character(character_id, *, refresh=False):
-    """Resolve current persisted ownership even when Evennia holds an old instance."""
-    query = ObjectDB.objects.filter(pk=character_id, db_typeclass_path__contains="characters")
-    character = query.get()
-    if refresh:
-        fields = [field.attname for field in ObjectDB._meta.concrete_fields]
-        row = query.values(*fields).get()
-        for field, value in row.items():
-            setattr(character, field, value)
-        character._state.fields_cache.clear()
-    return character
-
-
-def owns_character(account, character):
-    return ObjectDB.objects.filter(pk=character.pk, db_account_id=account.pk).exists()
-
-
-def notify_account(account, message, notification_type="info"):
-    """Store a notification for delivery on next login, and try immediate delivery."""
-    from django.utils import timezone as tz
-
-    if not account.db.pending_notifications:
-        account.db.pending_notifications = []
-    account.db.pending_notifications.append(
-        {
-            "message": message,
-            "type": notification_type,
-            "timestamp": tz.now().isoformat(),
-            "read": False,
-        }
-    )
-    # Try immediate delivery if player is online
-    if account.sessions.count():
-        account.msg(message)
-
-
-def place_approved_character(character):
-    """Move an approved character to the starting room. Sets home and location."""
-    from django.conf import settings as django_settings
-    from evennia.objects.models import ObjectDB
-
-    start_location = getattr(django_settings, "START_LOCATION", "#2")
-    try:
-        room_id = int(start_location.strip("#")) if isinstance(start_location, str) else int(start_location)
-        start_room = ObjectDB.objects.get(id=room_id)
-    except (ValueError, ObjectDB.DoesNotExist):
-        # Fallback to Limbo (#2)
-        start_room = ObjectDB.objects.get(id=2)
-
-    if not character.move_to(start_room, quiet=True):
-        raise ValueError("Could not place approved character in the starting room")
-    character.home = start_room
-    character.save(update_fields=["db_home"])
-    if character.db_account:
-        character.db_account.characters.add(character)
-        character.locks.add(
-            f"puppet:id({character.id}) or pid({character.db_account_id}) or perm(Developer) or pperm(Developer)"
-        )
+def error(message, status, **extra):
+    errors = [message] if isinstance(message, str) else list(message)
+    return JsonResponse({"error": "; ".join(errors), "errors": errors, **extra}, status=status)
 
 
 class BaseAPIView(View):
-    """Base class for API views with common functionality."""
+    """Parses a JSON object body into request.json; anything else is a 400."""
 
     def dispatch(self, request, *args, **kwargs):
-        """Override dispatch to handle JSON parsing."""
-        if request.user.is_authenticated:
-            authority = (
-                AccountDB.objects.filter(pk=request.user.pk, is_active=True)
-                .values("is_staff", "is_superuser", "username")
-                .first()
-            )
-            if authority is None:
-                return JsonResponse({"error": "Authentication required"}, status=401)
-            for field, value in authority.items():
-                setattr(request.user, field, value)
-        if request.content_type == "application/json" and hasattr(request, "body"):
+        request.json = {}
+        if not request.user.is_authenticated:
+            return error("Authentication required", 401)
+        if request.method in ("POST", "PUT", "PATCH") and request.body:
+            if request.content_type != "application/json":
+                return error("Send the request body as application/json", 400)
             try:
-                request.json = json.loads(request.body.decode("utf-8"))
-                if not isinstance(request.json, dict):
-                    return JsonResponse({"error": "JSON body must be an object"}, status=400)
+                body = json.loads(request.body.decode("utf-8"))
             except (ValueError, UnicodeDecodeError):
-                return JsonResponse({"error": "Invalid JSON"}, status=400)
-        else:
-            request.json = {}
-
+                return error("Invalid JSON", 400)
+            if not isinstance(body, dict):
+                return error("The request body must be a JSON object", 400)
+            request.json = body
         return super().dispatch(request, *args, **kwargs)
 
 
-class TraitCategoriesAPI(BaseAPIView):
-    """API endpoint for trait categories."""
+def client_ip(request):
+    """The request's address (REMOTE_ADDR, which Evennia rewrites from
+    X-Forwarded-For for UPSTREAM_IPS) if it is a valid IP, else None."""
+    return clean_ip(request.META.get("REMOTE_ADDR"))
 
-    def get(self, request):
-        """Get all trait categories."""
-        if not request.user.is_authenticated:
-            return JsonResponse({"error": "Authentication required"}, status=401)
 
-        categories = TraitCategory.objects.all()
-        data = []
+def _staff_address_data(request, bio):
+    """Addresses and same-origin hints, for Builders only (never the applicant)."""
+    if not has_perm(request.user, "Builder"):
+        return {}
+    return {
+        "applicant_ip": bio.applicant_ip,
+        "reviewer_ip": bio.reviewer_ip,
+        # A review made from the address the application came from: possibly
+        # an alt account approving its own character (forbidden by policy).
+        "reviewed_same_origin": same_origin(bio.applicant_ip, bio.reviewer_ip),
+        "same_origin_as_you": same_origin(bio.applicant_ip, client_ip(request)),
+    }
 
-        for category in categories:
-            data.append(
-                {
-                    "id": category.id,
-                    "name": category.name,
-                    "code": category.code,
-                    "description": category.description,
-                    "sort_order": category.sort_order,
-                }
+
+def _bio_or_404(character_id):
+    return (
+        CharacterBio.objects.select_related("character", "account", "reviewed_by")
+        .filter(character_id=character_id)
+        .first()
+    )
+
+
+def _is_owner(user, bio):
+    return bio.account_id is not None and bio.account_id == user.id
+
+
+def _can_view(user, bio):
+    return _is_owner(user, bio) or has_perm(user, "Builder")
+
+
+def _can_review(user, bio):
+    """Builders review others' applications; only Admins and above may review their own."""
+    return has_perm(user, "Builder") and (not _is_owner(user, bio) or has_perm(user, "Admin"))
+
+
+def _parse_and_validate(data):
+    """(Submission, errors). Errors are shape errors or V5 rule errors."""
+    try:
+        sub = parse_submission(data)
+    except SubmissionError as err:
+        return None, err.errors
+    return sub, validate_v5_creation(sub)
+
+
+# ----------------------------------------------------------------------------
+# Rules data, served from world/v5_data.py
+# ----------------------------------------------------------------------------
+
+
+def _trait(name, category, category_name, **extra):
+    data = {
+        "name": name,
+        "category": category,
+        "category_name": category_name,
+        "description": "",
+        "min_value": 0,
+        "max_value": 5,
+        "is_instanced": False,
+        "has_specialties": False,
+        "splat_restriction": None,
+    }
+    data.update(extra)
+    return data
+
+
+def traits_for(category):
+    """The trait list for one /api/traits/?category= value."""
+    if category == "attributes":
+        return [
+            _trait(name, "attributes", "Attributes", group=group, min_value=1)
+            for group, names in v5_data.ATTRIBUTES.items()
+            for name in names
+        ]
+    if category == "skills":
+        return [
+            _trait(name, "skills", "Skills", group=group, has_specialties=True)
+            for group, names in v5_data.SKILLS.items()
+            for name in names
+        ]
+    if category == "disciplines":
+        return [
+            _trait(name, "disciplines", "Disciplines", description=data.get("description", ""))
+            for name, data in v5_data.DISCIPLINES.items()
+        ]
+    if category == "advantages":
+        backgrounds = [
+            _trait(
+                name,
+                "advantages",
+                "Advantages",
+                kind="background",
+                description=data.get("description", ""),
+                min_value=1,
+                max_value=data.get("max_dots", 5),
+                dots=list(range(1, data.get("max_dots", 5) + 1)),
+                is_instanced=bool(data.get("instanced")),
             )
+            for name, data in v5_data.BACKGROUNDS.items()
+        ]
+        merits = [_advantage(name, data, "advantages", "Advantages", "merit") for name, data in v5_data.MERITS.items()]
+        return backgrounds + merits
+    if category == "flaws":
+        return [_advantage(name, data, "flaws", "Flaws", "flaw") for name, data in v5_data.FLAWS.items()]
+    return None
 
-        return JsonResponse({"categories": data})
+
+def _advantage(name, data, category, category_name, kind):
+    return _trait(
+        name,
+        category,
+        category_name,
+        kind=kind,
+        group=data.get("category"),
+        description=data.get("description", ""),
+        min_value=min(data["dots"]),
+        max_value=max(data["dots"]),
+        dots=list(data["dots"]),
+        thin_blood=bool(data.get("thin_blood")),
+        excluded_clans=list(data.get("excluded_clans", [])),
+        splat_restriction="thin-blood" if data.get("thin_blood") else None,
+    )
+
+
+TRAIT_CATEGORIES = ("attributes", "skills", "disciplines", "advantages", "flaws")
+
+
+class TraitCategoriesAPI(BaseAPIView):
+    def get(self, request):
+        return JsonResponse(
+            {
+                "categories": [
+                    {"name": code.title(), "code": code, "description": "", "sort_order": index}
+                    for index, code in enumerate(TRAIT_CATEGORIES, 1)
+                ]
+            }
+        )
 
 
 class TraitsAPI(BaseAPIView):
-    """API endpoint for traits."""
+    """GET /api/traits/?category=attributes|skills|disciplines|advantages|flaws."""
 
     def get(self, request):
-        """Get traits, optionally filtered by category or splat."""
-        if not request.user.is_authenticated:
-            return JsonResponse({"error": "Authentication required"}, status=401)
-
-        category_code = request.GET.get("category")
-        splat = request.GET.get("splat", "mortal")
-
-        traits = Trait.objects.filter(is_active=True)
-
-        if category_code:
-            traits = traits.filter(category__code=category_code)
-
-        # Filter by splat restriction
-        if splat:
-            traits = traits.filter(
-                models.Q(splat_restriction__isnull=True)
-                | models.Q(splat_restriction="")
-                | models.Q(splat_restriction=splat)
-            )
-
-        traits = traits.select_related("category").order_by("category__sort_order", "sort_order", "name")
-
-        data = []
-        for trait in traits:
-            data.append(
-                {
-                    "id": trait.id,
-                    "name": trait.name,
-                    "category": trait.category.code,
-                    "category_name": trait.category.name,
-                    "description": trait.description,
-                    "min_value": trait.min_value,
-                    "max_value": trait.max_value,
-                    "is_instanced": trait.is_instanced,
-                    "has_specialties": trait.has_specialties,
-                    "splat_restriction": trait.splat_restriction,
-                }
-            )
-
-        return JsonResponse({"traits": data})
+        category = request.GET.get("category")
+        if category:
+            traits = traits_for(category)
+            if traits is None:
+                return error(f"Unknown category: {category}", 400)
+        else:
+            traits = [trait for code in TRAIT_CATEGORIES for trait in traits_for(code)]
+        return JsonResponse({"traits": traits})
 
 
 class DisciplinePowersAPI(BaseAPIView):
-    """API endpoint for discipline powers."""
+    """GET /api/traits/discipline-powers/?discipline=&level=."""
 
     def get(self, request):
-        """Get discipline powers, optionally filtered by discipline."""
-        if not request.user.is_authenticated:
-            return JsonResponse({"error": "Authentication required"}, status=401)
-
-        discipline_name = request.GET.get("discipline")
+        discipline = (request.GET.get("discipline") or "").lower()
         level = request.GET.get("level")
-
-        powers = DisciplinePower.objects.filter(is_active=True)
-
-        if discipline_name:
-            powers = powers.filter(discipline__name__iexact=discipline_name)
-
-        if level:
-            try:
-                powers = powers.filter(level=int(level))
-            except ValueError:
-                return JsonResponse({"error": "Invalid level parameter"}, status=400)
-
-        powers = powers.select_related("discipline", "amalgam_discipline").order_by(
-            "discipline__name", "level", "sort_order", "name"
-        )
-
-        data = []
-        for power in powers:
-            data.append(
+        if level is not None and not level.isdigit():
+            return error("Invalid level parameter", 400)
+        powers = []
+        for power in v5_data.DISCIPLINE_POWERS.values():
+            if discipline and power["discipline"].lower() != discipline:
+                continue
+            if level is not None and power["level"] != int(level):
+                continue
+            amalgam_discipline, _, amalgam_level = (power.get("amalgam") or "").rpartition(" ")
+            requirements = f"{power['discipline']} {power['level']}"
+            if power.get("amalgam"):
+                requirements += f", {power['amalgam']}"
+            powers.append(
                 {
-                    "id": power.id,
-                    "name": power.name,
-                    "discipline": power.discipline.name,
-                    "level": power.level,
-                    "description": power.description,
-                    "dice_pool": power.dice_pool,
-                    "cost": power.cost,
-                    "duration": power.duration,
-                    "amalgam_discipline": power.amalgam_discipline.name if power.amalgam_discipline else None,
-                    "amalgam_level": power.amalgam_level,
-                    "requirements_text": power.requirements_text,
+                    "name": power["name"],
+                    "discipline": power["discipline"],
+                    "level": power["level"],
+                    "description": power.get("description", ""),
+                    "dice_pool": power.get("dice_pool") or "",
+                    "rouse": power.get("rouse", 0),
+                    "duration": power.get("duration_text") or power.get("duration") or "",
+                    "amalgam_discipline": amalgam_discipline or None,
+                    "amalgam_level": int(amalgam_level) if amalgam_level.isdigit() else None,
+                    "requirements_text": requirements,
                 }
             )
+        return JsonResponse({"powers": powers})
 
-        return JsonResponse({"powers": data})
+
+def chargen_rules():
+    """Everything the creation form needs to guide a player, from world/v5_data.py.
+
+    The form reads its constants from here (GET /api/traits/rules/) so it
+    can't drift from the server's validator, which reads the same tables.
+    """
+
+    def advantage_table(table):
+        return {
+            name: {
+                "dots": list(data["dots"]),
+                "group": data.get("category"),
+                "description": data.get("description", ""),
+                "thin_blood": bool(data.get("thin_blood")),
+                "excluded_clans": list(data.get("excluded_clans", [])),
+                "excludes": list(data.get("excludes", [])),
+                "requires": list(data.get("requires", [])),
+            }
+            for name, data in table.items()
+        }
+
+    return {
+        "attribute_spread": list(v5_data.CREATION_ATTRIBUTE_SPREAD),
+        "skill_distributions": {
+            name: {str(rating): count for rating, count in dist.items()}
+            for name, dist in v5_data.CREATION_SKILL_DISTRIBUTIONS.items()
+        },
+        "free_specialty_skills": list(v5_data.CREATION_FREE_SPECIALTY_SKILLS),
+        "extra_free_specialties": v5_data.CREATION_EXTRA_FREE_SPECIALTIES,
+        "discipline_dots": list(v5_data.CREATION_DISCIPLINE_DOTS),
+        "advantage_dots": v5_data.CREATION_ADVANTAGE_DOTS,
+        "flaw_dots": v5_data.CREATION_FLAW_DOTS,
+        "thin_blood_pairs": list(v5_data.CREATION_THIN_BLOOD_PAIRS),
+        "humanity": v5_data.CREATION_HUMANITY,
+        "attributes": v5_data.ATTRIBUTES,
+        "skills": v5_data.SKILLS,
+        "ages": {
+            name: {
+                "embraced": age["embraced"],
+                "options": [
+                    {
+                        "generations": list(o["generations"]),
+                        "blood_potency": o["blood_potency"],
+                        "thin_blood": o["thin_blood"],
+                    }
+                    for o in age["options"]
+                ],
+                "xp": age["xp"],
+                "extra_advantage_dots": age["extra_advantage_dots"],
+                "extra_flaw_dots": age["extra_flaw_dots"],
+                "humanity_change": age["humanity_change"],
+            }
+            for name, age in v5_data.GENERATION_BY_AGE.items()
+        },
+        "clans": {
+            name: {
+                "disciplines": list(clan["disciplines"]),
+                "bane": clan.get("bane"),
+                "compulsion": clan.get("compulsion"),
+                "required_flaws": list(clan.get("required_flaws", [])),
+                "excluded_merit_categories": list(clan.get("excluded_merit_categories", [])),
+            }
+            for name, clan in v5_data.CLANS.items()
+        },
+        "predator_types": {
+            name: {
+                "description": pred.get("description", ""),
+                "specialties": [list(pair) for pair in pred.get("specialties", [])],
+                "disciplines": list(pred.get("disciplines", [])),
+                "discipline_clans": pred.get("discipline_clans", {}),
+                "humanity": pred.get("humanity", 0),
+                "blood_potency": pred.get("blood_potency", 0),
+                "backgrounds": pred.get("backgrounds", []),
+                "merits": pred.get("merits", []),
+                "flaws": pred.get("flaws", []),
+                "advantage_choices": pred.get("advantage_choices", []),
+                "flaw_choices": pred.get("flaw_choices", []),
+                "excluded_clans": pred.get("excluded_clans", []),
+                "max_blood_potency": pred.get("max_blood_potency"),
+                "note": pred.get("note", ""),
+            }
+            for name, pred in v5_data.PREDATOR_TYPES.items()
+        },
+        "disciplines": {
+            name: {
+                "description": data.get("description", ""),
+                "powers": [
+                    {
+                        "name": power["name"],
+                        "level": level,
+                        "amalgam": power.get("amalgam"),
+                        "description": power.get("description", ""),
+                    }
+                    for level, powers in sorted(data.get("powers", {}).items())
+                    for power in powers
+                ],
+            }
+            for name, data in v5_data.DISCIPLINES.items()
+        },
+        "backgrounds": {
+            name: {
+                "max_dots": data.get("max_dots", 5),
+                "instanced": bool(data.get("instanced")),
+                "description": data.get("description", ""),
+            }
+            for name, data in v5_data.BACKGROUNDS.items()
+        },
+        "merits": advantage_table(v5_data.MERITS),
+        "flaws": advantage_table(v5_data.FLAWS),
+        "rituals": [
+            {"name": r["name"], "level": r["level"], "description": r.get("description", "")}
+            for r in v5_data.DISCIPLINES["Blood Sorcery"].get("rituals", [])
+        ],
+        "formulas": [
+            {"name": f["name"], "level": level, "description": f.get("description", "")}
+            for level, formulas in sorted(v5_data.DISCIPLINES["Thin-Blood Alchemy"].get("formulas", {}).items())
+            for f in formulas
+        ],
+        "conviction_range": list(CONVICTION_RANGE),
+    }
+
+
+class ChargenRulesAPI(BaseAPIView):
+    """GET /api/traits/rules/: the creation rules the form applies."""
+
+    def get(self, request):
+        return JsonResponse(chargen_rules())
+
+
+# ----------------------------------------------------------------------------
+# Character sheet (read through the Character accessors)
+# ----------------------------------------------------------------------------
+
+
+def export_character(character):
+    """The character sheet as JSON, read only through the Character accessors."""
+    bio = character.bio
+    return {
+        "name": character.key,
+        "clan": character.clan,
+        "generation": character.generation,
+        "predator_type": character.predator_type,
+        "blood_potency": character.blood_potency,
+        "humanity": character.humanity,
+        "hunger": character.hunger,
+        "health": character.health_max,
+        "willpower": character.willpower_max,
+        "attributes": {
+            name: character.get_trait(name, "attributes") for names in v5_data.ATTRIBUTES.values() for name in names
+        },
+        "skills": {name: character.get_trait(name, "skills") for names in v5_data.SKILLS.values() for name in names},
+        "specialties": character.specialties,
+        "disciplines": character.discipline_levels,
+        "discipline_powers": character.known_powers,
+        "advantages": character.advantages,
+        "xp": {"earned": character.xp_earned, "spent": character.xp_spent, "unspent": character.xp},
+        "status": bio.status if bio else None,
+    }
+
+
+def _sheet_by_category(sheet):
+    """The detail page's {category: [{name, rating, display_name}]} layout."""
+    traits = {
+        "Attributes": [{"name": n, "rating": r, "display_name": n} for n, r in sheet["attributes"].items()],
+        "Skills": [],
+        "Disciplines": [{"name": n, "rating": r, "display_name": n} for n, r in sheet["disciplines"].items()],
+        "Advantages": [],
+        "Flaws": [],
+    }
+    for name, rating in sheet["skills"].items():
+        if rating:
+            specialties = sheet["specialties"].get(v5_data.normalize_trait_name(name), [])
+            label = f"{name} ({', '.join(specialties)})" if specialties else name
+            traits["Skills"].append({"name": name, "rating": rating, "display_name": label})
+    for name, value in sheet["advantages"]["backgrounds"].items():
+        display = v5_data.resolve_trait(name, "backgrounds").name
+        if isinstance(value, list):
+            for instance in value:
+                traits["Advantages"].append(
+                    {"name": display, "rating": instance["dots"], "display_name": f"{display} ({instance['note']})"}
+                )
+        else:
+            traits["Advantages"].append({"name": display, "rating": value, "display_name": display})
+    for name, dots in sheet["advantages"]["merits"].items():
+        traits["Advantages"].append({"name": name, "rating": dots, "display_name": name})
+    for name, dots in sheet["advantages"]["flaws"].items():
+        traits["Flaws"].append({"name": name, "rating": dots, "display_name": name})
+    return traits
+
+
+def _bio_data(bio, character):
+    return {
+        "full_name": bio.full_name,
+        "concept": bio.concept,
+        "ambition": bio.ambition,
+        "desire": bio.desire,
+        "sire": bio.sire,
+        "background": bio.background,
+        "clan": character.clan,
+        "generation": character.generation,
+        "predator_type": character.predator_type,
+        "age": character.age_category,
+        "status": bio.status,
+        "approved": bio.status == "approved",
+        "reviewed_by": bio.reviewed_by.username if bio.reviewed_by else None,
+        "reviewed_at": bio.reviewed_at.isoformat() if bio.reviewed_at else None,
+        "self_reviewed": bool(bio.reviewed_by_id and bio.reviewed_by_id == bio.account_id),
+        "created_at": bio.created_at.isoformat() if bio.created_at else None,
+        "rejection_notes": bio.rejection_notes,
+        "rejection_count": bio.rejection_count,
+    }
+
+
+# ----------------------------------------------------------------------------
+# Player endpoints
+# ----------------------------------------------------------------------------
 
 
 class CharacterValidationAPI(BaseAPIView):
-    """API endpoint for character validation."""
+    """POST a submission; answers {"valid", "errors"} without creating anything."""
 
     def post(self, request):
-        """Validate character data without creating the character."""
-        if not request.user.is_authenticated:
-            return JsonResponse({"error": "Authentication required"}, status=401)
-
-        character_data = request.json
-
-        if not character_data:
-            return JsonResponse({"error": "No character data provided"}, status=400)
-
-        # Create a temporary character object for validation
-        temp_char = ObjectDB()
-        temp_char.db_key = character_data.get("name", "TempChar")
-
-        # Run validation
-        results = enhanced_import_character_from_json(temp_char, character_data, validate_only=True)
-
-        return JsonResponse(
-            {
-                "valid": results["success"],
-                "errors": results["validation_errors"] + results["errors"],
-                "warnings": results["warnings"],
-                "summary": {
-                    "traits_validated": results["imported_traits"],
-                    "specialties_validated": results["imported_specialties"],
-                    "powers_validated": results["imported_powers"],
-                },
-            }
-        )
-
-
-class CharacterImportAPI(BaseAPIView):
-    """API endpoint for character import."""
-
-    @game_thread_write
-    def post(self, request):
-        """Import character data to an existing character."""
-        if not request.user.is_authenticated:
-            return JsonResponse({"error": "Authentication required"}, status=401)
-        if not request.user.is_staff:
-            return JsonResponse({"error": "Staff permissions required"}, status=403)
-
-        character_name = request.json.get("character_name")
-        character_data = request.json.get("character_data")
-        account_name = request.json.get("account_name")
-
-        if not all([character_name, character_data, account_name]):
-            return JsonResponse(
-                {"error": "Missing required fields: character_name, character_data, account_name"}, status=400
-            )
-
-        try:
-            # Get the account
-            account = AccountDB.objects.get(username__iexact=account_name)
-
-            # Get the character
-            character = ObjectDB.objects.get(
-                db_key__iexact=character_name, db_account=account, db_typeclass_path__contains="characters"
-            )
-
-        except AccountDB.DoesNotExist:
-            return JsonResponse({"error": "Account not found"}, status=404)
-        except ObjectDB.DoesNotExist:
-            return JsonResponse({"error": "Character not found"}, status=404)
-
-        character = load_character(character.pk, refresh=True)
-        request.track_object(character)
-        # Import the character data
-        results = enhanced_import_character_from_json(character, character_data)
-
-        return JsonResponse(
-            {
-                "success": results["success"],
-                "errors": results["errors"],
-                "warnings": results["warnings"],
-                "imported": {
-                    "traits": results["imported_traits"],
-                    "specialties": results["imported_specialties"],
-                    "powers": results["imported_powers"],
-                },
-                "validation_errors": results["validation_errors"],
-            }
-        )
-
-
-class CharacterExportAPI(BaseAPIView):
-    """API endpoint for character export."""
-
-    def get(self, request, character_id):
-        """Export character data to JSON format."""
-        if not request.user.is_authenticated:
-            return JsonResponse({"error": "Authentication required"}, status=401)
-
-        try:
-            character = load_character(character_id)
-        except ObjectDB.DoesNotExist:
-            return JsonResponse({"error": "Character not found"}, status=404)
-
-        # Enforce ownership: only the character's owner or staff can export
-        if not owns_character(request.user, character) and not request.user.is_staff:
-            return JsonResponse({"error": "Permission denied"}, status=403)
-
-        include_powers = request.GET.get("include_powers", "true").lower() == "true"
-
-        character_data = export_character_to_json(character, include_powers=include_powers)
-
-        return JsonResponse(
-            {
-                "character_data": character_data,
-                "character_name": character.key,
-                "exported_at": character_data.get("updated_at", "unknown"),
-            }
-        )
-
-
-class CharacterAvailableTraitsAPI(BaseAPIView):
-    """API endpoint for getting available traits for a character."""
-
-    def get(self, request, character_id):
-        """Get all traits available to a specific character based on their splat."""
-        if not request.user.is_authenticated:
-            return JsonResponse({"error": "Authentication required"}, status=401)
-
-        try:
-            character = load_character(character_id)
-        except ObjectDB.DoesNotExist:
-            return JsonResponse({"error": "Character not found"}, status=404)
-
-        # Enforce ownership: only the character's owner or staff can view available traits
-        if not owns_character(request.user, character) and not request.user.is_staff:
-            return JsonResponse({"error": "Permission denied"}, status=403)
-
-        available_traits = get_available_traits_for_character(character)
-
-        data = []
-        for trait in available_traits:
-            data.append(
-                {
-                    "id": trait.id,
-                    "name": trait.name,
-                    "category": trait.category.code,
-                    "category_name": trait.category.name,
-                    "description": trait.description,
-                    "min_value": trait.min_value,
-                    "max_value": trait.max_value,
-                    "is_instanced": trait.is_instanced,
-                    "has_specialties": trait.has_specialties,
-                    "splat_restriction": trait.splat_restriction,
-                }
-            )
-
-        return JsonResponse({"available_traits": data})
-
-
-class PendingCharactersAPI(BaseAPIView):
-    """API endpoint for listing characters awaiting approval."""
-
-    def get(self, request):
-        """Get list of characters pending approval."""
-        # Check staff permissions
-        if not (request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser)):
-            return JsonResponse({"error": "Staff permissions required"}, status=403)
-
-        # Get all characters with CharacterBio that are submitted or rejected (not draft, not approved)
-        pending_bios = (
-            CharacterBio.objects.filter(status__in=["submitted", "rejected"])
-            .select_related("character")
-            .order_by("created_at")
-        )
-
-        data = []
-        for bio in pending_bios:
-            character = bio.character
-            player_name = character.db_account.username if character.db_account else "None"
-
-            data.append(
-                {
-                    "character_id": character.id,
-                    "character_name": character.db_key,
-                    "player_name": player_name,
-                    "clan": bio.clan,
-                    "submitted_date": bio.created_at.isoformat() if bio.created_at else None,
-                    "concept": bio.concept,
-                    "status": bio.status,
-                    "rejection_count": bio.rejection_count,
-                }
-            )
-
-        return JsonResponse({"pending_characters": data})
-
-
-class CharacterDetailAPI(BaseAPIView):
-    """API endpoint for getting full character sheet data for review."""
-
-    def get(self, request, character_id):
-        """Get complete character data for staff review."""
-        # Check staff permissions
-        if not (request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser)):
-            return JsonResponse({"error": "Staff permissions required"}, status=403)
-
-        try:
-            character = load_character(character_id)
-        except ObjectDB.DoesNotExist:
-            return JsonResponse({"error": "Character not found"}, status=404)
-
-        # Get character bio
-        try:
-            bio = CharacterBio.objects.get(character=character)
-            bio_data = {
-                "full_name": bio.full_name,
-                "concept": bio.concept,
-                "ambition": bio.ambition,
-                "desire": bio.desire,
-                "clan": bio.clan,
-                "sire": bio.sire,
-                "generation": bio.generation,
-                "predator_type": bio.predator_type,
-                "splat": bio.splat,
-                "status": bio.status,
-                "approved": bio.approved,
-                "approved_by": bio.approved_by,
-                "approved_at": bio.approved_at.isoformat() if bio.approved_at else None,
-                "created_at": bio.created_at.isoformat() if bio.created_at else None,
-                "background": bio.background,
-                "rejection_notes": bio.rejection_notes,
-                "rejection_count": bio.rejection_count,
-            }
-        except CharacterBio.DoesNotExist:
-            bio_data = {}
-
-        # Get character traits grouped by category
-        traits = (
-            CharacterTrait.objects.filter(character=character)
-            .select_related("trait", "trait__category")
-            .order_by("trait__category__sort_order", "trait__sort_order")
-        )
-
-        traits_by_category = {}
-        for char_trait in traits:
-            category_name = char_trait.trait.category.name
-            if category_name not in traits_by_category:
-                traits_by_category[category_name] = []
-
-            trait_data = {
-                "name": char_trait.trait.name,
-                "rating": char_trait.rating,
-                "specialty": char_trait.specialty,
-                "instance_name": char_trait.instance_name,
-                "display_name": char_trait.display_name,
-            }
-            traits_by_category[category_name].append(trait_data)
-
-        # Get character powers
-        powers = CharacterPower.objects.filter(character=character).select_related("power", "power__discipline")
-        powers_data = []
-        for char_power in powers:
-            powers_data.append(
-                {
-                    "name": char_power.power.name,
-                    "discipline": char_power.power.discipline.name,
-                    "level": char_power.power.level,
-                    "description": char_power.power.description,
-                    "requirements": char_power.power.requirements_text,
-                }
-            )
-
-        return JsonResponse(
-            {
-                "character_id": character.id,
-                "character_name": character.db_key,
-                "player_name": character.db_account.username if character.db_account else "None",
-                "bio": bio_data,
-                "traits": traits_by_category,
-                "powers": powers_data,
-            }
-        )
+        sub, errors = _parse_and_validate(request.json)
+        if sub and not errors:
+            problem = name_problem(sub.name, request.user)
+            errors = [problem] if problem else []
+        return JsonResponse({"valid": not errors, "errors": errors})
 
 
 class CharacterCreateAPI(BaseAPIView):
-    """API endpoint for creating new characters from web form."""
+    """POST a submission (world.rules_chargen schema) to apply for a new character."""
 
-    @game_thread_write
     def post(self, request):
-        """Create a new character with submitted data."""
-        if not request.user.is_authenticated:
-            return JsonResponse({"error": "Authentication required"}, status=401)
-
-        character_data = request.json.get("character_data")
-        if not isinstance(character_data, dict) or not character_data:
-            return JsonResponse({"error": "Missing or invalid character_data"}, status=400)
-
-        character_name = character_data.get("name")
-        if not isinstance(character_name, str) or not character_name.strip():
-            return JsonResponse({"error": "Character name is required"}, status=400)
-        character_name = character_name.strip()
-        character_data = {**character_data, "name": character_name}
-        validation = enhanced_import_character_from_json(ObjectDB(), character_data, validate_only=True)
-        if not validation["success"]:
-            return JsonResponse(
-                {"error": "; ".join(validation["errors"] + validation["validation_errors"])}, status=400
-            )
-        if ObjectDB.objects.filter(db_key__iexact=character_name, db_account=request.user).exists():
-            return JsonResponse({"error": "You already have a character with that name"}, status=400)
-
-        from evennia.utils import create
-
-        character = create.create_object(
-            typeclass="typeclasses.characters.Character",
-            key=character_name,
-            location=None,
-            home=None,
-            nohome=True,
-        )
-        request.track_object(character)
-        character.db_account = request.user
-        character.save(update_fields=["db_account"])
-        # Submitted applications become playable only after staff approval.
-        character.locks.add("puppet:perm(Developer) or pperm(Developer)")
-        results = enhanced_import_character_from_json(character, character_data)
-        if not results["success"]:
-            transaction.set_rollback(True)
-            return JsonResponse({"error": "; ".join(results["errors"] + results["validation_errors"])}, status=400)
-        bio = CharacterBio.objects.get(character=character)
-        bio.status = "submitted"
-        bio.background = character_data.get("background", "")
-        bio.save()
+        sub, errors = _parse_and_validate(request.json)
+        if errors:
+            return error(errors, 400)
+        problem = name_problem(sub.name, request.user)
+        if problem:
+            return error(problem, 400)
+        limit = over_character_limit(request.user)
+        if limit is not None:
+            return error(f"You may have at most {limit} pending or approved characters", 400)
+        try:
+            character = call_in_main_thread(create_character_unit, request.user, sub, client_ip(request))
+        except ChargenError as err:
+            return error(err.errors, err.status)
+        except Exception:
+            logger.log_trace("Chargen: character creation failed")
+            return error("Server error; no character was created", 500)
         return JsonResponse(
             {
                 "success": True,
                 "character_id": character.id,
-                "character_name": character.db_key,
-                "message": "Character created and submitted for approval",
-            }
-        )
-
-
-class CharacterApprovalAPI(BaseAPIView):
-    """API endpoint for approving or rejecting characters."""
-
-    @game_thread_write
-    def post(self, request, character_id):
-        """Approve or reject a character."""
-        # Check staff permissions
-        if not (request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser)):
-            return JsonResponse({"error": "Staff permissions required"}, status=403)
-
-        try:
-            character = load_character(character_id, refresh=True)
-        except ObjectDB.DoesNotExist:
-            return JsonResponse({"error": "Character not found"}, status=404)
-
-        request.track_object(character)
-        if character.db_account:
-            request.track_object(character.db_account)
-        try:
-            bio = CharacterBio.objects.select_for_update().get(character=character)
-        except CharacterBio.DoesNotExist:
-            return JsonResponse({"error": "Character bio not found"}, status=404)
-
-        action = request.json.get("action")
-        notes = request.json.get("notes", "")
-        if not isinstance(notes, str):
-            return JsonResponse({"error": "Notes must be text"}, status=400)
-
-        if action not in ["approve", "reject"]:
-            return JsonResponse({"error": 'Invalid action. Must be "approve" or "reject"'}, status=400)
-
-        # Idempotent approval check: prevent double-approval race condition
-        if action == "approve" and bio.status == "approved":
-            return JsonResponse({"error": "Character already approved", "approved_by": bio.approved_by}, status=409)
-
-        if bio.status != "submitted":
-            return JsonResponse({"error": "Only submitted applications can be reviewed"}, status=409)
-
-        if action == "approve":
-            place_approved_character(character)
-
-        # Update character bio
-        if action == "approve":
-            bio.status = "approved"
-        else:
-            bio.status = "rejected"
-            bio.rejection_notes = notes
-            bio.rejection_count += 1
-
-        bio.approved_by = request.user.username
-        bio.approved_at = timezone.now()
-        bio.save()
-
-        stats = character.db.stats
-        stats["approved"] = action == "approve"
-        stats["approved_by"] = request.user.username if action == "approve" else ""
-        if character.db.chargen:
-            character.db.chargen["approved"] = action == "approve"
-
-        # Store approval notes in character attributes
-        if notes:
-            character.db.approval_notes = notes
-
-        # Auto-place approved character and send notifications
-        if action == "approve":
-            if character.db_account:
-                msg = f"Your character '{character.db_key}' has been APPROVED!\nYou may now begin playing."
-                if notes:
-                    msg += f"\nStaff notes: {notes}"
-                transaction.on_commit(
-                    lambda: notify_account(character.db_account, msg, notification_type="approval"), robust=True
-                )
-        else:
-            # Rejection notification
-            if character.db_account:
-                msg = f"Your character '{character.db_key}' requires revisions.\n"
-                msg += f"Staff feedback:\n{notes}\n"
-                msg += "Please edit and resubmit via the character creation page."
-                transaction.on_commit(
-                    lambda: notify_account(character.db_account, msg, notification_type="rejection"), robust=True
-                )
-
-        return JsonResponse(
-            {
-                "success": True,
-                "action": action,
-                "character_name": character.db_key,
-                "approved_by": request.user.username,
-                "approved_at": bio.approved_at.isoformat(),
-            }
+                "character_name": character.key,
+                "status": "submitted",
+                "message": "Character submitted for approval",
+            },
+            status=201,
         )
 
 
 class MyCharactersAPI(BaseAPIView):
-    """API endpoint returning all characters owned by the authenticated user."""
-
     def get(self, request):
-        """Get list of characters owned by the current user with their status."""
-        if not request.user.is_authenticated:
-            return JsonResponse({"error": "Authentication required"}, status=401)
-
-        characters = ObjectDB.objects.filter(db_account=request.user, db_typeclass_path__contains="characters")
-
         data = []
-        for character in characters:
-            try:
-                bio = CharacterBio.objects.get(character=character)
-            except CharacterBio.DoesNotExist:
-                continue
-
-            char_data = {
-                "character_id": character.id,
-                "character_name": character.db_key,
+        for bio in CharacterBio.objects.filter(account=request.user).select_related("character"):
+            entry = {
+                "character_id": bio.character_id,
+                "character_name": bio.character.db_key,
                 "status": bio.status,
-                "clan": bio.clan,
+                "clan": bio.character.clan,
                 "concept": bio.concept,
                 "rejection_count": bio.rejection_count,
                 "created_at": bio.created_at.isoformat() if bio.created_at else None,
                 "updated_at": bio.updated_at.isoformat() if bio.updated_at else None,
             }
-
-            if bio.status == "rejected":
-                char_data["rejection_notes"] = bio.rejection_notes
-
-            data.append(char_data)
-
+            if bio.status in ("rejected", "revoked"):
+                entry["rejection_notes"] = bio.rejection_notes
+            data.append(entry)
         return JsonResponse({"characters": data})
 
 
 class CharacterEditDataAPI(BaseAPIView):
-    """API endpoint returning full character data for editing a rejected character."""
+    """The owner's last submission, to edit after a rejection or revocation."""
 
     def get(self, request, character_id):
-        """Get complete character data for editing after rejection."""
-        if not request.user.is_authenticated:
-            return JsonResponse({"error": "Authentication required"}, status=401)
-
-        try:
-            character = load_character(character_id)
-        except ObjectDB.DoesNotExist:
-            return JsonResponse({"error": "Character not found"}, status=404)
-
-        # Verify ownership
-        if not owns_character(request.user, character):
-            return JsonResponse({"error": "Permission denied"}, status=403)
-
-        try:
-            bio = CharacterBio.objects.get(character=character)
-        except CharacterBio.DoesNotExist:
-            return JsonResponse({"error": "Character bio not found"}, status=404)
-
-        if bio.status != "rejected":
-            return JsonResponse({"error": "Only rejected characters can be edited for resubmission"}, status=400)
-
-        # Use existing export to get trait data
-        character_data = export_character_to_json(character, include_powers=True)
-
-        # Merge in bio fields not included in export
-        character_data["background"] = bio.background
-        character_data["ambition"] = bio.ambition
-        character_data["desire"] = bio.desire
-        character_data["sire"] = bio.sire
-        character_data["generation"] = bio.generation
-        character_data["predator_type"] = bio.predator_type
-        character_data["full_name"] = bio.full_name
-        character_data["concept"] = bio.concept
-        character_data["clan"] = bio.clan
-        character_data["splat"] = bio.splat
-
+        bio = _bio_or_404(character_id)
+        if bio is None:
+            return error("Character not found", 404)
+        if not _is_owner(request.user, bio):
+            return error("Permission denied", 403)
+        if not bio.can_transition("submitted"):
+            return error("Only rejected or revoked characters can be edited and resubmitted", 409)
+        if bio.status == "revoked":
+            # Revoking pauses play; the played sheet goes back for review as it is.
+            return JsonResponse(
+                {
+                    "character_id": bio.character_id,
+                    "mode": "revoked",
+                    "narrative": _narrative(bio, bio.character),
+                    "sheet": export_character(bio.character),
+                    "rejection_notes": bio.rejection_notes,
+                    "rejection_count": bio.rejection_count,
+                }
+            )
         return JsonResponse(
             {
-                "character_id": character.id,
-                "character_data": character_data,
+                "character_id": bio.character_id,
+                "mode": "rejected",
+                "character_data": bio.submission,
                 "rejection_notes": bio.rejection_notes,
                 "rejection_count": bio.rejection_count,
             }
@@ -746,97 +584,201 @@ class CharacterEditDataAPI(BaseAPIView):
 
 
 class CharacterResubmitAPI(BaseAPIView):
-    """API endpoint for resubmitting a rejected character."""
+    """POST a corrected submission for a rejected or revoked character."""
 
-    @game_thread_write
     def post(self, request, character_id):
-        """Resubmit a rejected character with updated data."""
-        if not request.user.is_authenticated:
-            return JsonResponse({"error": "Authentication required"}, status=401)
-
+        bio = _bio_or_404(character_id)
+        if bio is None:
+            return error("Character not found", 404)
+        if not _is_owner(request.user, bio):
+            return error("Permission denied", 403)
+        if not bio.can_transition("submitted"):
+            return error("Only rejected or revoked characters can be resubmitted", 409)
+        if bio.status == "revoked":
+            narrative, errors = _parse_narrative(request.json, bio)
+            if errors:
+                return error(errors, 400)
+            unit, args = resubmit_revoked_unit, (bio.pk, request.user, narrative)
+        else:
+            sub, errors = _parse_and_validate(request.json)
+            if errors:
+                return error(errors, 400)
+            if sub.name.lower() != bio.character.db_key.lower():
+                problem = name_problem(sub.name, request.user, exclude_id=bio.character_id)
+                if problem:
+                    return error(problem, 400)
+            unit, args = resubmit_unit, (bio.pk, request.user, sub)
         try:
-            character = load_character(character_id, refresh=True)
-        except ObjectDB.DoesNotExist:
-            return JsonResponse({"error": "Character not found"}, status=404)
-
-        # Verify ownership
-        if not owns_character(request.user, character):
-            return JsonResponse({"error": "Permission denied"}, status=403)
-
-        request.track_object(character)
-        if character.db_account:
-            request.track_object(character.db_account)
-        try:
-            bio = CharacterBio.objects.select_for_update().get(character=character)
-        except CharacterBio.DoesNotExist:
-            return JsonResponse({"error": "Character bio not found"}, status=404)
-
-        if bio.status != "rejected":
-            return JsonResponse({"error": "Only rejected characters can be resubmitted"}, status=400)
-
-        character_data = request.json.get("character_data")
-        if not isinstance(character_data, dict) or not character_data:
-            return JsonResponse({"error": "Missing or invalid character_data"}, status=400)
-
-        new_name = character_data.get("name")
-        if not isinstance(new_name, str) or not new_name.strip():
-            return JsonResponse({"error": "Character name is required"}, status=400)
-        new_name = new_name.strip()
-        character_data = {**character_data, "name": new_name}
-        if ObjectDB.objects.filter(db_key__iexact=new_name, db_account=request.user).exclude(pk=character.pk).exists():
-            return JsonResponse({"error": "You already have a character with that name"}, status=400)
-
-        # Re-import traits from updated data
-        results = enhanced_import_character_from_json(character, character_data)
-
-        if not results["success"]:
-            transaction.set_rollback(True)
-            errors = results["errors"] + results["validation_errors"]
-            error_msg = "; ".join(errors) if errors else "Unknown error during import"
-            return JsonResponse({"error": f"Failed to import character data: {error_msg}"}, status=400)
-
-        bio.refresh_from_db()
-        # Update bio fields from character_data
-        bio.full_name = character_data.get("name", bio.full_name)
-        bio.concept = character_data.get("concept", bio.concept)
-        bio.clan = character_data.get("clan", bio.clan)
-        bio.sire = character_data.get("sire", bio.sire)
-        bio.generation = character_data.get("generation", bio.generation)
-        bio.predator_type = character_data.get("predator_type", bio.predator_type)
-        bio.ambition = character_data.get("ambition", bio.ambition)
-        bio.desire = character_data.get("desire", bio.desire)
-        bio.background = character_data.get("background", bio.background)
-
-        character.db_key = new_name
-        character.save(update_fields=["db_key"])
-
-        # Reset status for re-review
-        bio.status = "submitted"
-        bio.rejection_notes = ""
-        bio.approved_by = ""
-        bio.approved_at = None
-        bio.save()
-
+            call_in_main_thread(unit, *args)
+        except ChargenError as err:
+            return error(err.errors, err.status)
+        except CharacterBio.TransitionError as err:
+            return error(str(err), 409)
+        except Exception:
+            logger.log_trace("Chargen: resubmission failed")
+            return error("Server error; the character was not changed", 500)
         return JsonResponse(
-            {"success": True, "character_id": character.id, "message": "Character resubmitted for approval"}
+            {"success": True, "character_id": bio.character_id, "message": "Character resubmitted for approval"}
         )
 
 
-# URL patterns for inclusion in main urls.py
-def get_api_urls():
-    """Return URL patterns for the trait API."""
-    from django.urls import path
+NARRATIVE_KEYS = ("concept", "sire", "ambition", "desire", "background")
 
-    return [
-        path("api/traits/categories/", TraitCategoriesAPI.as_view(), name="trait_categories_api"),
-        path("api/traits/", TraitsAPI.as_view(), name="traits_api"),
-        path("api/discipline-powers/", DisciplinePowersAPI.as_view(), name="discipline_powers_api"),
-        path("api/character/validate/", CharacterValidationAPI.as_view(), name="character_validation_api"),
-        path("api/character/import/", CharacterImportAPI.as_view(), name="character_import_api"),
-        path("api/character/<int:character_id>/export/", CharacterExportAPI.as_view(), name="character_export_api"),
-        path(
-            "api/character/<int:character_id>/available-traits/",
-            CharacterAvailableTraitsAPI.as_view(),
-            name="character_available_traits_api",
-        ),
-    ]
+
+def _narrative(bio, character):
+    return {"name": character.db_key, **{key: getattr(bio, key) for key in NARRATIVE_KEYS}}
+
+
+def _parse_narrative(data, bio):
+    """A revoked character's resubmission: only narrative text may change."""
+    unknown = sorted(str(key) for key in data if key not in NARRATIVE_KEYS)
+    if unknown:
+        return None, [f"A revoked character keeps its sheet; only {', '.join(NARRATIVE_KEYS)} can change "
+                      f"(unknown key(s): {', '.join(unknown)})"]  # fmt: skip
+    narrative, errors = {}, []
+    for key in NARRATIVE_KEYS:
+        value = data.get(key, getattr(bio, key))
+        if not isinstance(value, str):
+            errors.append(f"{key}: must be text")
+            continue
+        value = value.strip()
+        if key in REQUIRED_TEXT and not value:
+            errors.append(f"{key}: is required")
+        if len(value) > TEXT_LIMITS[key]:
+            errors.append(f"{key}: at most {TEXT_LIMITS[key]} characters")
+        narrative[key] = value
+    return narrative, errors
+
+
+class CharacterExportAPI(BaseAPIView):
+    def get(self, request, character_id):
+        bio = _bio_or_404(character_id)
+        if bio is None:
+            return error("Character not found", 404)
+        if not _can_view(request.user, bio):
+            return error("Permission denied", 403)
+        sheet = export_character(bio.character)
+        return JsonResponse({"character_data": sheet, "character_name": bio.character.db_key})
+
+
+# ----------------------------------------------------------------------------
+# Staff endpoints
+# ----------------------------------------------------------------------------
+
+
+class PendingCharactersAPI(BaseAPIView):
+    """Applications for staff: ?status=submitted,rejected (default) or approved, revoked."""
+
+    def get(self, request):
+        if not has_perm(request.user, "Builder"):
+            return error("Builder permission required", 403)
+        wanted = [s for s in (request.GET.get("status") or "submitted,rejected").split(",") if s]
+        bios = (
+            CharacterBio.objects.filter(status__in=wanted)
+            .select_related("character", "account", "reviewed_by")
+            .order_by("created_at")
+        )
+        data = []
+        for bio in bios:
+            data.append(
+                {
+                    "character_id": bio.character_id,
+                    "character_name": bio.character.db_key,
+                    "player_name": bio.account.username if bio.account else None,
+                    "clan": bio.character.clan,
+                    "concept": bio.concept,
+                    "status": bio.status,
+                    "rejection_count": bio.rejection_count,
+                    "submitted_date": bio.created_at.isoformat() if bio.created_at else None,
+                    "reviewed_by": bio.reviewed_by.username if bio.reviewed_by else None,
+                    "can_review": _can_review(request.user, bio),
+                    "same_origin_as_you": same_origin(bio.applicant_ip, client_ip(request)),
+                }
+            )
+        return JsonResponse({"pending_characters": data})
+
+
+class CharacterDetailAPI(BaseAPIView):
+    def get(self, request, character_id):
+        bio = _bio_or_404(character_id)
+        if bio is None:
+            return error("Character not found", 404)
+        if not _can_view(request.user, bio):
+            return error("Permission denied", 403)
+        character = bio.character
+        sheet = export_character(character)
+        powers = []
+        for name in sheet["discipline_powers"]:
+            power = v5_data.find_power(name) or {}
+            powers.append(
+                {
+                    "name": name,
+                    "discipline": power.get("discipline"),
+                    "level": power.get("level"),
+                    "description": power.get("description", ""),
+                    "requirements": f"{power.get('discipline')} {power.get('level')}"
+                    + (f", {power['amalgam']}" if power.get("amalgam") else ""),
+                }
+            )
+        return JsonResponse(
+            {
+                "character_id": character.id,
+                "character_name": character.db_key,
+                "player_name": bio.account.username if bio.account else None,
+                "bio": {**_bio_data(bio, character), **_staff_address_data(request, bio)},
+                "sheet": sheet,
+                "traits": _sheet_by_category(sheet),
+                "powers": powers,
+                "can_review": _can_review(request.user, bio),
+                "can_revoke": has_perm(request.user, "Admin"),
+                "same_origin_as_you": _staff_address_data(request, bio).get("same_origin_as_you", False),
+            }
+        )
+
+
+class CharacterApprovalAPI(BaseAPIView):
+    """POST {"action": "approve"|"reject"|"revoke", "notes": "..."}."""
+
+    def post(self, request, character_id):
+        if not has_perm(request.user, "Builder"):
+            return error("Builder permission required", 403)
+        bio = _bio_or_404(character_id)
+        if bio is None:
+            return error("Character not found", 404)
+        action = request.json.get("action")
+        notes = request.json.get("notes") or ""
+        if action not in REVIEW_ACTIONS:
+            return error('Invalid action. Use "approve", "reject" or "revoke"', 400)
+        if not isinstance(notes, str) or len(notes) > 5000:
+            return error("Notes must be text of at most 5000 characters", 400)
+        if action == "revoke" and not has_perm(request.user, "Admin"):
+            return error("Only Admins can revoke an approval", 403)
+        if not _can_review(request.user, bio):
+            return error("You can't review your own character; another staff member must", 403)
+        if action == "reject" and not notes.strip():
+            return error("Say what needs to change when you reject a character", 400)
+        if not bio.can_transition(REVIEW_ACTIONS[action]):
+            return error(f"An application that is {bio.status} can't be {REVIEW_ACTIONS[action]}", 409)
+
+        unit = {"approve": approve_unit, "reject": reject_unit, "revoke": revoke_unit}[action]
+        try:
+            bio = call_in_main_thread(unit, bio.pk, request.user, notes.strip(), client_ip(request))
+        except ChargenError as err:
+            return error(err.errors, err.status)
+        except CharacterBio.TransitionError as err:
+            return error(str(err), 409)
+        except Exception:
+            logger.log_trace(f"Chargen: {action} failed")
+            return error(f"Server error; the character was not {REVIEW_ACTIONS[action]}", 500)
+        return JsonResponse(
+            {
+                "success": True,
+                "action": action,
+                "status": bio.status,
+                "character_name": bio.character.db_key,
+                "reviewed_by": request.user.username,
+                "reviewed_at": bio.reviewed_at.isoformat() if bio.reviewed_at else None,
+                "self_reviewed": bio.account_id == request.user.id,
+                "same_origin": same_origin(bio.applicant_ip, bio.reviewer_ip),
+            }
+        )

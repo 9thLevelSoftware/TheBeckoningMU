@@ -1,0 +1,57 @@
+|[R+===================================================================+
+|W|                     EXPERIENCE POINT SYSTEM                       |
+|[R+===================================================================+|n
+
+Experience points (XP) buy new dots. Staff award XP with +xpaward.
+
+|WVIEWING XP|n
+
+|y+xp|n           your current, earned and spent XP
+|y+xp/log|n       your recent awards and purchases
+|y+xp/costs|n     the cost table below
+
+|WSPENDING XP|n
+
+|y+spend attribute <name>|n                   e.g. +spend attribute strength
+|y+spend skill <name>|n                       e.g. +spend skill brawl
+|y+spend specialty <skill> = <specialty>|n   e.g. +spend specialty brawl = Grappling
+|y+spend discipline <name>|n                  e.g. +spend discipline potence
+|y+spend advantage <background or merit>|n   e.g. +spend advantage Resources
+|y+spend advantage <background> = <who>|n    e.g. +spend advantage Allies = street gang
+|y+spend bp|n                                 raise Blood Potency by one
+|y+spend ritual <name>|n                      a Blood Sorcery ritual
+|y+spend formula <name>|n                     a Thin-Blood Alchemy formula
+
+Each spend buys one step. The name must be a real trait of that type
+(+spend skill strength is refused), and nothing is charged when a spend is
+refused.
+
+|WXP COSTS|n (V5 Quick Reference 2.0 p.1)
+
+  Attribute                  new level x 5    (Strength 3 to 4: 20 XP)
+  Skill                      new level x 3    (Brawl 2 to 3: 9 XP)
+  Specialty                  3
+  Clan Discipline            new level x 5
+  Other Discipline           new level x 7
+  Caitiff Discipline         new level x 6    (every discipline, for Caitiff)
+  Blood Sorcery Ritual       ritual level x 3 (needs Blood Sorcery at that level)
+  Thin-blood Formula         formula level x 3 (needs Thin-Blood Alchemy at that level)
+  Thin-Blood Alchemy         new level x 5    (thin-bloods only; each dot comes with
+                                               a formula: +spend discipline
+                                               Thin-Blood Alchemy = <formula>)
+  Advantage                  3 per dot        (backgrounds and merits; a 2-dot
+                                               merit costs 6)
+  Blood Potency              new level x 10   (up to your Generation's maximum:
+                                               13th and 12th Generation: 3)
+
+Willpower is Composure + Resolve: raise those attributes and it rises with
+them. Humanity changes only at the Storyteller's discretion. Neither is
+bought with XP. Thin-bloods can't buy other Disciplines (the Discipline
+Affinity merit gives one permanent dot). Flaws aren't bought, and thin-blood merits are taken at
+character creation.
+
+To justify a new Discipline dot your character should feed on blood of the
+matching Resonance; a new out-of-clan Discipline needs a taste of the blood
+of someone who has it (QR p.1). Staff judge this.
+
+|ySee also:|n help disciplines-guide, help backgrounds-guide, help alchemy-guide, help v5-rules-guide

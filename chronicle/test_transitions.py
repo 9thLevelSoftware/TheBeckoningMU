@@ -1,25 +1,31 @@
 """Chronicle capture at authoritative domain transition boundaries."""
 
-import threading
-from contextlib import nullcontext
-from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from django.db import DatabaseError, transaction
-from django.test import SimpleTestCase
 from evennia.objects.models import ObjectDB
-from evennia.utils.create import create_object
 from evennia.utils.test_resources import EvenniaCommandTest
 
 from bbs.commands import CmdBBSPost
 from bbs.models import Board, Post
+from boons.models import Boon
+from boons.utils import (
+    accept_boon,
+    acknowledge_boon,
+    call_in_boon,
+    decline_boon,
+    dispute_boon,
+    fulfill_boon,
+    offer_boon,
+    uphold_boon,
+)
 from jobs.commands import CmdJobClaim, CmdJobCreate, CmdJobDone, CmdJobReopen, CmdJobSubmit
 from jobs.models import Bucket, Job
 from status.models import CamarillaPosition, CharacterStatus, StatusRequest
 from status.utils import assign_position, get_character_status, modify_earned_status, remove_position, set_earned_status
+from traits.models import CharacterBio
+from web.builder import promotion, test_sandbox
 from web.builder.models import BuildProject
-from web.builder.promotion import promote_project_to_live, run_in_main_thread
-from web.builder.sandbox_builder import build_sandbox_area
 
 from .models import ChronicleEvent
 
@@ -28,6 +34,8 @@ class JobTransitionCaptureTests(EvenniaCommandTest):
     def setUp(self):
         super().setUp()
         self.bucket = Bucket.objects.create(name="TransitionJobs", created_by=self.account)
+        CharacterBio.objects.create(character=self.char1, account=self.account, status="approved")
+        CharacterBio.objects.create(character=self.char2, account=self.account2, status="approved")
 
     def create_job(self, **kwargs):
         return Job.objects.create(
@@ -39,6 +47,7 @@ class JobTransitionCaptureTests(EvenniaCommandTest):
         )
 
     def test_create_claim_complete_and_reopen_capture_only_safe_transition_fields(self):
+        self.account2.permissions.add("Builder")
         with self.captureOnCommitCallbacks(execute=True):
             self.call(CmdJobSubmit(), "TransitionJobs Private title = Private body")
         job = Job.objects.get(bucket=self.bucket)
@@ -77,6 +86,13 @@ class JobTransitionCaptureTests(EvenniaCommandTest):
         self.assertCountEqual(event.participants.all(), [self.char1])
         self.assertNotIn("Private", str(event.payload))
 
+    def test_job_participants_follow_application_ownership_not_current_puppeteer(self):
+        self.char2.account = self.account
+        with self.captureOnCommitCallbacks(execute=True):
+            self.call(CmdJobCreate(), "TransitionJobs Private admin title = Private staff details")
+        event = ChronicleEvent.objects.get(kind="job.created")
+        self.assertCountEqual(event.participants.all(), [self.char1])
+
     def test_rejected_claim_completion_and_reopen_emit_no_events(self):
         job = self.create_job()
         self.assertFalse(CmdJobCreate().access(self.char2, "cmd"))
@@ -93,13 +109,15 @@ class JobTransitionCaptureTests(EvenniaCommandTest):
         self.assertCountEqual(job.players.all(), [self.account])
 
     def test_failed_claim_save_rolls_back_assignment_and_emits_no_event(self):
+        self.account2.permissions.add("Builder")
+        self.assertTrue(CmdJobClaim().access(self.char2, "cmd"))
         job = self.create_job()
         with (
             self.captureOnCommitCallbacks(execute=True),
             patch.object(Job, "save", side_effect=DatabaseError("job save failed")),
             self.assertRaisesMessage(DatabaseError, "job save failed"),
         ):
-            self.call(CmdJobClaim(), str(job.sequence_number), caller=self.char2)
+            self.call(CmdJobClaim(), job.ref, caller=self.char2)
         self.assertFalse(job.players.exists())
         self.assertFalse(ChronicleEvent.objects.exists())
 
@@ -125,6 +143,87 @@ class JobTransitionCaptureTests(EvenniaCommandTest):
         self.assertEqual(Job.objects.count(), 1)
         self.assertFalse(job.players.exists())
         self.assertFalse(ChronicleEvent.objects.exists())
+
+
+class BoonTransitionCaptureTests(EvenniaCommandTest):
+    def test_offer_captures_metadata_after_witnesses_and_rejected_offer_emits_nothing(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertFalse(offer_boon(self.char1, self.char1, "minor", "Invalid")[0])
+            self.assertFalse(ChronicleEvent.objects.exists())
+            success, boon, _ = offer_boon(
+                self.char1, self.char2, "major", "Private favour details", witnesses=[self.char1]
+            )
+        self.assertTrue(success)
+        self.assertCountEqual(boon.witnesses.all(), [self.char1])
+        event = ChronicleEvent.objects.get(kind="boon.offered")
+        self.assertEqual(event.payload, {"boon_type": "major"})
+        self.assertEqual(event.visibility, "public")
+        self.assertEqual(event.occurred_at, boon.created_date)
+        self.assertCountEqual(event.participants.all(), [self.char1, self.char2])
+        self.assertNotIn("Private favour details", event.title + event.summary + str(event.payload))
+
+    def test_decline_and_call_in_capture_only_successful_creditor_transitions(self):
+        declined = Boon.objects.create(debtor=self.char1, creditor=self.char2, is_public=False)
+        called = Boon.objects.create(debtor=self.char1, creditor=self.char2, status="accepted")
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertFalse(decline_boon(declined.pk, "Private reason", self.char1)[0])
+            self.assertFalse(call_in_boon(called.pk, "Private request", self.char1)[0])
+        self.assertFalse(ChronicleEvent.objects.exists())
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertTrue(decline_boon(declined.pk, "Private reason", self.char2)[0])
+            self.assertFalse(decline_boon(declined.pk, "Again", self.char2)[0])
+            self.assertTrue(call_in_boon(called.pk, "Private request", self.char2)[0])
+            self.assertFalse(call_in_boon(called.pk, "Again", self.char2)[0])
+        self.assertEqual(ChronicleEvent.objects.count(), 2)
+        event = ChronicleEvent.objects.get(kind="boon.declined")
+        self.assertEqual(event.visibility, "participants")
+        self.assertEqual(event.payload, {"boon_type": "minor"})
+        event = ChronicleEvent.objects.get(kind="boon.called_in")
+        self.assertEqual(event.occurred_at, called.called_in_date)
+        self.assertEqual(event.payload, {"boon_type": "minor"})
+        self.assertNotIn("Private", event.summary + str(event.payload))
+
+    def test_repeated_acknowledgement_retains_main_result_without_duplicate_event(self):
+        boon = Boon.objects.create(debtor=self.char1, creditor=self.char2, is_public=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertTrue(acknowledge_boon(boon.pk, self.char1)[0])
+            self.assertTrue(acknowledge_boon(boon.pk, self.char1)[0])
+        event = ChronicleEvent.objects.get(kind="boon.acknowledged")
+        self.assertEqual(event.visibility, "participants")
+        self.assertEqual(event.actor, self.char1.account)
+        self.assertEqual(event.payload, {"boon_type": "minor"})
+        self.assertCountEqual(event.participants.all(), [self.char1, self.char2])
+
+    def test_consent_and_two_party_fulfilment_capture_only_final_transitions(self):
+        boon = Boon.objects.create(debtor=self.char1, creditor=self.char2, boon_type="minor", is_public=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertFalse(accept_boon(boon.pk, self.char1)[0])
+            self.assertFalse(ChronicleEvent.objects.exists())
+            self.assertTrue(accept_boon(boon.pk, self.char2)[0])
+            self.assertFalse(accept_boon(boon.pk, self.char2)[0])
+        accepted = ChronicleEvent.objects.get(kind="boon.accepted")
+        self.assertEqual(accepted.visibility, "participants")
+        self.assertCountEqual(accepted.participants.all(), [self.char1, self.char2])
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertTrue(call_in_boon(boon.pk, "Private request", self.char2)[0])
+            self.assertTrue(fulfill_boon(boon.pk, "Private confirmation", self.char1)[0])
+        self.assertFalse(ChronicleEvent.objects.filter(kind="boon.fulfilled").exists())
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertTrue(fulfill_boon(boon.pk, "Confirmed", self.char2)[0])
+            self.assertFalse(fulfill_boon(boon.pk, "Again", self.char2)[0])
+        event = ChronicleEvent.objects.get(kind="boon.fulfilled")
+        self.assertEqual(event.payload, {"boon_type": "minor"})
+        self.assertNotIn("Private", str(event.payload) + event.summary)
+
+    def test_upheld_dispute_cannot_generate_second_dispute_event(self):
+        boon = Boon.objects.create(debtor=self.char1, creditor=self.char2, status="accepted")
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertTrue(dispute_boon(boon.pk, "Private objection", self.char2)[0])
+            self.assertTrue(uphold_boon(boon.pk, "Stands", self.char1)[0])
+            self.assertFalse(dispute_boon(boon.pk, "Again", self.char2)[0])
+        self.assertEqual(ChronicleEvent.objects.filter(kind="boon.disputed").count(), 1)
+        boon.refresh_from_db()
+        self.assertEqual(boon.status, "accepted")
 
 
 class BBSTransitionCaptureTests(EvenniaCommandTest):
@@ -234,8 +333,8 @@ class StatusTransitionCaptureTests(EvenniaCommandTest):
         request = StatusRequest.objects.create(character=self.char1, request_type="earned_status", requested_change=2)
         original_apply = StatusRequest._apply_change
 
-        def failed_apply(instance):
-            original_apply(instance)
+        def failed_apply(instance, staff_member):
+            original_apply(instance, staff_member)
             raise DatabaseError("status application failed")
 
         with (
@@ -260,8 +359,8 @@ class StatusTransitionCaptureTests(EvenniaCommandTest):
         request = StatusRequest.objects.create(character=self.char1, request_type="earned_status", requested_change=2)
         original_apply = StatusRequest._apply_change
 
-        def failed_apply(instance):
-            original_apply(instance)
+        def failed_apply(instance, staff_member):
+            original_apply(instance, staff_member)
             raise DatabaseError("approval interrupted after applying")
 
         with (
@@ -288,8 +387,8 @@ class StatusTransitionCaptureTests(EvenniaCommandTest):
         created = []
         original_apply = StatusRequest._apply_change
 
-        def failed_apply(instance):
-            original_apply(instance)
+        def failed_apply(instance, staff_member):
+            original_apply(instance, staff_member)
             status = get_character_status(instance.character)
             created.append((status, status.pk))
             raise DatabaseError("new row interrupted")
@@ -331,53 +430,58 @@ class StatusTransitionCaptureTests(EvenniaCommandTest):
         self.assertEqual(ChronicleEvent.objects.get(kind="status.changed").payload, {"old_value": 1, "new_value": 2})
 
 
-class BuilderTransitionCaptureTests(EvenniaCommandTest):
+class BuilderTransitionCaptureTests(test_sandbox.SandboxTestBase):
     def setUp(self):
         super().setUp()
-        self.project = BuildProject.objects.create(user=self.account, name="Promoted area", status="built")
-        built = build_sandbox_area(
-            self.project.pk,
-            {
-                "rooms": {"first": {"name": "First live room"}, "second": {"name": "Second live room"}},
-                "exits": {"path": {"source": "first", "target": "second", "name": "path"}},
-            },
-        )
-        self.container_id = built["sandbox_room_id"]
-        self.room_ids = set(built["room_map"].values())
-        self.project.sandbox_room_id = self.container_id
-        self.project.save(update_fields=["sandbox_room_id"])
+        self.project = self.built_project(map_data=test_sandbox.area_map(entry=2))
+        self.record = self.project.built_object_ids.copy()
+        self.room_ids = set(self.record["rooms"].values())
+        self.objects = self.recorded_objects(self.project)
+        self.objects_before = ObjectDB.objects.count()
 
-    def promote(self):
-        with (
-            patch("web.builder.promotion.run_in_main_thread", side_effect=lambda callback: callback()),
-            self.captureOnCommitCallbacks(execute=True),
-        ):
-            return promote_project_to_live(self.project.pk, self.room2.pk, "n")
+    def promote(self, **kwargs):
+        with self.captureOnCommitCallbacks(execute=True):
+            return promotion.promote_project_to_live(self.project.pk, **kwargs)
 
     def assert_review_preserved(self):
         self.project.refresh_from_db()
         self.assertEqual(self.project.status, "built")
-        self.assertEqual(self.project.sandbox_room_id, self.container_id)
+        self.assertEqual(self.project.built_object_ids, self.record)
+        self.assertEqual(self.project.sandbox_room_id, self.record["entry"])
         self.assertIsNone(self.project.promoted_at)
-        self.assertTrue(ObjectDB.objects.filter(pk=self.container_id).exists())
+        self.assertEqual(ObjectDB.objects.count(), self.objects_before)
+        for obj in self.objects:
+            self.assertTrue(obj.tags.has("sandbox"), obj)
+            self.assertTrue(obj.tags.has(f"project_{self.project.pk}"), obj)
         self.assertFalse(ChronicleEvent.objects.filter(kind="builder.promoted").exists())
 
-    def test_real_success_preserves_promoted_world_and_connects_actual_entry_room(self):
+    def test_real_success_preserves_promoted_world_and_connects_reviewed_entry_room(self):
         success, result = self.promote()
         self.assertTrue(success, result)
         self.project.refresh_from_db()
         self.assertEqual(self.project.status, "live")
+        self.assertEqual(self.project.built_object_ids, {})
         self.assertIsNone(self.project.sandbox_room_id)
-        self.assertFalse(ObjectDB.objects.filter(pk=self.container_id).exists())
         self.assertEqual(ObjectDB.objects.filter(pk__in=self.room_ids).count(), 2)
-        self.assertIn(result["entry_room_id"], self.room_ids)
+        self.assertEqual(result["entry_room_id"], self.record["entry"])
         self.assertEqual(len(result["created_exits"]), 2)
+        for obj in self.objects:
+            self.assertFalse(obj.tags.has("sandbox"))
+            self.assertFalse(obj.tags.has(f"project_{self.project.pk}"))
         for exit_data in result["created_exits"]:
             self.assertTrue(ObjectDB.objects.filter(pk=exit_data["id"]).exists())
         event = ChronicleEvent.objects.get(kind="builder.promoted")
         self.assertEqual(event.visibility, ChronicleEvent.Visibility.PUBLIC)
         self.assertEqual(event.status, ChronicleEvent.Status.DRAFT)
+        self.assertEqual(event.actor, self.owner)
         self.assertEqual(event.payload, {"project_name": self.project.name})
+        self.assertEqual(
+            event.idempotency_key,
+            f"builder:{self.project.pk}:builder.promoted:{self.project.promoted_at.isoformat()}",
+        )
+        self.assertEqual(event.occurred_at, self.project.promoted_at)
+        self.assertFalse(self.promote()[0])
+        self.assertEqual(ChronicleEvent.objects.filter(kind="builder.promoted").count(), 1)
 
     def test_private_project_emits_staff_metadata_without_project_name(self):
         self.project.is_public = False
@@ -388,133 +492,67 @@ class BuilderTransitionCaptureTests(EvenniaCommandTest):
         self.assertEqual(event.visibility, ChronicleEvent.Visibility.STAFF)
         self.assertEqual(event.payload, {})
 
-    def test_invalid_connection_is_failure_without_success_event(self):
-        with patch("web.builder.promotion.run_in_main_thread", side_effect=lambda callback: callback()):
-            success, result = promote_project_to_live(self.project.pk, 99999999, "n")
+    def test_connection_different_from_review_is_refused_without_success_event(self):
+        success, result = self.promote(connection_room_id=self.plaza.pk, connection_direction="s")
         self.assertFalse(success)
-        self.assertIn("not found", result["error"])
+        self.assertEqual(result["status"], 409)
+        self.assertIn("reviewed", result["error"])
         self.assert_review_preserved()
 
-    def test_partial_exit_failure_keeps_review_recovery_and_emits_no_success(self):
+    def test_partial_exit_failure_compensates_and_emits_no_success_event(self):
         calls = 0
+        create_exit = promotion._create_connection_exit
 
-        def fail_return_exit(**kwargs):
+        def fail_return_exit(*args, **kwargs):
             nonlocal calls
             calls += 1
             if calls == 2:
                 raise RuntimeError("return exit failed")
-            return create_object(**kwargs)
+            return create_exit(*args, **kwargs)
 
-        with patch("evennia.utils.create.create_object", side_effect=fail_return_exit):
+        with (
+            patch.object(promotion, "_create_connection_exit", side_effect=fail_return_exit),
+            self.assertLogs("web.builder.promotion", level="ERROR"),
+        ):
             success, result = self.promote()
         self.assertFalse(success)
-        self.assertTrue(result["recovery_required"])
-        self.assertEqual(len(result["created_exits"]), 1)
-        self.assertTrue(result["errors"])
+        self.assertIn("return exit failed", result["error"])
+        self.assertEqual(calls, 2)
+        self.assertEqual(self.plaza.contents, [])
         self.assert_review_preserved()
 
-    def test_failed_status_finalization_does_not_delete_container_or_emit_success(self):
-        with patch.object(BuildProject, "mark_live", side_effect=ValueError("state transition refused")):
+    def test_failed_status_finalization_restores_sandbox_and_emits_no_success(self):
+        queryset_type = type(BuildProject.objects.all())
+        original_update = queryset_type.update
+
+        def fail_finalization(queryset, **kwargs):
+            if queryset.model is BuildProject and kwargs.get("status") == "live":
+                raise RuntimeError("state transition refused")
+            return original_update(queryset, **kwargs)
+
+        with (
+            patch.object(queryset_type, "update", new=fail_finalization),
+            self.assertLogs("web.builder.promotion", level="ERROR"),
+        ):
             success, result = self.promote()
         self.assertFalse(success)
-        self.assertTrue(result["recovery_required"])
+        self.assertIn("state transition refused", result["error"])
+        self.assertEqual(self.plaza.contents, [])
         self.assert_review_preserved()
 
-
-class PromotionDispatchTests(SimpleTestCase):
-    def test_pending_finalization_with_populated_result_cannot_report_success(self):
-        started = threading.Event()
-        release = threading.Event()
-        completed = threading.Event()
-        callbacks = []
-        failures = []
-
-        def stalled_finalization():
-            started.set()
-            if not release.wait(timeout=5):
-                raise RuntimeError("Test did not release finalization")
-            raise RuntimeError("Finalization failed after the caller timed out")
-
-        project = SimpleNamespace(
-            status="built",
-            sandbox_room_id=7,
-            refresh_from_db=Mock(),
-            mark_live=Mock(side_effect=stalled_finalization),
-            save=Mock(),
-        )
-
-        def execute_callback():
-            try:
-                callbacks[0]()
-            except BaseException as error:
-                failures.append(error)
-
-        # Construct the worker before replacing the promotion completion-event
-        # factory; Thread itself owns a separate internal Event.
-        worker = threading.Thread(target=execute_callback)
-
-        def dispatch(callback):
-            callbacks.append(callback)
-            worker.start()
-
-        def timeout_after_result_is_populated(timeout):
-            self.assertTrue(started.wait(timeout=5), "Finalization did not start")
-            return False
-
+    def test_capture_failure_keeps_committed_live_world_and_does_not_run_compensation(self):
         with (
-            patch("web.builder.models.BuildProject.objects.get", return_value=project),
-            patch("web.builder.promotion.run_in_main_thread", side_effect=dispatch),
-            patch("web.builder.promotion.threading.Event", return_value=completed),
-            patch.object(completed, "wait", side_effect=timeout_after_result_is_populated),
-            patch("web.builder.promotion.transaction.atomic", return_value=nullcontext()),
-            patch("web.builder.promotion.logger.exception"),
-            patch("web.builder.promotion._do_promotion_in_main_thread", return_value=(True, {"promoted_rooms": 2})),
-            patch("chronicle.services.record_event") as record,
+            patch("chronicle.services.record_event", side_effect=RuntimeError("capture unavailable")),
+            self.assertLogs("web.builder.promotion", level="ERROR") as logs,
         ):
-            try:
-                success, result = promote_project_to_live(1, 2, "n")
-                self.assertFalse(success)
-                self.assertTrue(result["pending"])
-                self.assertTrue(result["recovery_required"])
-                self.assertFalse(completed.is_set())
-                record.assert_not_called()
-                project.save.assert_not_called()
-            finally:
-                release.set()
-                worker.join(timeout=5)
-        self.assertFalse(worker.is_alive())
-        self.assertEqual(failures, [])
-        self.assertTrue(completed.is_set())
-
-    def test_off_reactor_caller_queues_without_mutating_on_the_calling_thread(self):
-        callback = Mock()
-        with (
-            patch("web.builder.promotion.isInIOThread", return_value=False),
-            patch("web.builder.promotion.reactor.running", True),
-            patch("web.builder.promotion.reactor.callFromThread") as dispatch,
-        ):
-            run_in_main_thread(callback)
-        callback.assert_not_called()
-        dispatch.assert_called_once_with(callback)
-
-    def test_reactor_caller_executes_inline_without_queueing(self):
-        callback = Mock()
-        with (
-            patch("web.builder.promotion.isInIOThread", return_value=True),
-            patch("web.builder.promotion.reactor.callFromThread") as dispatch,
-        ):
-            run_in_main_thread(callback)
-        callback.assert_called_once_with()
-        dispatch.assert_not_called()
-
-    def test_stopped_reactor_rejects_promotion_dispatch(self):
-        callback = Mock()
-        with (
-            patch("web.builder.promotion.isInIOThread", return_value=False),
-            patch("web.builder.promotion.reactor.running", False),
-            patch("web.builder.promotion.reactor.callFromThread") as dispatch,
-            self.assertRaisesMessage(RuntimeError, "game reactor is not running"),
-        ):
-            run_in_main_thread(callback)
-        callback.assert_not_called()
-        dispatch.assert_not_called()
+            success, result = self.promote()
+        self.assertTrue(success, result)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.status, "live")
+        self.assertEqual(self.project.built_object_ids, {})
+        self.assertEqual(len(result["created_exits"]), 2)
+        for obj in self.objects:
+            self.assertFalse(obj.tags.has("sandbox"))
+            self.assertFalse(obj.tags.has(f"project_{self.project.pk}"))
+        self.assertIn("Chronicle capture failed", logs.records[0].getMessage())
+        self.assertFalse(ChronicleEvent.objects.filter(kind="builder.promoted").exists())

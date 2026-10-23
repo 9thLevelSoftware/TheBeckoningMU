@@ -12,7 +12,11 @@ def at_server_start():
     """
     from chronicle.generation import recover_pending_drafts
     from narrative.services import recover_pending_requests
+    # Job buckets, Camarilla positions and BBS boards the help relies on;
+    # creates only what is missing.
+    from world.seed_defaults import seed_defaults
 
+    seed_defaults()
     recover_pending_requests()
     recover_pending_drafts()
 

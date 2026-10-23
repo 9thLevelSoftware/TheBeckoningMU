@@ -1,0 +1,62 @@
+|[R+===================================================================+
+|W|                        HUNGER SYSTEM                              |
+|[R+===================================================================+|n
+
+Hunger replaces the old Blood Pool. It measures how close the Beast is
+(Quick Reference p.4). It runs from 0 to 5; a new vampire starts at 1.
+
+|WHUNGER DICE:|n
+
+Your |[RHunger dice|n replace regular dice in every roll, one per point of
+Hunger, up to the whole pool. |yroll|n and |ypower|n use your current Hunger.
+
+|yExample:|n Dexterity 3 + Stealth 2 = 5 dice at Hunger 2
+  - You roll |W3 regular dice|n + |[R2 Hunger dice|n
+
+  - Hunger dice count successes like any other die (6-10).
+  - |yMessy critical:|n a critical (a successful roll with a pair of
+    10s) where a Hunger die shows one of the 10s. You succeed; the
+    Storyteller decides the complication.
+  - |yBestial failure:|n a failed roll with any Hunger die showing 1.
+    You fail and act out a Compulsion.
+  - A Willpower re-roll never changes Hunger dice.
+
+|WHUNGER 4 AND 5:|n
+
+  - |yHunger 4+:|n you are prone to Hunger frenzy (see |yhelp frenzy-guide|n).
+  - |yHunger 5:|n you can't Rouse the Blood. |yrouse|n, |ybloodsurge|n
+    and any power that needs a Rouse check are refused until you feed.
+
+|WINCREASING HUNGER:|n
+
+Hunger rises by 1 each time you fail a |yRouse check|n (a 1-5 on one
+die). You Rouse to:
+  - use most discipline powers (some cost two or three checks)
+  - |ybloodsurge|n
+  - rise for the night, mend damage, or show the Blush of Life
+
+The Hunger a Rouse costs is added after the action it fuels, so the
+action's own roll uses your Hunger from before. Hunger never goes past
+5: a failure that would take it higher means an immediate hunger frenzy
+test (Difficulty 4).
+
+Blood Potency lets you re-roll a failed Rouse check for discipline
+powers up to a level set by the Blood Potency table (|yhelp blood_commands|n).
+
+|yCommands:|n |yhunger|n shows your Hunger, resonance and any Blood Surge;
+|yrouse [<reason>]|n makes a Rouse check.
+
+|WDECREASING HUNGER (FEEDING):|n
+
+Hunger falls when you feed:
+  - |wMortals|n: the usual way; risks the Masquerade
+  - |wAnimals and bagged blood|n: slake less, or nothing, at higher
+    Blood Potency
+  - |wOther vampires|n: risks blood bonds
+
+Feed with |y+hunt|n (once a day), or ask for a staff-run scene with
+|y+hunt/staffed|n; staff record the scene's feeding (see help hunt-guide).
+
+|[r+===================================================================+|n
+
+|ySee also:|n help roll-guide, help dice_commands, help blood_commands, help frenzy-guide, help v5-rules-guide

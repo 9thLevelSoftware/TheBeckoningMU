@@ -6,7 +6,7 @@ This standalone static site provides public information and reference materials 
 
 The static pages `character-creation-new.html` and `character-creation.html` are retired entry points. They redirect to the Django character-creation page using the public origin generated from Django's `PUBLIC_GAME_BASE_URL` environment or deployment setting. If the generated value is empty or invalid, these pages show an unavailable notice; they do not save characters in local storage or report a successful submission.
 
-The homepage's **Create a Character** link uses the same deployment value. Set it only after the Django site is reachable. Players can also begin character creation in-game with `+chargen/start`.
+The homepage's **Create a Character** link uses the same deployment value. Set it only after the Django site is reachable. Character creation is web-only; there is no in-game chargen command.
 
 ### Generate the deployment configuration
 
@@ -50,6 +50,16 @@ After deployment, verify both retired URLs and the homepage CTA from the real st
 ## Technologies
 
 HTML5, CSS3, and JavaScript. The Django game site remains responsible for character data and account authorization.
+## Project Structure
+
+- `index.html` - Static-site homepage.
+- `character-creation-new.html` and `character-creation.html` - Retired redirect entry points.
+- `assets/js/site-config.js` - Deployment-supplied public game origin (`PUBLIC_GAME_BASE_URL`).
+- `assets/js/game-link.js` - Validates the configured origin and routes to Django chargen.
+- `assets/css/` and `assets/js/main.js` - Homepage presentation and behavior.
+- `references/` - V5 reference materials.
+
+The retired client-side character builders are not loaded by these pages. The static site is served outside Django; Django remains responsible for character data and account authorization.
 
 ## License
 

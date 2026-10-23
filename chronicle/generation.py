@@ -6,13 +6,13 @@ from uuid import UUID
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Q
 from django.utils import timezone
 from twisted.internet import reactor
 
 from narrative.services import configured_provider
 
 from .models import ChronicleEvent, ChronicleGenerationRequest
+from .services import staff_authorized
 
 MAX_SOURCES = 8
 MAX_DEPENDENCIES = 32
@@ -21,13 +21,8 @@ MAX_PROSE_CHARACTERS = 6000
 
 
 def _require_staff(actor_id):
-    if (
-        not actor_id
-        or not get_user_model()
-        .objects.filter(pk=actor_id, is_active=True)
-        .filter(Q(is_staff=True) | Q(is_superuser=True))
-        .exists()
-    ):
+    actor = get_user_model().objects.filter(pk=actor_id).first() if actor_id else None
+    if not staff_authorized(actor):
         raise PermissionError("Active staff permission is required for Chronicle drafting.")
 
 

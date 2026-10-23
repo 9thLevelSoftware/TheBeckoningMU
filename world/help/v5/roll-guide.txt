@@ -1,0 +1,77 @@
+|[R+===================================================================+
+|W|                    DICE ROLLING MECHANICS                         |
+|[R+===================================================================+|n
+
+V5 uses |yd10 dice pools|n to resolve actions (Quick Reference p.3-4).
+
+|WBASIC ROLL STRUCTURE:|n
+
+Roll |yAttribute + Skill|n dice; you need a number of successes equal to
+the |yDifficulty|n the Storyteller sets.
+
+|yExample:|n Sneak past a guard
+  - Pool: |wDexterity 3 + Stealth 2 = 5 dice|n
+  - Difficulty: |w2|n
+  - Command: |yroll 5 vs 2|n
+
+|WSUCCESSES:|n
+
+  - Each die showing |w6-10|n is |w1 success|n; 1-5 is none.
+  - Each |gpair of 10s|n is worth |g4 successes|n in total.
+    One 10 = 1 success, two = 4, three = 5, four = 8.
+  - You succeed if your successes reach the difficulty. At difficulty
+    0 you still need one success.
+
+|yExample:|n You roll [3, 6, 7, 10, 10]
+  - 6 and 7 are 2 successes; the pair of 10s is 4. Total |g6|n.
+
+|yCritical:|n a successful roll with at least one pair of 10s.
+
+|WHUNGER DICE:|n
+
+Your |[RHunger dice|n replace regular dice, one per point of Hunger,
+up to the whole pool. |yroll|n uses your current Hunger automatically.
+
+|yExample:|n 5 dice at Hunger 2 = |W3 regular dice|n + |[R2 Hunger dice|n.
+At Hunger 4, a 3-die pool is all Hunger dice.
+
+|WMESSY CRITICAL:|n
+
+A critical where |[Ra Hunger die shows one of the 10s|n. You succeed,
+but the Beast shows: the Storyteller decides the complication.
+
+|WBESTIAL FAILURE:|n
+
+A failed roll with |[Rany Hunger die showing 1|n. You fail, and you
+act out a Compulsion.
+
+|WWILLPOWER:|n
+
+Mark 1 Superficial Willpower damage to re-roll up to |g3 regular dice|n
+of your last roll. You choose them by the value they show, and you may
+re-roll a 10. Hunger dice can't be re-rolled.
+
+  |yroll/willpower 2 3|n      re-roll a 2 and a 3 from your last roll
+
+|WBLOOD SURGE:|n
+
+|ybloodsurge <trait>|n adds the Blood Potency table's surge dice to your
+next |yroll|n or |ypower|n roll. Its Rouse check is made with that roll, and
+any Hunger it costs is added after the roll (see |yhelp bloodsurge|n).
+
+|WCOMMANDS:|n
+
+|yroll <pool> [vs <difficulty>]|n      roll with your Hunger
+|yroll/secret <pool> [vs <difficulty>]|n  only you see it
+|yroll/willpower <die> [<die> <die>]|n  Willpower re-roll
+|ypower <power name>|n                 use a discipline power
+|yrouse|n                              a Rouse check
+
+|WROLEPLAYING ROLLS:|n
+
+|yDescribe first, then roll.|n Narrate how you succeed or what goes
+wrong; on a messy critical or bestial failure, play out the Beast.
+
+|[r+===================================================================+|n
+
+|ySee also:|n help dice_commands, help hunger-guide, help disciplines-guide, help v5-rules-guide

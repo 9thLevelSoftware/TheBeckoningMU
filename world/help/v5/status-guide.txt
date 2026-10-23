@@ -1,0 +1,112 @@
+|[R+===================================================================+
+|W|                    CAMARILLA STATUS SYSTEM                        |
+|[R+===================================================================+|n
+
+In Camarilla society, |yStatus|n is everything. It determines speaking order
+at gatherings, access to resources, and political influence.
+
+|WTYPES OF STATUS:|n
+
+|yEarned Status|n - Long-term reputation and standing
+  - Earned through service and accomplishments
+  - Changed by staff, usually on a |y+statusreq|n request
+  - Rarely stripped except for major infractions
+
+|yPosition Status|n - Granted by an office you hold
+  - Set automatically when staff assign a position
+  - Lost with the position
+
+|yTemporary Status|n - Short-term modifiers recorded by staff
+  - Shown in the |y+status|n breakdown when not zero
+
+Your total Status is the sum of the three, from 0 to 5.
+
+|WSTATUS LEVELS:|n
+
+|y0|n - |wNo Status|n
+  - Neonates, unacknowledged Kindred
+  - No voice at Elysium
+
+|y1-2|n - |wAcknowledged|n
+  - Basic recognition in domain
+  - May speak at gatherings (after higher Status)
+  - Normal Camarilla member
+
+|y3-4|n - |wRespected|n
+  - Established reputation
+  - Granted influence and territory
+  - Primogen, Whips, Officers
+
+|y5+|n - |wHonored|n
+  - Major leaders, Princes, Justicars
+  - Speak first, command attention
+  - Significant political power
+
+|WSTATUS EFFECTS:|n
+
+|ySpeaking Order:|n At Elysium and gatherings
+  - Higher Status speaks first
+  - Interrupting higher Status = severe breach of protocol
+  - Equal Status = yield to elder or position
+
+|yPolitical Influence:|n
+  - The Storyteller may add Status to social pools in Camarilla
+    contexts; the game only displays Status and no roll adds it
+  - Higher Status gets better hunting grounds
+  - Access to domain resources and protection
+
+|ySocial Leverage:|n
+  - Status can be leveraged as boons
+  - Acknowledgment by high-Status carries weight
+  - Status loss is severe social punishment
+
+|WGAINING STATUS:|n
+
+  - |yService to the Domain|n - protecting territory, upholding Masquerade
+  - |yAccomplishing Difficult Tasks|n - for Prince or Primogen
+  - |yPolitical Maneuvering|n - calling in boons, public recognition
+  - |yHolding Office|n - Sheriff, Harpy, Primogen automatically gain Status
+
+|WLOSING STATUS:|n
+
+  - |[RMasquerade Breaches|n - most serious offense
+  - |[RTradition Violations|n - breaking the Six Traditions
+  - |[RDisrespecting Superiors|n - insulting higher-Status Kindred
+  - |[RFailing Obligations|n - not honoring boons or duties
+  - |[RPolitical Defeat|n - public humiliation or loss of position
+
+|WCOMMANDS:|n
+
+|y+status|n - View your current Status
+|y+status <name>|n - View another's Status
+|y+status/history|n - View your Status history
+|y+positions|n - View Camarilla positions and their holders
+|y+statusreq/status <+/-amount> = <reason>|n - Ask staff for a Status change
+|y+statusreq/position <position> = <reason>|n - Ask for an appointment
+
+Status changes are made by staff (|y+statusadmin|n); players request
+them. See |yhelp status_commands|n for the full syntax.
+
+|WHARPY'S ROLE:|n
+
+The |yHarpy|n is the social arbiter who tracks Status:
+  - Records public acknowledgments
+  - Announces Status changes at Elysium
+  - Supports requests for Status changes
+  - Acts as neutral observer of social combat
+
+The position is a title only. To rule on boons with |y+boonadmin|n, the
+Harpy's account needs the |wHarpy|n permission, which staff grant with
+|yperm *<account> = Harpy|n.
+
+|WSTATUS VS BOONS:|n
+
+|yStatus|n is |wreputation and rank|n - who you are
+|yBoons|n are |wcurrency and favors|n - what you're owed
+
+High Status makes your boons more valuable.
+Low Status makes collecting boons harder.
+
+|[r+===================================================================+|n
+
+|ySee also:|n help status_commands, help boons-guide, help positions, help v5-rules-guide

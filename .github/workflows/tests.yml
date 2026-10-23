@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A push to a branch with an open PR triggers both events; keep only the
+# newest run per ref.
+concurrency:
+  group: tests-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # Settings refuse to load without server/conf/secret_settings.py.
+      # --initmissing writes one with a fresh random SECRET_KEY (never committed).
+      - name: Create local secret settings
+        run: uv run evennia --initmissing
+
+      # The Evennia launcher exits 0 when settings fail to import, so also
+      # require the runner's own "OK" summary line before passing.
+      - name: Run the test suite
+        shell: bash
+        run: |
+          uv run evennia test --settings settings.py . 2>&1 | tee test-output.txt
+          grep -Eq '^OK( \(|$)' test-output.txt

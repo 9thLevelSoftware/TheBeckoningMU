@@ -1,0 +1,43 @@
+|[R+===================================================================+
+|W|                     DISCIPLINE EFFECTS                            |
+|[R+===================================================================+|n
+
+Some discipline powers last beyond the moment you use them. When a
+|ypower|n roll succeeds (or a power with no roll is used), the game records
+the power as an |wactive effect|n on you, so you and the Storyteller can see
+what is running.
+
+|WDURATIONS|n
+
+|y+powerinfo|n shows each power's duration in the book's words. The effect
+list records one of three kinds: |yscene|n (most powers), |yturn|n (a number
+of combat turns, advanced by staff) or |ypermanent|n (until removed).
+Instant powers aren't recorded.
+
+The game doesn't know when a scene ends, so a scene effect stays listed
+after the scene; the Storyteller decides when it has ended.
+
+|WWHAT AN EFFECT DOES|n
+
+An effect is a record, not an automatic bonus. Two kinds feed into rolls:
+an active Celerity bonus adds to your defense against |y+attack|n, and an
+active Potence bonus adds to the damage of your attacks. Everything else
+(being unseen, a Dominate command, heightened senses) is applied by the
+Storyteller in the scene.
+
+Using a power again adds a second entry; the Storyteller decides whether
+two uses of the same power stack.
+
+|WCOMMANDS|n
+
+|y+effects|n                     list your active effects
+|y+effects/clear <id>|n          (staff) remove one of your own effects
+|y+effects/clear all|n           (staff) remove all your own effects
+|y+effects/tick|n                (staff) advance your turn-based effects by a turn
+
+The staff switches act on the staff member's own character; there is no
+switch yet to clear another character's effects.
+
+Effects survive logging out and server reloads.
+
+|ySee also:|n help effects_commands, help discipline_commands, help disciplines-guide

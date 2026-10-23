@@ -7,6 +7,7 @@ from django.urls import reverse
 from evennia.objects.models import ObjectDB
 
 from narrative.models import MemoryFact, NarrativePersona
+from traits.models import CharacterBio
 
 from .models import ChronicleEvent, ChronicleGenerationRequest
 
@@ -18,15 +19,18 @@ class ChroniclePermissionMatrixTests(TestCase):
         self.owner = users.create_user(username="matrix-owner", password=None)
         self.other = users.create_user(username="matrix-other", password=None)
         self.staff = users.create_user(username="matrix-staff", password=None, is_staff=True)
+        self.staff.permissions.add("Builder")
+        self.flag_only = users.create_user(username="matrix-django-staff", password=None, is_staff=True)
         self.superuser = users.create_user(username="matrix-superuser", password=None, is_staff=True, is_superuser=True)
         self.characters = {
             user.pk: ObjectDB.objects.create(
                 db_key=f"Matrix character {user.username}",
-                db_account=user,
                 db_typeclass_path="typeclasses.characters.Character",
             )
             for user in (self.owner, self.other, self.staff)
         }
+        for user in (self.owner, self.other, self.staff):
+            CharacterBio.objects.create(character=self.characters[user.pk], account=user, status="approved")
         self.events = {}
         self._event("public", visibility="public", status="published")
         for status in ("draft", "redacted", "superseded"):
@@ -70,6 +74,17 @@ class ChroniclePermissionMatrixTests(TestCase):
             reverse("player_character_summary", args=(character.pk,)),
             reverse("player_character_chronicle", args=(character.pk,)),
         )
+
+    def test_story_navigation_uses_builder_permission_without_django_staff_flag(self):
+        self.staff.is_staff = False
+        self.staff.save(update_fields=["is_staff"])
+        for user, visible in ((self.staff, True), (self.flag_only, False)):
+            self.client.force_login(user)
+            for name in ("chronicle_public", "chronicle_mine"):
+                with self.subTest(user=user.username, route=name):
+                    response = self.client.get(reverse(name))
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(b"Story Operations" in response.content, visible)
 
     def _mutations(self):
         return (
@@ -218,7 +233,7 @@ class ChroniclePermissionMatrixTests(TestCase):
 
     def test_staff_pages_and_mutations_require_staff_and_actions_do_not_mutate_on_safe_methods(self):
         before = self._snapshot()
-        for user in (None, self.owner, self.other):
+        for user in (None, self.owner, self.other, self.flag_only):
             self.client.logout()
             if user:
                 self.client.force_login(user)

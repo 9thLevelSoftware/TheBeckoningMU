@@ -15,6 +15,9 @@ from twisted.web.http_headers import Headers
 from twisted.web.iweb import IBodyProducer
 from zope.interface import implementer
 
+from chronicle.services import staff_authorized
+from traits.models import CharacterBio
+
 from .models import (
     MemoryFact,
     NarrativeConsent,
@@ -54,8 +57,8 @@ def configured_provider():
 
 
 def _object_account(character):
-    account = getattr(character, "db_account", None)
-    return account if account is not None else getattr(character, "account", None)
+    bio = CharacterBio.objects.filter(character_id=character.pk).select_related("account").first()
+    return bio.account if bio else None
 
 
 def validate_persona_character(character):
@@ -63,14 +66,14 @@ def validate_persona_character(character):
         raise ValueError("Persona must be a persistent ObjectDB Character.")
     if not character.is_typeclass("typeclasses.characters.Character", exact=False):
         raise ValueError("Persona must use the Character typeclass.")
-    if _object_account(character) is not None:
+    if CharacterBio.objects.filter(character_id=character.pk).exists():
         raise ValueError("Player-owned characters cannot be registered as NPC personas.")
     return character
 
 
 def register_persona(character, staff_user, profile=""):
     """Register an existing persistent account-less Character from staff operations."""
-    if not getattr(staff_user, "is_staff", False):
+    if not staff_authorized(staff_user):
         raise PermissionError("Only staff may register narrative personas.")
     validate_persona_character(character)
     return NarrativePersona.objects.create(character=character, registered_by=staff_user, profile=profile)
@@ -124,8 +127,10 @@ def _authorized_fact_filter(now, character_id):
 
 
 def active_consent(session):
-    # ObjectDB instances may be process-cached; ownership must come from persistence.
-    account_id = ObjectDB.objects.filter(pk=session.character_id).values_list("db_account_id", flat=True).first()
+    # The application owns the character; db_account is only its current puppet link.
+    account_id = (
+        CharacterBio.objects.filter(character_id=session.character_id).values_list("account_id", flat=True).first()
+    )
     return (
         bool(account_id)
         and NarrativeConsent.objects.filter(

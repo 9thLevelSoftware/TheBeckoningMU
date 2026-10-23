@@ -8,7 +8,7 @@ from .services import validate_persona_character
 
 
 class NarrativePersonaForm(forms.ModelForm):
-    character = forms.ModelChoiceField(queryset=ObjectDB.objects.filter(db_account__isnull=True))
+    character = forms.ModelChoiceField(queryset=ObjectDB.objects.filter(vtm_bio__isnull=True))
     profile = forms.CharField(
         required=False,
         widget=forms.Textarea,

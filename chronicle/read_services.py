@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from django.db.models.functions import Lower
 from evennia.objects.models import ObjectDB
 
-from boons.models import BoonLedger
+from boons.utils import get_boon_totals
 from status.models import CharacterStatus
 
 from .models import ChronicleEvent
@@ -36,7 +36,7 @@ def character_summary_for_account(account, character_id):
     attributes = dict(
         ObjectDB.db_attributes.through.objects.filter(
             objectdb_id=character["id"],
-            objectdb__db_account=account,
+            objectdb__vtm_bio__account=account,
             attribute__db_model__iexact="objectdb",
             attribute__db_category__isnull=True,
             attribute__db_attrtype__isnull=True,
@@ -46,15 +46,11 @@ def character_summary_for_account(account, character_id):
         .values_list("key", "attribute__db_value")
     )
     status = (
-        CharacterStatus.objects.filter(character_id=character["id"], character__db_account=account)
+        CharacterStatus.objects.filter(character_id=character["id"], character__vtm_bio__account=account)
         .values("earned_status", "position_status", "temporary_status", "position__name")
         .first()
     )
-    ledger = (
-        BoonLedger.objects.filter(character_id=character["id"], character__db_account=account)
-        .values("total_debt_weight", "total_credit_weight", "net_weight")
-        .first()
-    )
+    ledger = get_boon_totals(character["id"])
     return {
         "id": character["id"],
         "name": character["db_key"],
@@ -66,12 +62,10 @@ def character_summary_for_account(account, character_id):
             "position": status["position__name"],
             "total": max(0, min(5, status["earned_status"] + status["position_status"] + status["temporary_status"])),
         },
-        "boons": None
-        if ledger is None
-        else {
-            "owed": ledger["total_debt_weight"],
-            "held": ledger["total_credit_weight"],
-            "net": ledger["net_weight"],
+        "boons": {
+            "owed": ledger.total_debt_weight,
+            "held": ledger.total_credit_weight,
+            "net": ledger.net_weight,
         },
     }
 

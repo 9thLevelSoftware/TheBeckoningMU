@@ -1,221 +1,272 @@
 """
-Sandbox builder module - creates Evennia rooms and exits from map_data.
+The sandbox build unit: create a reviewed project's rooms and exits.
 
-This module handles the actual creation of Evennia game objects from
-web builder project data. It runs in the main thread via sandbox_bridge.
+`build_unit(project_id)` is one unit of work (KD-6). It runs wholly on the
+reactor (callers hand it over with `web.main_thread.call_in_main_thread`)
+and does all of its own DB writes there, in autocommit:
+
+1. Validate everything first: the project is approved and unbuilt, it has
+   an approval snapshot, and the snapshot passes `validate_build_map`.
+2. Create every room, then every exit, from the snapshot only, then add
+   all their tags and Attributes in a few bulk inserts (`_bulk_tag_and_set`;
+   Evennia's own `batch_add` still writes one Attribute at a time, which is
+   what made a 50-room build cost ~6,000 queries, F-050). Timed-trigger data
+   is stored on the rooms, but no Script is started yet. There is no
+   container room: the entry room is a real room of the area
+   (`validators.entry_room_key`).
+3. Start the timed-trigger Scripts, last, once every room and exit exists.
+4. Record what was built (`built_object_ids`, `sandbox_room_id` = entry
+   room, status `built`) with one conditional update.
+
+If anything fails, the unit undoes its own work with Evennia operations,
+never a DB rollback: it stops and deletes the Scripts it started, then
+deletes the exits and rooms it created (`obj.delete()`, which also clears
+contents caches), and re-raises. Nothing here runs inside
+`transaction.atomic()`.
 """
 
+import copy
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Any
 
+from django.utils import timezone
 from evennia.utils.create import create_object
-from evennia.utils.search import search_object
 
-from typeclasses.rooms import Room
-from typeclasses.exits import Exit
-from .trigger_scripts import create_timed_trigger, delete_timed_triggers_for_room
+from .markup import remove_mxp
+from .trigger_scripts import start_timed_trigger
+from .validators import entry_room_key, validate_build_map
 
 logger = logging.getLogger(__name__)
 
+ROOM_TYPECLASS = "typeclasses.rooms.Room"
+EXIT_TYPECLASS = "typeclasses.exits.Exit"
+V5_ROOM_ATTRIBUTES = ("location_type", "day_night", "danger_level", "territory_owner")
 
-def build_sandbox_area(project_id: int, map_data: Dict[str, Any]) -> Dict[str, Any]:
+
+class BuildError(Exception):
+    """The project can't be built; the message is safe to show the builder."""
+
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
+
+
+def project_tags(project_id):
+    return ["web_builder", f"project_{project_id}", "sandbox"]
+
+
+def _bulk_tag_and_set(objects, tag_keys):
     """
-    Create Evennia rooms and exits from web builder map_data.
+    Tag every object with `tag_keys` and give it its Attributes, in a few
+    bulk inserts instead of several queries per tag and per Attribute.
 
-    This function runs in Evennia's main thread and creates actual game objects:
-    - A sandbox container room as the entry point
-    - All rooms from map_data with V5 attributes
-    - All exits connecting rooms
+    `objects` is a list of (obj, [(attr_key, value), ...]). Writes the same
+    rows Evennia's TagHandler/AttributeHandler would (plain tags and
+    Attributes: no category, no attrtype, value pickled with `to_pickle`),
+    then resets each object's tag and Attribute caches so the handlers
+    reload from the DB.
 
-    Args:
-        project_id: The BuildProject ID for tagging
-        map_data: The project's map_data dictionary
-
-    Returns:
-        Dict containing:
-        - sandbox_room_id: The entry room's database ID
-        - room_count: Number of rooms created
-        - exit_count: Number of exits created
-        - room_map: Dict mapping web room_id to Evennia room object
+    This mirrors Evennia 6.1's ModelAttributeBackend.do_create_attribute and
+    TagHandler.add; test_sandbox.BulkRowShapeTests compares the rows field by
+    field with ones written through obj.attributes.add / obj.tags.add, so an
+    Evennia upgrade that changes them fails loudly.
     """
-    rooms_data = map_data.get("rooms", {})
-    exits_data = map_data.get("exits", {})
+    from evennia.objects.models import ObjectDB
+    from evennia.typeclasses.attributes import Attribute
+    from evennia.utils.dbserialize import to_pickle
 
-    if not rooms_data:
-        raise ValueError("No rooms in project map_data")
+    tags = [ObjectDB.objects.create_tag(key=key) for key in tag_keys]
+    tag_link = ObjectDB.db_tags.through
+    tag_link.objects.bulk_create([tag_link(objectdb_id=obj.id, tag_id=tag.id) for obj, _ in objects for tag in tags])
 
-    # Track created objects
-    created_rooms: Dict[str, Room] = {}  # web room_id -> Evennia room
-    room_count = 0
-    exit_count = 0
-    errors: List[str] = []
+    owners, rows = [], []
+    for obj, attributes in objects:
+        for key, value in attributes:
+            owners.append(obj)
+            rows.append(
+                Attribute(
+                    db_key=key,
+                    db_category=None,
+                    db_model="objectdb",
+                    db_attrtype=None,
+                    db_lock_storage="",
+                    db_value=to_pickle(value),
+                    db_strvalue=None,
+                )
+            )
+    rows = Attribute.objects.bulk_create(rows)
+    try:
+        if any(row.pk is None for row in rows):
+            raise RuntimeError("The database did not return ids for the new Attributes")
+        attr_link = ObjectDB.db_attributes.through
+        attr_link.objects.bulk_create(
+            [attr_link(objectdb_id=obj.id, attribute_id=row.pk) for obj, row in zip(owners, rows, strict=True)]
+        )
+    except BaseException:
+        # Unlinked Attribute rows would be invisible to obj.delete(); remove
+        # them here so a failed build leaves nothing behind (R-8).
+        Attribute.objects.filter(pk__in=[row.pk for row in rows if row.pk]).delete()
+        raise
 
-    # Create sandbox container room (entry point)
-    sandbox_alias = f"_sandbox_{project_id}"
-    sandbox_room = create_object(
-        typeclass="typeclasses.rooms.Room",
-        key=f"Builder Sandbox: Project {project_id}",
-        aliases=[sandbox_alias],
+    for obj, _ in objects:
+        obj.tags.reset_cache()
+        obj.attributes.reset_cache()
+
+
+def _room_attributes(room_data):
+    attributes = [("desc", remove_mxp(room_data.get("description") or ""))]
+    v5 = room_data.get("v5") or {}
+    for key in V5_ROOM_ATTRIBUTES:
+        if v5.get(key):
+            attributes.append((key, v5[key]))
+    if v5.get("hunting_modifier") is not None:
+        attributes.append(("hunting_modifier", v5["hunting_modifier"]))
+    if v5.get("location_type") == "haven" and v5.get("haven_ratings"):
+        haven = v5["haven_ratings"]
+        for key in ("security", "size", "luxury", "warding"):
+            attributes.append((f"haven_{key}", haven.get(key, 0)))
+        attributes.append(("haven_location_hidden", haven.get("location_hidden", False)))
+    triggers = room_data.get("triggers")
+    if triggers:
+        attributes.append(("triggers", copy.deepcopy(list(triggers))))
+    return attributes
+
+
+def _create_room(project_id, web_id, room_data):
+    """Create one sandbox room (tags and Attributes are added in bulk later)."""
+    room = create_object(
+        typeclass=ROOM_TYPECLASS,
+        key=remove_mxp(room_data["name"]),
         location=None,
+        nohome=True,
     )
-    sandbox_room.db.desc = f"Sandbox area for build project {project_id}."
-    sandbox_room.tags.add("web_builder")
-    sandbox_room.tags.add(f"project_{project_id}")
-    sandbox_room.tags.add("sandbox")
+    if room is None:
+        raise RuntimeError(f"Evennia refused to create room {web_id}")
+    return room
 
-    logger.info(f"Created sandbox container: {sandbox_room.id} ({sandbox_alias})")
 
-    # Phase 1: Create all rooms
-    for room_id, room_data in rooms_data.items():
+def _exit_attributes(exit_data):
+    return [("desc", remove_mxp(exit_data["description"]))] if exit_data.get("description") else []
+
+
+def _create_exit(project_id, exit_id, exit_data, rooms):
+    """Create one exit between two rooms of this build."""
+    source = rooms[exit_data["source"]]
+    exit_obj = create_object(
+        typeclass=EXIT_TYPECLASS,
+        key=remove_mxp(exit_data["name"]),
+        aliases=[remove_mxp(alias) for alias in exit_data.get("aliases") or []],
+        location=source,
+        destination=rooms[exit_data["target"]],
+        home=source,
+        locks=exit_data.get("locks") or None,
+    )
+    if exit_obj is None:
+        raise RuntimeError(f"Evennia refused to create exit {exit_id}")
+    return exit_obj
+
+
+def _start_timed_triggers(rooms, rooms_data, started):
+    """Start every enabled timed trigger; append each Script to `started`."""
+    for web_id, room in rooms.items():
+        for trigger in rooms_data[web_id].get("triggers") or []:
+            if trigger.get("type") == "timed" and trigger.get("enabled", True):
+                started.append(start_timed_trigger(room, trigger))
+
+
+def undo_build(scripts, exits, rooms):
+    """
+    Remove what a failed build created: Scripts first (stopped, then
+    deleted), then exits, then rooms. Logs and carries on past a failing
+    delete so one bad object doesn't leave the rest behind.
+    """
+    for script in scripts:
         try:
-            room_alias = f"_bld_{project_id}_{room_id}"
-            room_name = room_data.get("name", "Unnamed Room")
-
-            room = create_object(
-                typeclass="typeclasses.rooms.Room",
-                key=room_name,
-                aliases=[room_alias],
-                location=None,
-            )
-
-            # Set description
-            room.db.desc = room_data.get("description", "")
-
-            # Set V5 attributes
-            v5 = room_data.get("v5", {})
-            if v5.get("location_type"):
-                room.db.location_type = v5["location_type"]
-            if v5.get("day_night"):
-                room.db.day_night = v5["day_night"]
-            if v5.get("danger_level"):
-                room.db.danger_level = v5["danger_level"]
-            if v5.get("hunting_modifier") is not None:
-                room.db.hunting_modifier = v5["hunting_modifier"]
-            if v5.get("territory_owner"):
-                room.db.territory_owner = v5["territory_owner"]
-
-            # Set haven ratings if this is a haven
-            if v5.get("location_type") == "haven":
-                haven = v5.get("haven_ratings", {})
-                if haven:
-                    room.db.haven_security = haven.get("security", 0)
-                    room.db.haven_size = haven.get("size", 0)
-                    room.db.haven_luxury = haven.get("luxury", 0)
-                    room.db.haven_warding = haven.get("warding", 0)
-                    room.db.haven_location_hidden = haven.get("location_hidden", False)
-
-            # Store triggers if present
-            triggers = room_data.get("triggers", [])
-            if triggers:
-                room.db.triggers = triggers
-
-                # Create timed trigger scripts for this room
-                for trigger in triggers:
-                    if trigger.get("type") == "timed" and trigger.get("enabled", True):
-                        create_timed_trigger(room, trigger)
-
-            # Add tracking tags
-            room.tags.add("web_builder")
-            room.tags.add(f"project_{project_id}")
-            room.tags.add("sandbox")
-
-            created_rooms[room_id] = room
-            room_count += 1
-
-            logger.debug(f"Created room {room_id}: {room_name} (id: {room.id})")
-
-        except Exception as e:
-            error_msg = f"Failed to create room {room_id}: {e}"
-            logger.exception(error_msg)
-            errors.append(error_msg)
-            # Continue with other rooms
-
-    # Phase 2: Create exits between rooms
-    for exit_id, exit_data in exits_data.items():
+            if script.pk:
+                script.stop()
+                script.delete()
+        except Exception:
+            logger.exception("Build undo: could not remove script %s", script)
+    for obj in [*exits, *rooms]:
         try:
-            source_id = exit_data.get("source")
-            target_id = exit_data.get("target")
+            if obj.pk:
+                obj.delete()
+        except Exception:
+            logger.exception("Build undo: could not delete %s", obj)
 
-            if not source_id or not target_id:
-                logger.warning(f"Exit {exit_id} missing source or target, skipping")
-                continue
 
-            # Look up source and target rooms
-            source_room = created_rooms.get(source_id)
-            target_room = created_rooms.get(target_id)
+def build_unit(project_id: int) -> dict[str, Any]:
+    """
+    Build a project's approved snapshot as a sandbox. Runs on the reactor.
 
-            if not source_room:
-                # Try to find by alias (in case room was created previously)
-                source_alias = f"_bld_{project_id}_{source_id}"
-                found = search_object(source_alias)
-                if found:
-                    source_room = found[0]
-                else:
-                    logger.warning(f"Exit {exit_id}: source room {source_id} not found")
-                    continue
+    Returns {"sandbox_room_id", "room_count", "exit_count", "room_map",
+    "script_count"}. Raises BuildError when the project can't be built, or
+    the underlying exception if creation fails (after undoing everything).
+    """
+    from .models import BuildProject
 
-            if not target_room:
-                target_alias = f"_bld_{project_id}_{target_id}"
-                found = search_object(target_alias)
-                if found:
-                    target_room = found[0]
-                else:
-                    logger.warning(f"Exit {exit_id}: target room {target_id} not found")
-                    continue
+    project = BuildProject.objects.filter(pk=project_id).first()
+    if project is None:
+        raise BuildError(f"Project {project_id} not found", status=404)
+    if project.status != "approved":
+        raise BuildError(f"Project must be approved (current status: {project.status})", status=409)
+    if project.sandbox_room_id or project.built_object_ids:
+        raise BuildError("Sandbox already exists", status=409)
+    snapshot = project.approved_map_data or {}
+    map_data = snapshot.get("map_data")
+    if not map_data:
+        raise BuildError("Project has no approved snapshot to build")
+    errors = validate_build_map(map_data)
+    if errors:
+        raise BuildError("Approved map can't be built: " + "; ".join(errors[:5]))
 
-            exit_name = exit_data.get("name", "exit")
-            aliases = exit_data.get("aliases", [])
+    rooms_data = map_data["rooms"]
+    exits_data = map_data.get("exits") or {}
+    rooms, exits, scripts = {}, {}, []
+    try:
+        for web_id, room_data in rooms_data.items():
+            rooms[web_id] = _create_room(project_id, web_id, room_data)
+        for exit_id, exit_data in exits_data.items():
+            exits[exit_id] = _create_exit(project_id, exit_id, exit_data, rooms)
+        _bulk_tag_and_set(
+            [(room, _room_attributes(rooms_data[web_id])) for web_id, room in rooms.items()]
+            + [(exit_obj, _exit_attributes(exits_data[exit_id])) for exit_id, exit_obj in exits.items()],
+            project_tags(project_id),
+        )
+        # Last step that can fail on its own: start the timed triggers, now
+        # that every room and exit exists.
+        _start_timed_triggers(rooms, rooms_data, scripts)
 
-            # Create the exit
-            exit_obj = create_object(
-                typeclass="typeclasses.exits.Exit",
-                key=exit_name,
-                aliases=aliases,
-                location=source_room,
-                destination=target_room,
-            )
-
-            # Set exit description if provided
-            exit_desc = exit_data.get("description", "")
-            if exit_desc:
-                exit_obj.db.desc = exit_desc
-
-            # Set exit locks if provided
-            locks = exit_data.get("locks", "")
-            if locks:
-                exit_obj.locks.add(locks)
-
-            # Add tracking tags
-            exit_obj.tags.add("web_builder")
-            exit_obj.tags.add(f"project_{project_id}")
-            exit_obj.tags.add("sandbox")
-
-            exit_count += 1
-
-            logger.debug(
-                f"Created exit {exit_id}: {exit_name} ({source_id} -> {target_id})"
-            )
-
-        except Exception as e:
-            error_msg = f"Failed to create exit {exit_id}: {e}"
-            logger.exception(error_msg)
-            errors.append(error_msg)
-            # Continue with other exits
-
-    # Build room_map for return (convert objects to IDs for JSON serialization)
-    room_map = {web_id: room.id for web_id, room in created_rooms.items()}
-
-    result = {
-        "sandbox_room_id": sandbox_room.id,
-        "room_count": room_count,
-        "exit_count": exit_count,
-        "room_map": room_map,
-        "errors": errors if errors else None,
-    }
+        entry = rooms[entry_room_key(map_data)]
+        record = {
+            "rooms": {web_id: room.id for web_id, room in rooms.items()},
+            "exits": {exit_id: exit_obj.id for exit_id, exit_obj in exits.items()},
+            "scripts": [script.id for script in scripts],
+            "entry": entry.id,
+        }
+        updated = BuildProject.objects.filter(pk=project_id, status="approved", sandbox_room_id__isnull=True).update(
+            status="built",
+            sandbox_room_id=entry.id,
+            built_object_ids=record,
+            updated_at=timezone.now(),
+        )
+        if not updated:
+            raise BuildError("Project changed while it was being built; nothing was kept", status=409)
+    except BaseException:
+        undo_build(scripts, exits.values(), rooms.values())
+        raise
 
     logger.info(
-        f"Sandbox build complete for project {project_id}: "
-        f"{room_count} rooms, {exit_count} exits"
+        "Sandbox build complete for project %s: %s rooms, %s exits, %s timed triggers",
+        project_id,
+        len(rooms),
+        len(exits),
+        len(scripts),
     )
-
-    return result
+    return {
+        "sandbox_room_id": entry.id,
+        "room_count": len(rooms),
+        "exit_count": len(exits),
+        "script_count": len(scripts),
+        "room_map": record["rooms"],
+    }

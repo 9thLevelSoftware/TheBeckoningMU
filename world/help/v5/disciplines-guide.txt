@@ -1,0 +1,67 @@
+|[R+===================================================================+
+|W|                    VAMPIRE DISCIPLINES                            |
+|[R+===================================================================+|n
+
+Disciplines are supernatural powers granted by vampire blood. Each clan
+has three |yin-clan|n disciplines that are cheaper to learn. Caitiff have no
+in-clan disciplines, and thin-bloods have none at all (they can learn
+Thin-Blood Alchemy through the Thin-blood Alchemist merit).
+
+|WCORE DISCIPLINES:|n (V5 core p.244-288)
+
+|yAnimalism|n - Command animals and the Beast within
+  - In-clan: |wGangrel, Nosferatu|n
+
+|yAuspex|n - Heightened senses and extrasensory perception
+  - In-clan: |wMalkavian, Toreador, Tremere|n
+
+|yBlood Sorcery|n - Blood magic; its rituals are learned separately
+  - In-clan: |wTremere|n
+
+|yCelerity|n - Supernatural speed and reflexes
+  - In-clan: |wBrujah, Toreador|n
+
+|yDominate|n - Mental control and mesmerism
+  - In-clan: |wMalkavian, Tremere, Ventrue|n
+
+|yFortitude|n - Supernatural resilience and toughness
+  - In-clan: |wGangrel, Ventrue|n
+
+|yObfuscate|n - Supernatural concealment and stealth
+  - In-clan: |wMalkavian, Nosferatu|n
+
+|yPotence|n - Supernatural strength
+  - In-clan: |wBrujah, Nosferatu|n
+
+|yPresence|n - Supernatural charisma and emotional manipulation
+  - In-clan: |wBrujah, Toreador, Ventrue|n
+
+|yProtean|n - Shapeshifting and body transformation
+  - In-clan: |wGangrel|n
+
+|yThin-Blood Alchemy|n - Formulas distilled from blood and emotion
+  - Thin-bloods only, through the Thin-blood Alchemist merit
+
+|WUSING DISCIPLINES:|n
+
+Many discipline powers cost a |yRouse Check|n; some cost two or more, and
+some are free. See |yhelp disciplines_powers|n for every power's level and
+cost.
+  - Roll 1d10
+  - Success (6+): No Hunger increase
+  - Failure (1-5): |[RHunger increases by 1|n
+
+|WLEARNING DISCIPLINES:|n (V5 Quick Reference 2.0 p.1)
+
+  - In-clan discipline: |ynew level x 5 XP|n
+  - Out-of-clan discipline: |ynew level x 7 XP|n
+  - Caitiff discipline: |ynew level x 6 XP|n
+  - Blood Sorcery ritual or thin-blood formula: |ylevel x 3 XP|n
+
+|yAmalgam Powers:|n
+  - Require a second discipline at a set level
+  - Example: |yUnerring Aim|n (Celerity 4) requires Auspex 2
+
+|[r+===================================================================+|n
+
+|ySee also:|n help disciplines_powers, help rouse, help clans, help xp-guide, help v5-rules-guide

@@ -53,14 +53,13 @@ class CmdSheetShort(Command):
     Usage:
         +st
         st
-        status
 
     Shows vital statistics in a compact one-line format.
     Perfect for quick status checks during play.
     """
 
     key = "+st"
-    aliases = ["st", "status"]
+    aliases = ["st"]
     locks = "cmd:all()"
     help_category = "Character"
 

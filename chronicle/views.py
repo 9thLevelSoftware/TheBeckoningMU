@@ -2,8 +2,7 @@ import json
 from uuid import uuid4
 
 from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import Http404, HttpResponseRedirect
 from django.urls import reverse
 from django.utils import timezone
@@ -11,7 +10,6 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.generic import TemplateView
 
-from boons.models import BoonLedger
 from narrative.models import MemoryFact
 from narrative.services import configured_provider
 
@@ -24,6 +22,7 @@ from .services import (
     publish_event,
     record_event,
     redact_event,
+    staff_authorized,
     staff_events,
 )
 
@@ -34,6 +33,7 @@ class PublicChronicleView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["events"] = public_events()[:100]
+        context["can_manage_stories"] = staff_authorized(self.request.user)
         return context
 
 
@@ -44,36 +44,12 @@ class MyChronicleView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["events"] = account_chronicle(self.request.user)
+        context["can_manage_stories"] = staff_authorized(self.request.user)
         return context
 
 
-def _boon_ledger_discrepancies():
-    discrepancies = []
-    ledger_fields = (
-        "trivial_owed",
-        "minor_owed",
-        "major_owed",
-        "blood_owed",
-        "life_owed",
-        "trivial_held",
-        "minor_held",
-        "major_held",
-        "blood_held",
-        "life_held",
-        "total_debt_weight",
-        "total_credit_weight",
-        "net_weight",
-    )
-    for ledger in BoonLedger.objects.select_related("character").all():
-        expected = ledger.calculate_values()
-        stored = {field: getattr(ledger, field) for field in ledger_fields}
-        if stored != expected:
-            discrepancies.append({"character": ledger.character.key, "stored": stored, "expected": expected})
-    return discrepancies
-
-
 @method_decorator(login_required, name="dispatch")
-@method_decorator(staff_member_required, name="dispatch")
+@method_decorator(user_passes_test(staff_authorized), name="dispatch")
 class NarrativeOpsView(TemplateView):
     template_name = "chronicle/staff_ops.html"
 
@@ -89,7 +65,6 @@ class NarrativeOpsView(TemplateView):
         context["recent_events"] = [
             {"event": event, "payload_json": json.dumps(event.payload, ensure_ascii=False)} for event in events[:100]
         ]
-        context["boon_ledger_discrepancies"] = _boon_ledger_discrepancies()
         context["draft_events"] = events.filter(status=ChronicleEvent.Status.DRAFT).prefetch_related("source_events")[
             :100
         ]
@@ -129,7 +104,7 @@ class NarrativeOpsView(TemplateView):
 
 
 @method_decorator(login_required, name="dispatch")
-@method_decorator(staff_member_required, name="dispatch")
+@method_decorator(user_passes_test(staff_authorized), name="dispatch")
 class StaffEventActionView(View):
     http_method_names = ["post"]
 
@@ -165,7 +140,7 @@ class StaffEventActionView(View):
 
 
 @method_decorator(login_required, name="dispatch")
-@method_decorator(staff_member_required, name="dispatch")
+@method_decorator(user_passes_test(staff_authorized), name="dispatch")
 class StaffGenerationRequestView(View):
     http_method_names = ["post"]
 
@@ -188,7 +163,7 @@ class StaffGenerationRequestView(View):
 
 
 @method_decorator(login_required, name="dispatch")
-@method_decorator(staff_member_required, name="dispatch")
+@method_decorator(user_passes_test(staff_authorized), name="dispatch")
 class StaffMemoryFactActionView(View):
     http_method_names = ["post"]
 

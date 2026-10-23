@@ -11,14 +11,16 @@ from evennia.utils.ansi import ANSIString
 
 class RollResult:
     """
-    Comprehensive V5 roll result with all analysis.
+    The outcome of one V5 roll, analysed by the core rules (QR p.4).
 
-    Analyzes dice rolls to determine:
-    - Total successes (6-9 = 1 success, 10 = 2 successes)
-    - Success vs failure (compared to difficulty)
-    - Critical wins (pair of 10s)
-    - Messy Criticals (critical with Hunger die showing 10)
-    - Bestial Failures (failure with only Hunger dice showing 1s)
+    - Each die showing 6-10 is one success.
+    - Each pair of 10s adds two more, so a pair is worth four successes in
+      total: one 10 is 1 success, two are 4, three are 5, four are 8.
+    - The roll succeeds when successes >= difficulty. At difficulty 0 it
+      still needs at least one success.
+    - A critical is a successful roll with at least one pair of 10s.
+    - A messy critical is a critical with a 10 on a Hunger die.
+    - A bestial failure is a failed roll with a 1 on any Hunger die.
 
     Attributes:
         regular_dice (list[int]): Regular dice results (1-10)
@@ -28,9 +30,9 @@ class RollResult:
         total_successes (int): Total successes rolled
         is_success (bool): Whether difficulty was met
         margin (int): Difference between successes and difficulty
-        is_critical (bool): Whether a pair of 10s was rolled
-        is_messy_critical (bool): Whether critical included Hunger die
-        is_bestial_failure (bool): Whether failure had only Hunger 1s
+        is_critical (bool): Successful roll with a pair of 10s
+        is_messy_critical (bool): Critical with a Hunger 10
+        is_bestial_failure (bool): Failed roll with a Hunger 1
         result_type (str): Overall result classification
     """
 
@@ -41,80 +43,41 @@ class RollResult:
         Args:
             regular_dice: Regular dice results (1-10)
             hunger_dice: Hunger dice results (1-10)
-            difficulty: Target successes needed (0+ means any success wins)
+            difficulty: Target successes needed (0 means any success wins)
         """
-        self.regular_dice = regular_dice
-        self.hunger_dice = hunger_dice
-        self.all_dice = regular_dice + hunger_dice
+        self.regular_dice = list(regular_dice)
+        self.hunger_dice = list(hunger_dice)
+        self.all_dice = self.regular_dice + self.hunger_dice
         self.difficulty = difficulty
 
-        # Analyze outcomes in one pass over the two dice groups.
-        (
-            self.total_successes,
-            self.is_success,
-            self.is_critical,
-            self.is_messy_critical,
-            self.is_bestial_failure,
-        ) = self._analyze_dice()
+        self.tens = sum(1 for die in self.all_dice if die == 10)
+        self.total_successes = self._count_successes()
+        if difficulty > 0:
+            self.is_success = self.total_successes >= difficulty
+        else:
+            self.is_success = self.total_successes > 0
         self.margin = self.total_successes - difficulty
 
-        # Result interpretation
+        self.is_critical = self.is_success and self.tens >= 2
+        self.is_messy_critical = self.is_critical and 10 in self.hunger_dice
+        self.is_bestial_failure = not self.is_success and 1 in self.hunger_dice
+
         self.result_type = self._interpret_result()
 
-    def _analyze_dice(self) -> tuple[int, bool, bool, bool, bool]:
-        """Compute successes and V5 special-result flags in one pass."""
-        successes = 0
-        tens = 0
-        hunger_tens = 0
-        regular_ones = 0
-        hunger_ones = 0
-
-        for die in self.regular_dice:
-            if die >= 6:
-                successes += 2 if die == 10 else 1
-            if die == 10:
-                tens += 1
-            elif die == 1:
-                regular_ones += 1
-
-        for die in self.hunger_dice:
-            if die >= 6:
-                successes += 2 if die == 10 else 1
-            if die == 10:
-                tens += 1
-                hunger_tens += 1
-            elif die == 1:
-                hunger_ones += 1
-
-        is_success = successes >= self.difficulty if self.difficulty > 0 else successes > 0
-        is_critical = tens >= 2
-        is_messy_critical = is_critical and hunger_tens >= 1
-        is_bestial_failure = not is_success and hunger_ones > 0 and regular_ones == 0
-        return successes, is_success, is_critical, is_messy_critical, is_bestial_failure
-
     def _count_successes(self) -> int:
-        """Count total successes according to V5 rules."""
-        return self._analyze_dice()[0]
-
-    def _check_critical(self) -> bool:
-        """Check whether at least two dice show 10."""
-        return self._analyze_dice()[2]
-
-    def _check_messy_critical(self) -> bool:
-        """Check whether a critical includes a Hunger 10."""
-        return self._analyze_dice()[3]
-
-    def _check_bestial_failure(self) -> bool:
-        """Check whether the failed roll has only Hunger dice showing 1."""
-        return self._analyze_dice()[4]
+        """Each 6-10 is one success; each pair of 10s adds two more."""
+        singles = sum(1 for die in self.all_dice if die >= 6)
+        return singles + 2 * (self.tens // 2)
 
     def _interpret_result(self) -> str:
         """
         Interpret overall result type for display and game logic.
 
         Result types:
-        - 'bestial_failure': Failed with only Hunger 1s (Beast takes over)
-        - 'failure': Failed without bestial complications
+        - 'bestial_failure': Failed with a Hunger 1
+        - 'total_failure': No successes at all (and not bestial)
+        - 'failure': Failed with at least one success (a near miss: the
+          Storyteller may offer a win at a cost, core p.121)
         - 'messy_critical': Critical success with Hunger complications
         - 'critical_success': Critical success without complications
         - 'success': Normal success
@@ -123,7 +86,9 @@ class RollResult:
             String describing result type
         """
         if not self.is_success:
-            return 'bestial_failure' if self.is_bestial_failure else 'failure'
+            if self.is_bestial_failure:
+                return 'bestial_failure'
+            return 'total_failure' if self.total_successes == 0 else 'failure'
         elif self.is_messy_critical:
             return 'messy_critical'
         elif self.is_critical:
@@ -212,17 +177,20 @@ class RollResult:
         """
         if self.result_type == 'bestial_failure':
             return ("|r|h** BESTIAL FAILURE **|n\n"
-                   "You fail catastrophically as the Beast seizes control!\n"
-                   "The Storyteller will introduce a complication related to your vampiric nature.")
+                   "You fail, and a Hunger die shows a 1: the Beast takes its due.\n"
+                   "Act out a Compulsion; the Storyteller decides the details.")
+
+        elif self.result_type == 'total_failure':
+            return "|rTotal failure.|n You get no successes at all."
 
         elif self.result_type == 'failure':
-            return "|rFailure|n\nYou do not achieve your goal."
+            return ("|rFailure|n\nYou do not achieve your goal.\n"
+                    "|xThe Storyteller may offer a win at a cost.|n")
 
         elif self.result_type == 'messy_critical':
             return ("|y|h** MESSY CRITICAL **|n\n"
-                   f"You succeed spectacularly with |g{self.total_successes}|n successes,\n"
-                   "but your Beast influences the outcome. The Storyteller will\n"
-                   "introduce a complication related to your vampiric Hunger.")
+                   f"You succeed with |g{self.total_successes}|n successes, but a Hunger die shows a 10.\n"
+                   "Messy critical: the Storyteller decides the complication.")
 
         elif self.result_type == 'critical_success':
             return ("|y|h** CRITICAL SUCCESS **|n\n"

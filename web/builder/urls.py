@@ -1,4 +1,5 @@
 from django.urls import path
+
 from . import views
 
 app_name = "builder"
@@ -22,12 +23,12 @@ urlpatterns = [
         views.SubmitProjectView.as_view(),
         name="submit_project",
     ),
-    path("api/build/<int:pk>/", views.BuildProjectView.as_view(), name="build_project"),
     path(
         "api/build/<int:pk>/build-sandbox/",
         views.BuildSandboxView.as_view(),
         name="build_sandbox",
     ),
+    # Cleanup deletes only the object ids recorded at build time.
     path(
         "api/build/<int:pk>/cleanup/",
         views.CleanupSandboxView.as_view(),
@@ -37,9 +38,7 @@ urlpatterns = [
     path("api/templates/", views.TemplatesView.as_view(), name="templates"),
     # Review endpoints (staff only)
     path("review/", views.BuildReviewDashboardView.as_view(), name="build_review"),
-    path(
-        "api/review/projects/", views.BuildReviewView.as_view(), name="review_projects"
-    ),
+    path("api/review/projects/", views.BuildReviewView.as_view(), name="review_projects"),
     path(
         "api/review/<int:pk>/approve/",
         views.ApproveRejectProjectView.as_view(),
@@ -50,8 +49,6 @@ urlpatterns = [
         views.ApproveRejectProjectView.as_view(),
         name="reject_project",
     ),
-    # Export
-    path("export/<int:pk>/", views.ExportProjectView.as_view(), name="export_project"),
     # Promotion endpoints
     path(
         "api/connection-rooms/",

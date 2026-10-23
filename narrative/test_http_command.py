@@ -3,10 +3,10 @@
 import subprocess
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
+from evennia.utils.test_resources import EvenniaTest
 
 
 class LocalHTTPCommandTests(SimpleTestCase):
@@ -25,25 +25,29 @@ class LocalHTTPCommandTests(SimpleTestCase):
         self.assertIn('"passed": true', result.stdout)
 
 
-class HuntingDiceIntegrationTests(SimpleTestCase):
+class HuntingDiceIntegrationTests(EvenniaTest):
     def test_hunting_uses_authoritative_dice_flags_and_caps_hunger_dice_to_pool(self):
-        from commands.v5.utils.hunting_utils import roll_hunting
+        from commands.v5.utils.hunting_utils import hunt
 
         for dice_values, hunger, expected in (
-            ([8, 8, 8, 8], 1, (True, False, False)),
-            ([10, 8, 8, 10], 1, (True, True, False)),
+            ([8, 8, 8, 8], 2, (True, False, False)),
+            ([10, 8, 8, 10], 2, (True, True, False)),
             ([1], 5, (False, False, True)),
         ):
             with self.subTest(dice=dice_values):
-                character = SimpleNamespace(
-                    db=SimpleNamespace(stats={"attributes": {"mental": {"wits": len(dice_values)}}}, hunger=hunger)
-                )
+                character = self.char1
+                character.predator_type = "Alleycat"
+                character.hunger = hunger
+                character.last_hunt = None
+                character.set_trait("Strength", len(dice_values))
+                character.set_trait("Brawl", 0)
                 with (
                     patch("dice.dice_roller.randint", side_effect=dice_values) as dice,
                     patch("commands.v5.utils.hunting_utils.random.randint", return_value=100),
                     patch("commands.v5.utils.hunting_utils.random.choice", side_effect=lambda values: values[0]),
                 ):
-                    result = roll_hunting(character)
+                    result = hunt(character, "downtown")
                 self.assertEqual(dice.call_count, len(dice_values))
-                self.assertEqual((result["success"], result["messy_critical"], result["bestial_failure"]), expected)
-                self.assertEqual(len(result["dice_result"]["hunger_dice"]), min(hunger, len(dice_values)))
+                roll = result["roll"]
+                self.assertEqual((result["success"], roll.is_messy_critical, roll.is_bestial_failure), expected)
+                self.assertEqual(len(roll.hunger_dice), min(hunger, len(dice_values)))

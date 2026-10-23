@@ -425,8 +425,8 @@ class CmdSocial(Command):
 
         # Boons Section
         try:
-            from boons.utils import get_or_create_ledger
-            ledger = get_or_create_ledger(target)
+            from boons.utils import get_boon_totals
+            ledger = get_boon_totals(target)
 
             if ledger.total_debt_weight > 0 or ledger.total_credit_weight > 0:
                 lines.append(f"{SHADOW_GREY}{BOX_TL}{BOX_H * 78}{BOX_TR}{RESET}")

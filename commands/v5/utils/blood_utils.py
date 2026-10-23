@@ -5,53 +5,26 @@ Provides utility functions for managing vampire blood mechanics including
 Hunger, feeding, Blood Surge, and resonance.
 """
 
+from typing import Dict, Any, Optional
 import time
-from collections.abc import Mapping
-from typing import Any
 
-# Constants
+from world.v5_data import BLOOD_POTENCY, RESONANCE_INTENSITIES, RESONANCES
 
-RESONANCE_DISCIPLINES = {
-    "Choleric": ["Potence", "Celerity"],
-    "Melancholic": ["Fortitude", "Obfuscate"],
-    "Phlegmatic": ["Auspex", "Dominate"],
-    "Sanguine": ["Presence", "Blood Sorcery"],
-}
-
-RESONANCE_INTENSITY = {1: "Fleeting", 2: "Intense", 3: "Dyscrasia"}
+# Resonance names, matching disciplines and intensity effects come from
+# world.v5_data.RESONANCES and RESONANCE_INTENSITIES; this module keeps no copy.
 
 
 def get_hunger_level(character) -> int:
     """
-    Get character's current Hunger level.
-
-    Supports both new vampire data structure (character.db.vampire['hunger'])
-    and legacy structure (character.db.hunger).
+    Get character's current Hunger level (0-5), via Character.hunger.
 
     Args:
         character: Character object
 
     Returns:
-        int: Hunger level (0-5), defaults to 1 if not set
+        int: Hunger level (0-5)
     """
-    if isinstance(getattr(type(character), "hunger", None), property):
-        return character.hunger
-    try:
-        # Try new vampire data structure first
-        vampire_data = getattr(character.db, "vampire", None)
-        if isinstance(vampire_data, Mapping):
-            hunger = vampire_data.get("hunger", 1)
-        else:
-            # Fall back to legacy structure
-            hunger = getattr(character.db, "hunger", 1)
-    except (AttributeError, TypeError):
-        hunger = 1
-
-    # Handle None case
-    if hunger is None:
-        hunger = 1
-
-    return max(0, min(5, hunger))
+    return character.hunger
 
 
 def get_hunger(character) -> int:
@@ -69,10 +42,7 @@ def get_hunger(character) -> int:
 
 def set_hunger_level(character, hunger: int) -> int:
     """
-    Set character's Hunger level.
-
-    Supports both new vampire data structure (character.db.vampire['hunger'])
-    and legacy structure (character.db.hunger).
+    Set character's Hunger level via Character.hunger (clamped to 0-5).
 
     Args:
         character: Character object
@@ -81,24 +51,8 @@ def set_hunger_level(character, hunger: int) -> int:
     Returns:
         int: Actual Hunger level set (after clamping)
     """
-    clamped_hunger = max(0, min(5, hunger))
-
-    if isinstance(getattr(type(character), "hunger", None), property):
-        character.hunger = clamped_hunger
-        return clamped_hunger
-
-    try:
-        # Try new vampire data structure first
-        vampire_data = getattr(character.db, "vampire", None)
-        if isinstance(vampire_data, Mapping):
-            vampire_data["hunger"] = clamped_hunger
-            character.db.vampire = vampire_data  # Ensure change persists
-        character.db.hunger = clamped_hunger
-    except (AttributeError, TypeError):
-        # If all else fails, set legacy
-        character.db.hunger = clamped_hunger
-
-    return clamped_hunger
+    character.hunger = hunger
+    return character.hunger
 
 
 def reduce_hunger(character, amount: int = 1) -> int:
@@ -121,7 +75,7 @@ def reduce_hunger(character, amount: int = 1) -> int:
     return new_hunger
 
 
-def increase_hunger(character, amount: int = 1) -> dict[str, Any]:
+def increase_hunger(character, amount: int = 1) -> Dict[str, Any]:
     """
     Increase character's Hunger by specified amount.
 
@@ -148,13 +102,15 @@ def increase_hunger(character, amount: int = 1) -> dict[str, Any]:
 
     warning = None
     if new_hunger >= 5:
-        warning = (
-            "|r|hWARNING:|n You are at |r|hHunger 5|n! The Beast is in control. You cannot use most Discipline powers."
-        )
+        warning = "|r|hWARNING:|n You are at |r|hHunger 5|n! You can't Rouse the Blood until you feed."
     elif new_hunger >= 4:
         warning = "|rWARNING:|n You are at |rHunger 4|n. The Beast is very close to the surface. Feed soon!"
 
-    return {"hunger_before": current_hunger, "hunger_after": new_hunger, "warning": warning}
+    return {
+        'hunger_before': current_hunger,
+        'hunger_after': new_hunger,
+        'warning': warning
+    }
 
 
 def format_hunger_display(character) -> str:
@@ -181,23 +137,20 @@ def format_hunger_display(character) -> str:
     if hunger >= 5:
         color = "|r|h"  # Bright red for max Hunger
     elif hunger >= 4:
-        color = "|r"  # Red for high Hunger
+        color = "|r"    # Red for high Hunger
     elif hunger >= 2:
-        color = "|y"  # Yellow for moderate Hunger
+        color = "|y"    # Yellow for moderate Hunger
     else:
-        color = "|g"  # Green for low Hunger
+        color = "|g"    # Green for low Hunger
 
     return f"Hunger: {color}{filled}|x{empty}|n ({hunger}/5)"
 
 
 # Resonance Management
 
-
-def get_resonance(character) -> dict[str, Any] | None:
+def get_resonance(character) -> Optional[Dict[str, Any]]:
     """
-    Get character's current blood resonance.
-
-    Supports both new vampire data structure and legacy structure.
+    Get character's current blood resonance, via Character.resonance.
 
     Args:
         character: Character object
@@ -205,197 +158,114 @@ def get_resonance(character) -> dict[str, Any] | None:
     Returns:
         dict or None: {'type': str, 'intensity': int, 'expires': float} or None
     """
-    try:
-        # Try new vampire data structure first
-        vampire_data = getattr(character.db, "vampire", None)
-        if isinstance(vampire_data, Mapping):
-            resonance_type = vampire_data.get("current_resonance")
-            intensity = vampire_data.get("resonance_intensity", 0)
-            if resonance_type and intensity > 0:
-                # Convert to unified format with expiration
-                expires = vampire_data.get("resonance_expires", time.time() + 3600)
-                return {"type": resonance_type, "intensity": intensity, "expires": expires}
-        else:
-            # Fall back to legacy structure
-            return getattr(character.db, "resonance", None)
-    except (AttributeError, TypeError):
-        return None
-
-    return None
+    return character.resonance
 
 
-def set_resonance(character, resonance_type: str, intensity: int = 1, duration: int = 3600) -> dict[str, Any]:
+def set_resonance(character, resonance_type: str, intensity: int = 1, duration: int = 3600) -> Dict[str, Any]:
     """
     Set character's blood resonance from feeding.
 
-    Resonance types: Choleric, Melancholic, Phlegmatic, Sanguine
-    Intensity: 1 (Fleeting), 2 (Intense), 3 (Dyscrasia)
-
-    Supports both new vampire data structure and legacy structure.
+    Resonance types: the keys of world.v5_data.RESONANCES
+    Intensity: 1 (Fleeting), 2 (Intense), 3 (Acute); see RESONANCE_INTENSITIES
 
     Args:
         character: Character object
-        resonance_type: Type of resonance (Choleric, Melancholic, Phlegmatic, Sanguine)
-        intensity: Intensity level (1-3, default 1)
+        resonance_type: Type of resonance (Choleric, Melancholy, Phlegmatic, Sanguine)
+        intensity: 1 Fleeting, 2 Intense, 3 Acute (default 1)
         duration: Duration in seconds (default 3600 = 1 hour)
 
     Returns:
         dict: Resonance data that was set
 
     Examples:
-        >>> set_resonance(character, "Choleric", intensity=2)
+        >>> set_resonance(character, 'Choleric', intensity=2)
         {'type': 'Choleric', 'intensity': 2, 'expires': 1234567890.0}
     """
-    clamped_intensity = max(1, min(3, intensity))
-    expires = time.time() + duration
-
-    resonance = {"type": resonance_type, "intensity": clamped_intensity, "expires": expires}
-
-    try:
-        # Try new vampire data structure first
-        vampire_data = getattr(character.db, "vampire", None)
-        if isinstance(vampire_data, Mapping):
-            vampire_data["current_resonance"] = resonance_type
-            vampire_data["resonance_intensity"] = clamped_intensity
-            vampire_data["resonance_expires"] = expires
-            character.db.vampire = vampire_data
-        else:
-            # Fall back to legacy structure
-            character.db.resonance = resonance
-    except (AttributeError, TypeError):
-        character.db.resonance = resonance
-
-    return resonance
+    character.resonance = {
+        'type': resonance_type,
+        'intensity': max(1, min(3, intensity)),
+        'expires': time.time() + duration,
+    }
+    return character.resonance
 
 
 def clear_resonance(character):
     """
     Clear character's blood resonance.
 
-    Supports both new vampire data structure and legacy structure.
-
     Args:
         character: Character object
     """
-    try:
-        # Try new vampire data structure first
-        vampire_data = getattr(character.db, "vampire", None)
-        if isinstance(vampire_data, Mapping):
-            vampire_data["current_resonance"] = None
-            vampire_data["resonance_intensity"] = 0
-            vampire_data["resonance_expires"] = None
-            character.db.vampire = vampire_data
-        else:
-            # Fall back to legacy structure
-            character.db.resonance = None
-    except (AttributeError, TypeError):
-        character.db.resonance = None
+    character.resonance = None
+
+
+def _active_resonance(character) -> dict[str, Any] | None:
+    """The character's resonance, or None if there is none or it has expired."""
+    resonance = get_resonance(character)
+    if not resonance:
+        return None
+    if resonance.get('expires') is not None and resonance['expires'] < time.time():
+        clear_resonance(character)
+        return None
+    return resonance
 
 
 def get_resonance_bonus(character, discipline_name: str) -> int:
     """
-    Get resonance bonus dice for a discipline based on current resonance.
+    Resonance dice for a Discipline roll (core p.226-231).
 
-    Resonance provides bonus dice to matching disciplines:
-    - Choleric → Potence, Celerity
-    - Melancholic → Fortitude, Obfuscate
-    - Phlegmatic → Auspex, Dominate
-    - Sanguine → Presence, Blood Sorcery
-
-    Intensity determines bonus:
-    - Fleeting (1): +1 die
-    - Intense (2): +1 die
-    - Dyscrasia (3): +2 dice
-
-    Args:
-        character: Character object
-        discipline_name: Name of discipline being used
+    A resonance adds the dice in RESONANCE_INTENSITIES for its intensity
+    (Fleeting 0, Intense 1, Acute 1) to rolls of the disciplines its humour
+    matches in RESONANCES. This is the one place that rule is applied.
 
     Returns:
-        int: Bonus dice (0, 1, or 2)
-
-    Examples:
-        >>> # Character has Choleric resonance (Intense)
-        >>> get_resonance_bonus(character, "Potence")
-        1
-        >>> get_resonance_bonus(character, "Auspex")
-        0
+        int: Bonus dice (0 or 1)
     """
-    resonance = get_resonance(character)
-
+    resonance = _active_resonance(character)
     if not resonance:
         return 0
-
-    # Check if expired
-    if resonance.get("expires", 0) < time.time():
-        clear_resonance(character)
+    humour = RESONANCES.get(resonance.get('type'))
+    if not humour or discipline_name not in humour["disciplines"]:
         return 0
-
-    # Check if discipline matches resonance type
-    resonance_type = resonance.get("type")
-    matching_disciplines = RESONANCE_DISCIPLINES.get(resonance_type, [])
-
-    if discipline_name not in matching_disciplines:
-        return 0
-
-    # Calculate bonus based on intensity
-    intensity = resonance.get("intensity", 0)
-    if intensity >= 3:  # Dyscrasia
-        return 2
-    elif intensity >= 1:  # Fleeting or Intense
-        return 1
-    else:
-        return 0
+    intensity = RESONANCE_INTENSITIES.get(resonance.get('intensity'))
+    return intensity["discipline_dice"] if intensity else 0
 
 
-def format_resonance_display(character) -> str | None:
+def format_resonance_display(character) -> Optional[str]:
     """
     Format character's resonance for display with matching disciplines.
 
-    Args:
-        character: Character object
-
     Returns:
-        str or None: Formatted resonance string or None if no resonance
-
-    Examples:
-        >>> format_resonance_display(character)
-        "Resonance: Choleric (Intense) - +1 to Potence, Celerity"
+        str or None: e.g. "Resonance: Choleric (Intense) - +1 die to Celerity, Potence",
+        or None if there is no resonance
     """
-    resonance = get_resonance(character)
-
+    resonance = _active_resonance(character)
     if not resonance:
         return None
 
-    # Check if expired
-    if resonance.get("expires", 0) < time.time():
-        clear_resonance(character)
-        return None
+    intensity = RESONANCE_INTENSITIES.get(resonance['intensity'])
+    intensity_str = intensity["name"] if intensity else 'Unknown'
 
-    # Format intensity using constants
-    intensity_str = RESONANCE_INTENSITY.get(resonance["intensity"], "Unknown")
-
-    # Color code by resonance type
     color_map = {
-        "Choleric": "|r",  # Red
-        "Melancholic": "|c",  # Cyan
-        "Phlegmatic": "|g",  # Green
-        "Sanguine": "|y",  # Yellow
+        'Choleric': '|r',
+        'Melancholy': '|c',
+        'Phlegmatic': '|g',
+        'Sanguine': '|y'
     }
-    color = color_map.get(resonance["type"], "|w")
+    color = color_map.get(resonance['type'], '|w')
 
-    # Get matching disciplines
-    matching_disciplines = RESONANCE_DISCIPLINES.get(resonance["type"], [])
-    disciplines_str = ", ".join(matching_disciplines)
+    humour = RESONANCES.get(resonance['type'], {})
+    disciplines_str = ', '.join(humour.get("disciplines", []))
 
-    # Calculate bonus
-    bonus = 2 if resonance["intensity"] >= 3 else 1
+    dice = intensity["discipline_dice"] if intensity else 0
+    effect = f"|g+{dice}|n die to {disciplines_str}" if dice else f"no extra dice (matches {disciplines_str})"
+    if intensity and intensity["dyscrasia"]:
+        effect += "; may carry a dyscrasia"
 
-    return f"|wResonance:|n {color}{resonance['type']}|n ({intensity_str}) - |g+{bonus}|n to {disciplines_str}"
+    return f"|wResonance:|n {color}{resonance['type']}|n ({intensity_str}) - {effect}"
 
 
 # Blood Surge Management
-
 
 def get_blood_potency(character) -> int:
     """
@@ -407,9 +277,7 @@ def get_blood_potency(character) -> int:
     Returns:
         int: Blood Potency level (0-10)
     """
-    from .trait_utils import get_trait_value
-
-    return get_trait_value(character, "Blood Potency")
+    return character.blood_potency
 
 
 def get_blood_potency_bonus(character) -> int:
@@ -420,70 +288,83 @@ def get_blood_potency_bonus(character) -> int:
         character: Character object
 
     Returns:
-        int: Bonus dice (equal to Blood Potency)
+        int: Bonus dice, from world.v5_data.BLOOD_POTENCY["blood_surge"]
     """
-    return get_blood_potency(character)
+    row = BLOOD_POTENCY.get(get_blood_potency(character))
+    return row["blood_surge"] if row else 0
 
 
-def activate_blood_surge(character, trait_type: str, trait_name: str) -> dict[str, Any]:
+def activate_blood_surge(character, trait_type: str, trait_name: str) -> Dict[str, Any]:
     """
-    Activate Blood Surge to boost a trait.
+    Ready a Blood Surge (core p.218; QR p.4).
 
-    Blood Surge adds dice equal to Blood Potency to a specified trait
-    for one scene (1 hour). Requires a Rouse check.
+    The surge adds the Blood Potency table's surge dice to the character's
+    next roll whose pool includes an Attribute (`roll` or a `power` roll).
+    Its one Rouse check is made with that roll, and the Hunger it costs is
+    added after the roll (core pp.211-212). Readying it costs nothing.
 
-    Args:
-        character: Character object
-        trait_type: Type of trait ('attribute' or 'physical_skill')
-        trait_name: Name of trait to boost
+    Refused, with nothing stored, at Hunger 5 (no voluntary Rouse) or while
+    another surge is pending (one surge per roll).
+
+    The pending surge is kept in ``character.db.blood_surge`` (persistent,
+    so a reload doesn't lose it) and lapses unused after one hour.
 
     Returns:
-        dict: {
-            'success': bool,
-            'bonus': int (BP bonus),
-            'trait': str,
-            'expires': float (timestamp),
-            'rouse_result': dict
+        dict: {'success': bool, 'bonus': int, 'trait': str, 'message': str}
+    """
+    from dice.rouse_checker import HUNGER_5_REFUSAL, MAX_HUNGER
+
+    if character.hunger >= MAX_HUNGER:
+        return {'success': False, 'bonus': 0, 'trait': trait_name, 'message': HUNGER_5_REFUSAL}
+    if get_blood_surge(character):
+        return {
+            'success': False,
+            'bonus': 0,
+            'trait': trait_name,
+            'message': "You already have a Blood Surge waiting for your next roll.",
         }
-    """
-    from dice.rouse_checker import perform_rouse_check
 
-    rouse_result = perform_rouse_check(character, reason=f"Blood Surge ({trait_name})")
-
-    # Get Blood Potency bonus
     bonus = get_blood_potency_bonus(character)
+    character.db.blood_surge = {
+        'trait': trait_name,
+        'trait_type': trait_type,
+        'bonus': bonus,
+        'expires': time.time() + 3600,
+    }
+    return {
+        'success': True,
+        'bonus': bonus,
+        'trait': trait_name,
+        'message': f"+{bonus} dice to your next roll; its Rouse check is made with that roll.",
+    }
 
-    # Set Blood Surge status (expires in 1 hour)
-    expires = time.time() + 3600
-    character.ndb.blood_surge = {"trait": trait_name, "trait_type": trait_type, "bonus": bonus, "expires": expires}
 
-    return {"success": True, "bonus": bonus, "trait": trait_name, "expires": expires, "rouse_result": rouse_result}
+def consume_blood_surge(character) -> int:
+    """Use up a pending Blood Surge: return its bonus dice (0 if none) and clear it."""
+    surge = get_blood_surge(character)
+    if not surge:
+        return 0
+    deactivate_blood_surge(character)
+    return surge.get('bonus', 0)
 
 
-def get_blood_surge(character) -> dict[str, Any] | None:
+def get_blood_surge(character) -> Optional[Dict[str, Any]]:
     """
-    Get character's active Blood Surge status.
-
-    Args:
-        character: Character object
+    The character's pending Blood Surge, or None if there is none or it lapsed.
 
     Returns:
-        dict or None: Blood Surge data or None if inactive/expired
+        dict or None: {'trait', 'trait_type', 'bonus', 'expires'}
     """
-    surge = getattr(character.ndb, "blood_surge", None)
-
+    surge = character.db.blood_surge
     if not surge:
         return None
-
-    # Check if expired
-    if surge.get("expires", 0) < time.time():
+    if surge.get('expires', 0) < time.time():
         deactivate_blood_surge(character)
         return None
-
     return surge
 
 
-def get_blood_surge_bonus(character, trait_name: str | None = None) -> int:
+def get_blood_surge_bonus(character, trait_name: Optional[str] = None) -> int:
     """
     Get active Blood Surge bonus dice for a specific trait or any active surge.
 
@@ -493,13 +374,6 @@ def get_blood_surge_bonus(character, trait_name: str | None = None) -> int:
 
     Returns:
         int: Bonus dice from active Blood Surge (0 if no surge active)
-
-    Examples:
-        >>> # Character has Blood Surge active on Strength
-        >>> get_blood_surge_bonus(character, "Strength")
-        3  # (Blood Potency 3)
-        >>> get_blood_surge_bonus(character, "Brawl")
-        0  # (surge not on Brawl)
     """
     surge = get_blood_surge(character)
 
@@ -508,26 +382,27 @@ def get_blood_surge_bonus(character, trait_name: str | None = None) -> int:
 
     # If no specific trait requested, return bonus for any active surge
     if trait_name is None:
-        return surge.get("bonus", 0)
+        return surge.get('bonus', 0)
 
     # Check if surge is active on the requested trait
-    if surge.get("trait") == trait_name:
-        return surge.get("bonus", 0)
+    if surge.get('trait') == trait_name:
+        return surge.get('bonus', 0)
 
     return 0
 
 
 def deactivate_blood_surge(character):
     """
-    Deactivate Blood Surge.
+    Clear the pending Blood Surge.
 
     Args:
         character: Character object
     """
-    character.ndb.blood_surge = None
+    if character.attributes.has('blood_surge'):
+        character.attributes.remove('blood_surge')
 
 
-def format_blood_surge_display(character) -> str | None:
+def format_blood_surge_display(character) -> Optional[str]:
     """
     Format character's Blood Surge status for display.
 
@@ -546,9 +421,9 @@ def format_blood_surge_display(character) -> str | None:
     if not surge:
         return None
 
-    trait = surge.get("trait", "Unknown")
-    bonus = surge.get("bonus", 0)
-    expires = surge.get("expires", 0)
+    trait = surge.get('trait', 'Unknown')
+    bonus = surge.get('bonus', 0)
+    expires = surge.get('expires', 0)
 
     # Calculate time remaining
     time_remaining = expires - time.time()
@@ -567,81 +442,3 @@ def format_blood_surge_display(character) -> str | None:
         time_str = "less than 1 minute"
 
     return f"|wBlood Surge:|n |g+{bonus}|n to |y{trait}|n (expires in {time_str})"
-
-
-def mend_damage(character, damage_type: str = "superficial", amount: int = 1) -> dict[str, Any]:
-    """
-    Mend damage by spending blood (vampire healing).
-
-    Vampires can mend damage by spending blood. Superficial damage heals automatically,
-    but Aggravated damage requires a Rouse check per point healed.
-
-    Args:
-        character: Character object
-        damage_type: Type of damage ('superficial' or 'aggravated')
-        amount: Amount of damage to heal
-
-    Returns:
-        dict: {
-            'success': bool,
-            'healed': int (amount actually healed),
-            'damage_type': str,
-            'hunger_increased': bool,
-            'rouse_checks': int (number of Rouse checks made),
-            'message': str
-        }
-
-    Examples:
-        >>> mend_damage(character, "superficial", 2)
-        {'success': True, 'healed': 2, 'hunger_increased': False, ...}
-    """
-    from dice.rouse_checker import perform_rouse_check
-
-    # Get current damage
-    current_superficial = getattr(character.db, "superficial_damage", 0)
-    current_aggravated = getattr(character.db, "aggravated_damage", 0)
-
-    healed = 0
-    hunger_increased = False
-    rouse_checks = 0
-
-    if damage_type.lower() == "superficial":
-        # Superficial damage heals automatically (no Rouse check needed per V5)
-        healed = min(amount, current_superficial)
-        character.db.superficial_damage = current_superficial - healed
-        message = f"Healed {healed} superficial damage."
-
-    elif damage_type.lower() == "aggravated":
-        # Aggravated damage requires Rouse check per point
-        for _ in range(min(amount, current_aggravated)):
-            rouse_result = perform_rouse_check(character, reason="Mending aggravated damage")
-            rouse_checks += 1
-
-            if rouse_result["hunger_change"] > 0:
-                hunger_increased = True
-
-            healed += 1
-
-        character.db.aggravated_damage = current_aggravated - healed
-        message = f"Healed {healed} aggravated damage with {rouse_checks} Rouse check(s)."
-        if hunger_increased:
-            message += " Hunger increased from failed Rouse check(s)."
-
-    else:
-        return {
-            "success": False,
-            "healed": 0,
-            "damage_type": damage_type,
-            "hunger_increased": False,
-            "rouse_checks": 0,
-            "message": f"Invalid damage type: {damage_type}. Use 'superficial' or 'aggravated'.",
-        }
-
-    return {
-        "success": True,
-        "healed": healed,
-        "damage_type": damage_type,
-        "hunger_increased": hunger_increased,
-        "rouse_checks": rouse_checks,
-        "message": message,
-    }

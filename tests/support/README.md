@@ -22,7 +22,7 @@ malformed JSON, an unauthorized citation, and attempted extra state output are
 checked against unchanged deterministic outcomes and an exact dice draw count.
 
 The MCP test uses the official SDK client with in-process ASGI transport. A separate
-Python writer process commits Attribute, name, status, position, boon-ledger, and
+Python writer process commits Attribute, name, status, position, boon, and
 ownership changes to the same disposable database. The existing companion reader
 process keeps its warmed Evennia objects and Attribute caches; SDK calls must still
 return current values and deny the former owner after transfer. A second account

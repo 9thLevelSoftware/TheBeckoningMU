@@ -2,99 +2,24 @@
 |W|                   ACTIVE EFFECTS COMMANDS                        |
 |[R+===================================================================+|n
 
-Commands for viewing and managing active discipline effects on your
-character.
+|y+effects|n  (also |y+fx|n, |y+activeeffects|n)
+  List the discipline effects active on you: each effect's ID, power,
+  discipline, duration and when it started.
 
-|WVIEWING EFFECTS:|n
+  |yExample output:|n
+    [a3f2] Cat's Grace (Celerity)
+      Duration: Active until end of scene
 
-|y+effects|n
-|y+fx|n
-|y+activeeffects|n
-  View all active discipline effects on your character.
+|WSTAFF SWITCHES|n (Builder and above)
 
-Shows for each effect:
-  - Effect ID (for reference)
-  - Power name and discipline
-  - Duration (scene, turns, or permanent)
-  - Time applied
-  - Current parameters/bonuses
+|y+effects/clear <effect id>|n   remove one of your own effects
+|y+effects/clear all|n           remove all your own effects
+|y+effects/tick|n                count down your turn-based effects by one
+                               turn; those that reach 0 are removed
 
-|yExample Output:|n
-  [a3f2] Cat's Grace (Celerity)
-    Duration: Active until end of scene
-    Applied: 21:30:15
-    Effects: bonus_dice: 2
+These act on the staff member's own character only.
 
-|WSTAFF COMMANDS:|n
+Effects are created by the |ypower|n command; see |yhelp effects-guide|n for
+what is tracked and what the Storyteller applies.
 
-|y+effects/clear <effect_id>|n
-  Remove a specific effect by its ID. (Staff only)
-
-|y+effects/clear all|n
-  Remove all effects from the character. (Staff only)
-
-|y+effects/tick|n
-  Decrement turn-based durations by 1. (Staff only)
-  Effects that reach 0 turns will expire and be removed.
-
-|yExamples:|n
-  +effects/clear a3f2             # Remove specific effect
-  +effects/clear all              # Remove all effects
-  +effects/tick                   # Advance turn counter
-
-|WEFFECT DURATIONS:|n
-
-|yScene:|n
-  Effect lasts until the current scene ends.
-  Typically 1 hour of real time or until the story moves on.
-
-|yTurns:|n
-  Effect lasts a specific number of combat turns.
-  Use |y+effects/tick|n to advance the turn counter.
-  Effect expires when turns reach 0.
-
-|yPermanent:|n
-  Effect remains until manually cleared.
-  Usually toggleable powers that the vampire maintains.
-
-|WEFFECT TYPES:|n
-
-Effects can modify various aspects of your character:
-
-  |ybonus_dice|n - Extra dice to specific rolls
-  |ydefense_bonus|n - Increased defense in combat
-  |ydamage_reduction|n - Reduced incoming damage
-  |yspeed_bonus|n - Enhanced movement/initiative
-  |ysensory|n - Enhanced perception abilities
-  |ystealth|n - Concealment effects
-
-The specific parameters depend on the discipline power used.
-
-|WHOW EFFECTS ARE CREATED:|n
-
-Effects are automatically created when you activate discipline
-powers using |y+power|n. Not all powers create lasting effects -
-some are instant (like dealing damage) or passive (always on).
-
-Powers that typically create effects:
-  - Celerity (speed bonuses)
-  - Fortitude (damage reduction)
-  - Obfuscate (concealment)
-  - Presence (social bonuses)
-  - Protean (physical changes)
-
-|WMANAGING YOUR EFFECTS:|n
-
-1. Check active effects before important rolls
-2. Note effect IDs for reference
-3. Track turn-based effects during combat
-4. Ask ST to clear effects when scenes end
-
-|yTip:|n Effects from the same power don't stack. Activating a
-power again will replace the existing effect.
-
-|WRELATED TOPICS:|n
-
-|ySee also:|n help disciplines, help discipline_commands, help combat
-
-|[r+===================================================================+|n
+|ySee also:|n help effects-guide, help discipline_commands, help combat

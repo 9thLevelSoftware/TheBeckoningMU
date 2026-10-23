@@ -14,6 +14,8 @@ from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from oauth2_provider.models import AccessToken, Application
 
+from traits.models import CharacterBio
+
 from .app import create_application
 from .auth import OAUTH_SCOPES, _resolve_token
 
@@ -31,6 +33,8 @@ REDIRECT = "https://client.example.test/callback"
 class OAuthFlowTests(EvenniaTest):
     def setUp(self):
         super().setUp()
+        CharacterBio.objects.create(character=self.char1, account=self.account, status="approved")
+        CharacterBio.objects.create(character=self.char2, account=self.account2, status="approved")
         self.application = Application.objects.create(
             user=self.account,
             name="Controlled local OAuth test client",

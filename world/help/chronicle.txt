@@ -19,4 +19,4 @@ authorization is scoped and revocable; never share access tokens.
 
 |[r+===================================================================+|n
 
-|ySee also:|n help getting_started, help hunt, +news policy
+|ySee also:|n +news general/getting_started, help hunt, +news policy

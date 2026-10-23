@@ -1,8 +1,11 @@
 from uuid import uuid4
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from evennia.objects.models import ObjectDB
+
+from web.permissions import has_perm
 
 from .models import ChronicleEvent
 
@@ -111,18 +114,30 @@ def participant_events(account):
     return ChronicleEvent.objects.filter(
         visibility=ChronicleEvent.Visibility.PARTICIPANTS,
         status=ChronicleEvent.Status.PUBLISHED,
-        participants__db_account=account,
+        participants__vtm_bio__account=account,
     ).distinct()
 
 
+def staff_authorized(user):
+    """Use the game's Builder authority, reloading grants before async decisions."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    authority = get_user_model().objects.filter(pk=user.pk, is_active=True).values("is_superuser").first()
+    if authority is None:
+        return False
+    user.is_superuser = authority["is_superuser"]
+    user.permissions.reset_cache()
+    return has_perm(user, "Builder")
+
+
 def staff_events(user):
-    if not getattr(user, "is_authenticated", False) or not (user.is_staff or user.is_superuser):
+    if not staff_authorized(user):
         return ChronicleEvent.objects.none()
     return ChronicleEvent.objects.all()
 
 
 def _require_staff(user):
-    if not getattr(user, "is_authenticated", False) or not (user.is_staff or user.is_superuser):
+    if not staff_authorized(user):
         raise PermissionError("Staff permission is required to moderate Chronicle events.")
 
 
@@ -195,7 +210,7 @@ def redact_event(event_id, staff_user):
 def characters_for_account(account):
     if not getattr(account, "is_authenticated", False):
         return ObjectDB.objects.none()
-    return ObjectDB.objects.filter(db_account=account, db_typeclass_path="typeclasses.characters.Character")
+    return ObjectDB.objects.filter(vtm_bio__account=account, db_typeclass_path="typeclasses.characters.Character")
 
 
 def character_owned_by(account, character_id):

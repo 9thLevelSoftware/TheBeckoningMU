@@ -1,0 +1,114 @@
+|[R+===================================================================+
+|W|                          BACKGROUNDS                              |
+|[R+===================================================================+|n
+
+Backgrounds represent resources, connections, and advantages your
+character possesses (V5 core p.184-194; V5 Quick Reference 2.0 pp.8-11).
+The ratings below are the book's. The |wBenefit|n and |wUses|n lines are
+this game's conventions for the |y+background|n command, not book rules,
+except Herd.
+
+|WBACKGROUND LIST:|n
+
+|yAllies|n (rated by effectiveness and reliability)
+  Mortal associates, usually family or friends
+  |wBenefit:|n Can call for help. +[dots] to Social rolls when relevant
+  |wUses:|n [dots] times per session
+
+|yContacts|n (dots 1-3)
+  People who can get you information or items
+  |wBenefit:|n +[dots] to Investigation when using contacts
+  |wUses:|n [dots x 2] times per session
+
+|yFame|n (dots 1-5: from a subculture to worldwide)
+  How well known you are among mortals
+  |wBenefit:|n +[dots] to Social rolls with those who recognize you
+  |wUses:|n Unlimited (passive)
+
+|yHaven|n (dots 1-3: from small and likely secure to large and private)
+  A place to sleep safely by day
+  |wBenefit:|n Security rating +[dots] to defend against intrusion
+  |wUses:|n Passive
+
+|yHerd|n (dots 1-5: from 1-3 mortals to 31-60)
+  Mortals you can feed from freely and safely
+  |wBenefit:|n Slake up to [dots] Hunger per week without a hunting roll
+  (core p.189). Your Blood Potency still applies (see |yhelp hunger-guide|n).
+  |wUses:|n Once per week (7 days from your last Herd feeding)
+
+|yInfluence|n (dots 1-5: from well-connected to dominant)
+  Political power in mortal society
+  |wBenefit:|n +[dots] to Leadership/Politics in domain
+  |wUses:|n [dots] times per session
+
+|yMask|n (dots 1-2: a fake ID, or one that passes an in-depth check)
+  A false identity
+  |wBenefit:|n +[dots] to maintain Masquerade and resist investigation
+  |wUses:|n Passive
+
+|yMawla|n (dots 1-5: from a neonate to a prince or baron)
+  A Kindred mentor, patron or confederate
+  |wBenefit:|n Advice, protection and introductions
+  |wUses:|n [dots] times per session
+
+|yResources|n (dots 1-5: from paycheck to paycheck to ultra rich)
+  Wealth, belongings and income
+  |wBenefit:|n Can acquire items of [dots] rating or less
+  |wUses:|n [dots] times per session
+
+|yRetainers|n (dots 1-3: from a weak mortal to a gifted ghoul)
+  Followers, guards and servants
+  |wBenefit:|n [dots] servants who can perform tasks
+  |wUses:|n Unlimited (they're always there)
+
+|yStatus|n (dots 1-5: from known to a position of power)
+  Standing in a sect
+  |wBenefit:|n +[dots] to Social rolls with Kindred
+  |wUses:|n Unlimited (passive)
+
+Each background has matching flaws (Enemy, Infamy, Dark Secret, No Haven,
+Obvious Predator, Disliked, Known Corpse, Adversary, Destitute, Stalkers,
+Suspect, Shunned, ...).
+
+|WUSING BACKGROUNDS:|n
+
+|y+background|n
+  View all your backgrounds, their benefit and uses left
+
+|y+background <name>|n
+  View details of a specific background
+  Example: |y+background contacts|n
+
+|y+background/use <name>=<task>|n
+  Spend one use of a background on a task. The game records the use
+  and tells you the bonus ([dots] dice); add it to your |yroll|n
+  yourself when the Storyteller agrees it applies.
+  Example: |y+background/use contacts=investigate gang activity|n
+
+|y+background/herd|n
+  Feed from your Herd (see Herd above). Lowers your Hunger at once.
+
+|y+background/resources <item>=<rating>|n
+  Record acquiring an item whose rating is at most your Resources;
+  uses one Resources use. No object is created.
+  Example: |y+background/resources pistol=2|n
+
+|WIMPORTANT NOTES:|n
+
+- Allies, Influence, Mawla and Resources have [dots] uses per session,
+  Contacts [dots x 2]; the others are unlimited or passive, and Herd
+  is weekly.
+- Per-session uses don't refill on their own. |y+background/reset|n
+  (staff) resets only the uses of the character running it, and no
+  command yet resets another character's uses. The Herd week is never
+  reset: it counts 7 days from your last Herd feeding.
+- Backgrounds can be raised with XP (|y+spend advantage <name>|n).
+
+|[r+===================================================================+|n
+
+|yCommands:|n
+  |w+background|n        - List your backgrounds
+  |w+background/use|n    - Use a background
+  |w+sheet|n             - View character (includes backgrounds)
+
+|ySee also:|n help chargen, help xp-guide, help status-guide

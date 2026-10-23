@@ -10,6 +10,10 @@ from functools import wraps
 from django.db import models, transaction
 from evennia.typeclasses.models import SharedMemoryModel
 
+# Request types that can be stored but have no implementation yet.
+UNSUPPORTED_REQUEST_TYPES = ("sect_change",)
+
+
 _status_changes = ContextVar("status_changes", default=None)
 
 
@@ -88,18 +92,22 @@ class CamarillaPosition(SharedMemoryModel):
     sect = models.CharField(
         max_length=50,
         default="Camarilla",
-        choices=[("Camarilla", "Camarilla"), ("Anarch", "Anarch"), ("Independent", "Independent")],
-        help_text="Sect this position belongs to",
+        choices=[
+            ("Camarilla", "Camarilla"),
+            ("Anarch", "Anarch"),
+            ("Independent", "Independent")
+        ],
+        help_text="Sect this position belongs to"
     )
 
     # Active status
     is_active = models.BooleanField(default=True, help_text="Whether this position is currently in use")
 
     class Meta:
-        app_label = "status"
+        app_label = 'status'
         verbose_name = "Camarilla Position"
         verbose_name_plural = "Camarilla Positions"
-        ordering = ["-hierarchy_level", "name"]
+        ordering = ['-hierarchy_level', 'name']
 
     def __str__(self):
         return f"{self.name} ({self.sect}) - Status {self.status_granted}"
@@ -115,10 +123,10 @@ class CharacterStatus(SharedMemoryModel):
 
     # Character reference
     character = models.OneToOneField(
-        "objects.ObjectDB",
+        'objects.ObjectDB',
         on_delete=models.CASCADE,
-        related_name="status_data",
-        help_text="Character this status belongs to",
+        related_name='status_data',
+        help_text="Character this status belongs to"
     )
 
     # Status ratings
@@ -132,13 +140,15 @@ class CharacterStatus(SharedMemoryModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="holders",
-        help_text="Current Camarilla position held (if any)",
+        related_name='holders',
+        help_text="Current Camarilla position held (if any)"
     )
 
     # Additional positions/titles (stored as JSON)
     additional_positions = models.JSONField(
-        default=list, blank=True, help_text="Additional positions/titles held (e.g., Primogen of Clan Ventrue)"
+        default=list,
+        blank=True,
+        help_text="Additional positions/titles held (e.g., Primogen of Clan Ventrue)"
     )
 
     # Sect affiliation
@@ -149,23 +159,27 @@ class CharacterStatus(SharedMemoryModel):
             ("Camarilla", "Camarilla"),
             ("Anarch", "Anarch"),
             ("Independent", "Independent"),
-            ("Autarkis", "Autarkis"),
+            ("Autarkis", "Autarkis")
         ],
-        help_text="Sect affiliation",
+        help_text="Sect affiliation"
     )
 
     # Reputation
     reputation = models.TextField(blank=True, help_text="Public reputation/known deeds")
 
     # Status history (stored as JSON)
-    status_history = models.JSONField(default=list, blank=True, help_text="History of status changes")
+    status_history = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="History of status changes"
+    )
 
     # Timestamps
     created_date = models.DateTimeField(auto_now_add=True)
     modified_date = models.DateTimeField(auto_now=True)
 
     class Meta:
-        app_label = "status"
+        app_label = 'status'
         verbose_name = "Character Status"
         verbose_name_plural = "Character Status Records"
 
@@ -201,7 +215,7 @@ class CharacterStatus(SharedMemoryModel):
             "change": change,
             "reason": reason,
             "changed_by": changed_by,
-            "new_total": self.total_status,
+            "new_total": self.total_status
         }
 
         if not self.status_history:
@@ -220,10 +234,10 @@ class StatusRequest(SharedMemoryModel):
 
     # Request identification
     character = models.ForeignKey(
-        "objects.ObjectDB",
+        'objects.ObjectDB',
         on_delete=models.CASCADE,
-        related_name="status_requests",
-        help_text="Character requesting status change",
+        related_name='status_requests',
+        help_text="Character requesting status change"
     )
 
     # Request type
@@ -234,9 +248,9 @@ class StatusRequest(SharedMemoryModel):
             ("position", "Position Appointment"),
             ("position_removal", "Position Removal"),
             ("sect_change", "Sect Change"),
-            ("other", "Other"),
+            ("other", "Other")
         ],
-        help_text="Type of status request",
+        help_text="Type of status request"
     )
 
     # Request details
@@ -246,7 +260,7 @@ class StatusRequest(SharedMemoryModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        help_text="Requested position (if applicable)",
+        help_text="Requested position (if applicable)"
     )
 
     reason = models.TextField(help_text="Reason for request / IC justification")
@@ -256,18 +270,23 @@ class StatusRequest(SharedMemoryModel):
     status = models.CharField(
         max_length=20,
         default="pending",
-        choices=[("pending", "Pending"), ("approved", "Approved"), ("denied", "Denied"), ("review", "Under Review")],
-        help_text="Request status",
+        choices=[
+            ("pending", "Pending"),
+            ("approved", "Approved"),
+            ("denied", "Denied"),
+            ("review", "Under Review")
+        ],
+        help_text="Request status"
     )
 
     # Staff response
     reviewed_by = models.ForeignKey(
-        "objects.ObjectDB",
+        'objects.ObjectDB',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="reviewed_status_requests",
-        help_text="Staff member who reviewed this request",
+        related_name='reviewed_status_requests',
+        help_text="Staff member who reviewed this request"
     )
 
     staff_notes = models.TextField(blank=True, help_text="Staff notes/response")
@@ -279,10 +298,10 @@ class StatusRequest(SharedMemoryModel):
     resolved_date = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        app_label = "status"
+        app_label = 'status'
         verbose_name = "Status Request"
         verbose_name_plural = "Status Requests"
-        ordering = ["-created_date"]
+        ordering = ['-created_date']
 
     def __str__(self):
         return f"{self.character.key} - {self.request_type} ({self.status})"
@@ -290,115 +309,105 @@ class StatusRequest(SharedMemoryModel):
     @_status_atomic
     def approve(self, staff_member, reason=""):
         """
-        Approve the status request.
+        Approve a pending request and apply it.
+
+        The change is applied first, through the same helpers the admin
+        commands use, so their requirements (position status and clan)
+        hold here too. If the change is refused the request stays pending.
+        The pending check, the change and the approval commit or roll back
+        together.
 
         Args:
             staff_member: Staff character object
             reason (str): Reason for approval
+
+        Returns:
+            tuple: (success: bool, message: str)
         """
+        from django.db import transaction
         from django.utils import timezone
 
         _track_status_instance(self)
-        self.status = "approved"
-        self.reviewed_by = staff_member
-        self.resolution_reason = reason
-        self.resolved_date = timezone.now()
-        self.save()
+        from .utils import get_character_status
 
-        old_value = None
-        if self.request_type == "earned_status":
-            from .utils import get_character_status
+        current_status = get_character_status(self.character)
+        old_value = current_status.earned_status if current_status else 0
+        with transaction.atomic():
+            current = type(self).objects.filter(pk=self.pk).values_list("status", flat=True).first()
+            if self.status != "pending" or current != "pending":
+                return (False, f"Request #{self.id} is already {current or self.status}.")
 
-            current_status = get_character_status(self.character)
-            old_value = current_status.earned_status if current_status else 0
+            success, message = self._apply_change(staff_member)
+            if not success:
+                transaction.set_rollback(True)
 
-        # Apply the change
-        self._apply_change()
+            if success:
+                self.status = "approved"
+                self.reviewed_by = staff_member
+                self.resolution_reason = reason
+                self.resolved_date = timezone.now()
+                self.save()
+        if not success:
+            _restore_status_instances(_status_changes.get() or {})
+            return (False, message)
         from chronicle.services import record_event
 
         payload = {}
         if self.requested_position:
             payload["position"] = self.requested_position.name
-        if old_value is not None:
-            from .utils import get_character_status
-
-            payload["old_value"] = old_value
-            payload["new_value"] = get_character_status(self.character).earned_status
+        if self.request_type == "earned_status":
+            payload.update(old_value=old_value, new_value=get_character_status(self.character).earned_status)
         record_event(
             idempotency_key=f"status:{self.pk}:status.request_approved:{self.resolved_date.isoformat()}",
-            source_app="status",
-            source_type="StatusRequest",
-            source_id=str(self.pk),
-            kind="status.request_approved",
-            title="Status request approved",
-            summary="A status request was approved.",
-            payload=payload,
-            visibility="participants",
-            actor=getattr(staff_member, "account", None),
-            participants=(self.character,),
+            source_app="status", source_type="StatusRequest", source_id=str(self.pk), kind="status.request_approved",
+            title="Status request approved", summary="A status request was approved.", payload=payload,
+            visibility="participants", actor=getattr(staff_member, "account", None), participants=(self.character,),
             occurred_at=self.resolved_date,
         )
+        return (True, message)
 
     def deny(self, staff_member, reason=""):
         """
-        Deny the status request.
+        Deny a pending request.
 
         Args:
             staff_member: Staff character object
             reason (str): Reason for denial
+
+        Returns:
+            tuple: (success: bool, message: str)
         """
         from django.utils import timezone
+
+        if self.status != "pending":
+            return (False, f"Request #{self.id} is already {self.status}.")
 
         self.status = "denied"
         self.reviewed_by = staff_member
         self.resolution_reason = reason
         self.resolved_date = timezone.now()
         self.save()
+        return (True, f"Request #{self.id} denied.")
 
-    def _apply_change(self):
-        """Apply the approved status change to the character."""
-        from .utils import get_or_create_character_status
-
-        char_status = get_or_create_character_status(self.character)
+    def _apply_change(self, staff_member):
+        """Apply the requested change; returns (success, message)."""
+        from .utils import assign_position, modify_earned_status, remove_position
 
         if self.request_type == "earned_status":
-            char_status.earned_status = max(0, min(5, char_status.earned_status + self.requested_change))
-            char_status.add_status_history(
-                self.requested_change, self.reason, str(self.reviewed_by) if self.reviewed_by else "System"
+            char_status = modify_earned_status(
+                self.character, self.requested_change, self.reason, staff_member
             )
-            char_status.save()
+            return (True, f"Earned Status is now {char_status.earned_status}.")
 
-        elif self.request_type == "position":
-            if self.requested_position:
-                # Remove from old position if unique
-                if self.requested_position.is_unique:
-                    # Clear any existing holder
-                    old_holders = CharacterStatus.objects.filter(position=self.requested_position)
-                    for old_holder in old_holders:
-                        _track_status_instance(old_holder)
-                        old_holder.position = None
-                        old_holder.position_status = 0
-                        old_holder.save()
+        if self.request_type == "position":
+            if not self.requested_position:
+                return (False, "The request names no position.")
+            return assign_position(self.character, self.requested_position.name, staff_member)
 
-                # Assign new position
-                char_status.position = self.requested_position
-                char_status.position_status = self.requested_position.status_granted
-                char_status.add_status_history(
-                    self.requested_position.status_granted,
-                    f"Appointed to position: {self.requested_position.name}",
-                    str(self.reviewed_by) if self.reviewed_by else "System",
-                )
-                char_status.save()
+        if self.request_type == "position_removal":
+            return remove_position(self.character, staff_member)
 
-        elif self.request_type == "position_removal":
-            char_status.position = None
-            char_status.position_status = 0
-            char_status.add_status_history(
-                0, "Removed from position", str(self.reviewed_by) if self.reviewed_by else "System"
-            )
-            char_status.save()
+        if self.request_type in UNSUPPORTED_REQUEST_TYPES:
+            return (False, "Sect change requests aren't implemented yet. Deny it and make the change by hand.")
 
-        elif self.request_type == "sect_change":
-            # Sect change would be handled here
-            # May require additional logic based on game rules
-            pass
+        return (True, "Approved; no automatic change applies to this request type.")

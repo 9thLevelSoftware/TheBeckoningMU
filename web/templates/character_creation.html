@@ -4,558 +4,195 @@
 {% block title %}Character Creation{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'chargen/codex-base.css' %}?v=2">
-<link rel="stylesheet" href="{% static 'chargen/codex-chargen.css' %}?v=2">
+<link rel="stylesheet" href="{% static 'chargen/codex-base.css' %}?v=4">
+<link rel="stylesheet" href="{% static 'chargen/codex-chargen.css' %}?v=4">
+<style>
+    .codex-trait-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    .codex-trait-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+    .codex-trait-row label { min-width: 120px; }
+    .codex-trait-row .codex-select { max-width: 260px; }
+    .codex-discipline { margin-bottom: 12px; }
+    .codex-power { display: block; margin-left: 24px; }
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="chargen-wrapper">
     <div class="chargen-main">
-        <!-- Page Header -->
         <div class="codex-page-header">
             <h1 id="page-title">Create Your Character</h1>
-            <p>Inscribe your Kindred into the chronicles of The Beckoning</p>
+            <p>Inscribe your Kindred into the chronicles of The Beckoning. Characters follow the
+               Vampire: The Masquerade 5th Edition core rules; staff review every application.</p>
+        </div>
+
+        <div id="rejection-banner" class="alert alert-danger mb-4" style="display: none;">
+            <h5 class="alert-heading">Staff asked for changes</h5>
+            <p id="rejection-notes" style="white-space: pre-wrap;"></p>
         </div>
 
         <form id="character-form">
 
-            <!-- ============================================================
-                 Tab I: Identity
-                 ============================================================ -->
+            <!-- I: Identity -->
             <div class="codex-tab-panel" data-tab="0">
                 <div class="codex-section">
-                    <div class="codex-section-header">
-                        <h3>I &middot; Identity</h3>
-                    </div>
+                    <div class="codex-section-header"><h3>I &middot; Identity</h3></div>
                     <img src="{% static 'chargen/assets/divider.svg' %}" class="codex-divider" alt="">
                     <div class="codex-section-body">
-
                         <div class="codex-field">
-                            <label class="codex-label" for="full_name">Character Name</label>
-                            <input type="text" class="codex-input" id="full_name" required>
-                            <span class="codex-hint">Your character's full name</span>
+                            <label class="codex-label" for="field-name">Character Name</label>
+                            <input type="text" class="codex-input" id="field-name" maxlength="30" required>
+                            <span class="codex-hint">2-30 letters, spaces, apostrophes or hyphens; must be unique in the game.</span>
                         </div>
-
                         <div class="codex-field">
-                            <label class="codex-label" for="concept">Concept</label>
-                            <input type="text" class="codex-input" id="concept" required>
-                            <span class="codex-hint">A brief description (e.g., "Street-Smart Detective", "Tormented Artist")</span>
+                            <label class="codex-label" for="field-concept">Concept</label>
+                            <input type="text" class="codex-input" id="field-concept" maxlength="100">
                         </div>
-
                         <div class="codex-field">
-                            <label class="codex-label" for="clan">Clan</label>
-                            <select class="codex-select" id="clan" required>
-                                <option value="">Select a clan...</option>
-                                <option value="Banu Haqim">Banu Haqim</option>
-                                <option value="Brujah">Brujah</option>
-                                <option value="Gangrel">Gangrel</option>
-                                <option value="Hecata">Hecata</option>
-                                <option value="Lasombra">Lasombra</option>
-                                <option value="Malkavian">Malkavian</option>
-                                <option value="Ministry">Ministry</option>
-                                <option value="Nosferatu">Nosferatu</option>
-                                <option value="Ravnos">Ravnos</option>
-                                <option value="Salubri">Salubri</option>
-                                <option value="Toreador">Toreador</option>
-                                <option value="Tremere">Tremere</option>
-                                <option value="Tzimisce">Tzimisce</option>
-                                <option value="Ventrue">Ventrue</option>
-                                <option value="Caitiff">Caitiff</option>
-                            </select>
-                            <div id="clan-info" class="clan-info" style="display: none;"></div>
+                            <label class="codex-label">Clan</label>
+                            <div id="clan-box"></div>
+                            <div id="clan-info" class="clan-info"></div>
                         </div>
-
                         <div class="codex-field">
-                            <label class="codex-label" for="sire">Sire</label>
-                            <input type="text" class="codex-input" id="sire">
-                            <span class="codex-hint">The name of your character's sire (who embraced them)</span>
+                            <label class="codex-label">Age (Sea of Time)</label>
+                            <div id="age-box"></div>
+                            <span class="codex-hint" id="age-info"></span>
                         </div>
-
                         <div class="codex-field">
-                            <label class="codex-label" for="generation">Generation</label>
-                            <select class="codex-select" id="generation">
-                                <option value="">Select generation...</option>
-                                <option value="13">13th Generation</option>
-                                <option value="12">12th Generation</option>
-                                <option value="11">11th Generation</option>
-                                <option value="10">10th Generation</option>
-                            </select>
-                            <span class="codex-hint">Most new vampires are 12th or 13th generation</span>
+                            <label class="codex-label">Generation</label>
+                            <div id="generation-box"></div>
                         </div>
-
                         <div class="codex-field">
-                            <label class="codex-label" for="predator_type">Predator Type</label>
-                            <select class="codex-select" id="predator_type">
-                                <option value="">Select predator type...</option>
-                                <option value="Alleycat">Alleycat</option>
-                                <option value="Bagger">Bagger</option>
-                                <option value="Blood Leech">Blood Leech</option>
-                                <option value="Cleaver">Cleaver</option>
-                                <option value="Consensualist">Consensualist</option>
-                                <option value="Farmer">Farmer</option>
-                                <option value="Osiris">Osiris</option>
-                                <option value="Sandman">Sandman</option>
-                                <option value="Scene Queen">Scene Queen</option>
-                                <option value="Siren">Siren</option>
-                            </select>
-                            <span class="codex-hint">How your character prefers to feed</span>
+                            <label class="codex-label">Predator Type</label>
+                            <div id="predator-box"></div>
+                            <div id="predator-info" class="clan-info"></div>
                         </div>
-
-                        <div id="predator-discipline-choice" class="codex-field" style="display:none;">
-                            <label class="codex-label">Predator Discipline Bonus</label>
-                            <p class="codex-hint" style="margin-bottom:8px;">Your predator type grants +1 dot in one of these disciplines:</p>
-                            <div id="predator-discipline-options"></div>
-                        </div>
-
                         <div class="codex-field">
-                            <label class="codex-label" for="ambition">Ambition</label>
-                            <textarea class="codex-input" id="ambition" rows="2"></textarea>
-                            <span class="codex-hint">Your character's long-term goal</span>
+                            <label class="codex-label" for="field-sire">Sire</label>
+                            <input type="text" class="codex-input" id="field-sire" maxlength="100">
                         </div>
-
                         <div class="codex-field">
-                            <label class="codex-label" for="desire">Desire</label>
-                            <textarea class="codex-input" id="desire" rows="2"></textarea>
-                            <span class="codex-hint">Your character's short-term want</span>
+                            <label class="codex-label" for="field-ambition">Ambition (required)</label>
+                            <textarea class="codex-input" id="field-ambition" rows="2" maxlength="500"></textarea>
                         </div>
-
+                        <div class="codex-field">
+                            <label class="codex-label" for="field-desire">Desire (required)</label>
+                            <textarea class="codex-input" id="field-desire" rows="2" maxlength="500"></textarea>
+                        </div>
+                        <div class="codex-field">
+                            <label class="codex-label">Convictions &amp; Touchstones</label>
+                            <span class="codex-hint">One to three Convictions, each with a Touchstone: a mortal who embodies it (core p.172-173).</span>
+                            <div id="convictions-list"></div>
+                            <button type="button" class="btn-codex-ghost" id="add-conviction">Add conviction</button>
+                        </div>
                         <div class="codex-field" style="margin-bottom: 0;">
-                            <label class="codex-label" for="background">Background / Backstory</label>
-                            <textarea class="codex-journal" id="background" name="background" rows="6"
-                                      placeholder="Write your character's backstory here. This is free-text and will be reviewed by staff."
-                                      maxlength="5000"></textarea>
-                            <span class="codex-hint">Optional but recommended. Tell us about your character's history, personality, and motivations.</span>
+                            <label class="codex-label" for="field-background">Background / Backstory</label>
+                            <textarea class="codex-journal" id="field-background" rows="6" maxlength="10000"
+                                      placeholder="Your character's history, personality and motivations. Staff read this."></textarea>
                         </div>
-
                     </div>
                 </div>
             </div>
 
-            <!-- ============================================================
-                 Tab II: Attributes
-                 ============================================================ -->
+            <!-- II: Attributes -->
             <div class="codex-tab-panel" data-tab="1" style="display:none;">
                 <div class="codex-section">
-                    <div class="codex-section-header">
-                        <h3>II &middot; Attributes</h3>
-                    </div>
+                    <div class="codex-section-header"><h3>II &middot; Attributes</h3></div>
                     <img src="{% static 'chargen/assets/divider.svg' %}" class="codex-divider" alt="">
                     <div class="codex-section-body">
-
-                        <!-- Priority Selector -->
-                        <div class="priority-selector">
-                            <h5>Assign Priorities</h5>
-                            <div class="priority-row">
-                                <span class="priority-label">Primary (7 dots):</span>
-                                <select class="codex-select priority-select" id="attr-priority-primary">
-                                    <option value="">Select category...</option>
-                                    <option value="physical">Physical</option>
-                                    <option value="social">Social</option>
-                                    <option value="mental">Mental</option>
-                                </select>
-                            </div>
-                            <div class="priority-row">
-                                <span class="priority-label">Secondary (5 dots):</span>
-                                <select class="codex-select priority-select" id="attr-priority-secondary">
-                                    <option value="">Select category...</option>
-                                    <option value="physical">Physical</option>
-                                    <option value="social">Social</option>
-                                    <option value="mental">Mental</option>
-                                </select>
-                            </div>
-                            <div class="priority-row">
-                                <span class="priority-label">Tertiary (3 dots):</span>
-                                <select class="codex-select priority-select" id="attr-priority-tertiary">
-                                    <option value="">Select category...</option>
-                                    <option value="physical">Physical</option>
-                                    <option value="social">Social</option>
-                                    <option value="mental">Mental</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- Physical Attributes -->
-                        <div class="trait-group">
-                            <h5>Physical <span id="attr-physical-pool"></span></h5>
-                            <div class="trait-row">
-                                <span class="trait-label">Strength</span>
-                                <div class="pip-row trait-dots" data-trait="strength" data-category="physical"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Dexterity</span>
-                                <div class="pip-row trait-dots" data-trait="dexterity" data-category="physical"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Stamina</span>
-                                <div class="pip-row trait-dots" data-trait="stamina" data-category="physical"></div>
-                            </div>
-                        </div>
-
-                        <!-- Social Attributes -->
-                        <div class="trait-group">
-                            <h5>Social <span id="attr-social-pool"></span></h5>
-                            <div class="trait-row">
-                                <span class="trait-label">Charisma</span>
-                                <div class="pip-row trait-dots" data-trait="charisma" data-category="social"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Manipulation</span>
-                                <div class="pip-row trait-dots" data-trait="manipulation" data-category="social"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Composure</span>
-                                <div class="pip-row trait-dots" data-trait="composure" data-category="social"></div>
-                            </div>
-                        </div>
-
-                        <!-- Mental Attributes -->
-                        <div class="trait-group">
-                            <h5>Mental <span id="attr-mental-pool"></span></h5>
-                            <div class="trait-row">
-                                <span class="trait-label">Intelligence</span>
-                                <div class="pip-row trait-dots" data-trait="intelligence" data-category="mental"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Wits</span>
-                                <div class="pip-row trait-dots" data-trait="wits" data-category="mental"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Resolve</span>
-                                <div class="pip-row trait-dots" data-trait="resolve" data-category="mental"></div>
-                            </div>
-                        </div>
-
+                        <p class="codex-hint" id="attribute-rule"></p>
+                        <div id="attributes-grid" class="codex-trait-grid"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- ============================================================
-                 Tab III: Skills
-                 ============================================================ -->
+            <!-- III: Skills and specialties -->
             <div class="codex-tab-panel" data-tab="2" style="display:none;">
                 <div class="codex-section">
-                    <div class="codex-section-header">
-                        <h3>III &middot; Skills</h3>
-                    </div>
+                    <div class="codex-section-header"><h3>III &middot; Skills</h3></div>
                     <img src="{% static 'chargen/assets/divider.svg' %}" class="codex-divider" alt="">
                     <div class="codex-section-body">
-
-                        <!-- Skill Priority Selector -->
-                        <div class="priority-selector">
-                            <h5>Assign Priorities</h5>
-                            <div class="priority-row">
-                                <span class="priority-label">Primary (13 dots):</span>
-                                <select class="codex-select priority-select" id="skill-priority-primary">
-                                    <option value="">Select category...</option>
-                                    <option value="physical">Physical</option>
-                                    <option value="social">Social</option>
-                                    <option value="mental">Mental</option>
-                                </select>
-                            </div>
-                            <div class="priority-row">
-                                <span class="priority-label">Secondary (9 dots):</span>
-                                <select class="codex-select priority-select" id="skill-priority-secondary">
-                                    <option value="">Select category...</option>
-                                    <option value="physical">Physical</option>
-                                    <option value="social">Social</option>
-                                    <option value="mental">Mental</option>
-                                </select>
-                            </div>
-                            <div class="priority-row">
-                                <span class="priority-label">Tertiary (5 dots):</span>
-                                <select class="codex-select priority-select" id="skill-priority-tertiary">
-                                    <option value="">Select category...</option>
-                                    <option value="physical">Physical</option>
-                                    <option value="social">Social</option>
-                                    <option value="mental">Mental</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- Physical Skills -->
-                        <div class="trait-group">
-                            <h5>Physical Skills <span id="skill-physical-pool"></span></h5>
-                            <div class="trait-row">
-                                <span class="trait-label">Athletics</span>
-                                <div class="pip-row trait-dots" data-trait="athletics" data-category="skills-physical"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Brawl</span>
-                                <div class="pip-row trait-dots" data-trait="brawl" data-category="skills-physical"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Craft</span>
-                                <div class="pip-row trait-dots" data-trait="craft" data-category="skills-physical"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Drive</span>
-                                <div class="pip-row trait-dots" data-trait="drive" data-category="skills-physical"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Firearms</span>
-                                <div class="pip-row trait-dots" data-trait="firearms" data-category="skills-physical"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Melee</span>
-                                <div class="pip-row trait-dots" data-trait="melee" data-category="skills-physical"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Larceny</span>
-                                <div class="pip-row trait-dots" data-trait="larceny" data-category="skills-physical"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Stealth</span>
-                                <div class="pip-row trait-dots" data-trait="stealth" data-category="skills-physical"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Survival</span>
-                                <div class="pip-row trait-dots" data-trait="survival" data-category="skills-physical"></div>
-                            </div>
-                        </div>
-
-                        <!-- Social Skills -->
-                        <div class="trait-group">
-                            <h5>Social Skills <span id="skill-social-pool"></span></h5>
-                            <div class="trait-row">
-                                <span class="trait-label">Animal Ken</span>
-                                <div class="pip-row trait-dots" data-trait="animal_ken" data-category="skills-social"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Etiquette</span>
-                                <div class="pip-row trait-dots" data-trait="etiquette" data-category="skills-social"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Insight</span>
-                                <div class="pip-row trait-dots" data-trait="insight" data-category="skills-social"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Intimidation</span>
-                                <div class="pip-row trait-dots" data-trait="intimidation" data-category="skills-social"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Leadership</span>
-                                <div class="pip-row trait-dots" data-trait="leadership" data-category="skills-social"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Performance</span>
-                                <div class="pip-row trait-dots" data-trait="performance" data-category="skills-social"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Persuasion</span>
-                                <div class="pip-row trait-dots" data-trait="persuasion" data-category="skills-social"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Streetwise</span>
-                                <div class="pip-row trait-dots" data-trait="streetwise" data-category="skills-social"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Subterfuge</span>
-                                <div class="pip-row trait-dots" data-trait="subterfuge" data-category="skills-social"></div>
-                            </div>
-                        </div>
-
-                        <!-- Mental Skills -->
-                        <div class="trait-group">
-                            <h5>Mental Skills <span id="skill-mental-pool"></span></h5>
-                            <div class="trait-row">
-                                <span class="trait-label">Academics</span>
-                                <div class="pip-row trait-dots" data-trait="academics" data-category="skills-mental"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Awareness</span>
-                                <div class="pip-row trait-dots" data-trait="awareness" data-category="skills-mental"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Finance</span>
-                                <div class="pip-row trait-dots" data-trait="finance" data-category="skills-mental"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Investigation</span>
-                                <div class="pip-row trait-dots" data-trait="investigation" data-category="skills-mental"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Medicine</span>
-                                <div class="pip-row trait-dots" data-trait="medicine" data-category="skills-mental"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Occult</span>
-                                <div class="pip-row trait-dots" data-trait="occult" data-category="skills-mental"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Politics</span>
-                                <div class="pip-row trait-dots" data-trait="politics" data-category="skills-mental"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Science</span>
-                                <div class="pip-row trait-dots" data-trait="science" data-category="skills-mental"></div>
-                            </div>
-                            <div class="trait-row">
-                                <span class="trait-label">Technology</span>
-                                <div class="pip-row trait-dots" data-trait="technology" data-category="skills-mental"></div>
-                            </div>
-                        </div>
-
+                        <p class="codex-hint" id="skill-rule"></p>
+                        <div id="skills-grid" class="codex-trait-grid"></div>
+                        <h5 style="margin-top: 16px;">Specialties</h5>
+                        <p class="codex-hint" id="specialty-rule"></p>
+                        <div id="specialties-list"></div>
+                        <button type="button" class="btn-codex-ghost" id="add-specialty">Add specialty</button>
                     </div>
                 </div>
             </div>
 
-            <!-- ============================================================
-                 Tab IV: Disciplines
-                 ============================================================ -->
+            <!-- IV: Disciplines and powers -->
             <div class="codex-tab-panel" data-tab="3" style="display:none;">
                 <div class="codex-section">
-                    <div class="codex-section-header">
-                        <h3>IV &middot; Disciplines</h3>
-                    </div>
+                    <div class="codex-section-header"><h3>IV &middot; Disciplines</h3></div>
                     <img src="{% static 'chargen/assets/divider.svg' %}" class="codex-divider" alt="">
                     <div class="codex-section-body">
-                        <p style="color: var(--text-secondary); font-size: 14px; font-family: var(--font-ui); margin-bottom: 20px;">
-                            Allocate 3 dots among your in-clan disciplines: 2 dots in one, 1 dot in another.
-                            Your predator type may grant an additional bonus dot (selected in Identity tab).
-                        </p>
-                        <div id="disciplines-container">
-                            <div class="codex-loading">
-                                <div class="codex-spinner"></div>
-                                Loading disciplines...
-                            </div>
-                        </div>
+                        <p class="codex-hint" id="discipline-rule"></p>
+                        <div id="disciplines-grid"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- ============================================================
-                 Tab V: Advantages
-                 ============================================================ -->
+            <!-- V: Advantages and flaws -->
             <div class="codex-tab-panel" data-tab="4" style="display:none;">
                 <div class="codex-section">
-                    <div class="codex-section-header">
-                        <h3>V &middot; Advantages</h3>
-                    </div>
+                    <div class="codex-section-header"><h3>V &middot; Advantages &amp; Flaws</h3></div>
                     <img src="{% static 'chargen/assets/divider.svg' %}" class="codex-divider" alt="">
                     <div class="codex-section-body">
-                        <p style="color: var(--text-secondary); font-size: 14px; font-family: var(--font-ui); margin-bottom: 20px;">
-                            Spend exactly 7 points. Each dot = 1 point.
-                        </p>
-                        <div id="advantages-container">
-                            <div class="codex-loading">
-                                <div class="codex-spinner"></div>
-                                Loading advantages...
-                            </div>
-                        </div>
+                        <p class="codex-hint" id="advantage-rule"></p>
+                        <h5>Advantages (backgrounds and merits)</h5>
+                        <div id="advantages-list"></div>
+                        <button type="button" class="btn-codex-ghost" id="add-advantage">Add advantage</button>
+                        <h5 style="margin-top: 16px;">Flaws</h5>
+                        <div id="flaws-list"></div>
+                        <button type="button" class="btn-codex-ghost" id="add-flaw">Add flaw</button>
                     </div>
                 </div>
             </div>
 
-            <!-- ============================================================
-                 Tab VI: Flaws
-                 ============================================================ -->
+            <!-- VI: Submit -->
             <div class="codex-tab-panel" data-tab="5" style="display:none;">
                 <div class="codex-section">
-                    <div class="codex-section-header">
-                        <h3>VI &middot; Flaws</h3>
-                    </div>
+                    <div class="codex-section-header"><h3>VI &middot; Submit</h3></div>
                     <img src="{% static 'chargen/assets/divider.svg' %}" class="codex-divider" alt="">
                     <div class="codex-section-body">
-                        <p style="color: var(--text-secondary); font-size: 14px; font-family: var(--font-ui); margin-bottom: 20px;">
-                            Optionally take up to 2 points of flaws.
-                        </p>
-                        <div id="flaws-container">
-                            <div class="codex-loading">
-                                <div class="codex-spinner"></div>
-                                Loading flaws...
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ============================================================
-                 Tab VII: Chronicle / Submit
-                 ============================================================ -->
-            <div class="codex-tab-panel" data-tab="6" style="display:none;">
-                <div class="codex-section">
-                    <div class="codex-section-header">
-                        <h3>VII &middot; Chronicle</h3>
-                    </div>
-                    <img src="{% static 'chargen/assets/divider.svg' %}" class="codex-divider" alt="">
-                    <div class="codex-section-body">
-
-                        <div id="chronicle-summary">
-                            <!-- Rendered by JS: renderChronicSummary() -->
-                        </div>
-
+                        <p>The server checks your character against the V5 creation rules. Fix anything it lists, then submit.
+                           Staff review every application; you can play once it is approved.</p>
                         <div id="validation-errors" class="codex-errors" style="display: none;">
                             <h5>Please fix the following issues</h5>
                             <ul id="error-list-items"></ul>
                         </div>
-
+                        <p class="codex-hint" id="check-result"></p>
                         <div style="text-align: center; padding: 20px 0;">
-                            <button type="submit" class="btn-codex" id="submit-button" disabled>
-                                Submit Character for Approval
-                            </button>
-                            <div class="codex-hint" style="margin-top: 8px;">Complete all sections to enable submission</div>
+                            <button type="button" class="btn-codex-ghost" id="check-button">Check again</button>
+                            <button type="submit" class="btn-codex" id="submit-button" disabled>Submit Character for Approval</button>
                         </div>
-
                     </div>
                 </div>
             </div>
-
         </form>
 
-        <!-- Navigation Arrows -->
         <div class="codex-nav-arrows">
-            <button type="button" class="btn-codex-ghost" id="btn-prev" style="visibility:hidden;">
-                &larr; Previous
-            </button>
-            <button type="button" class="btn-codex-ghost" id="btn-next">
-                Next &rarr;
-            </button>
+            <button type="button" class="btn-codex-ghost" id="btn-prev" style="visibility:hidden;">&larr; Previous</button>
+            <button type="button" class="btn-codex-ghost" id="btn-next">Next &rarr;</button>
         </div>
-
     </div>
 
-    <!-- Points Tracker Sidebar -->
     <div class="codex-tracker">
         <div class="tracker-title">Chronicle</div>
-        <div class="tracker-group">
-            <div class="tracker-group-label">Attributes</div>
-            <div class="tracker-line" id="tracker-attr-physical">Physical: <span id="points-physical">0</span>/<span id="attr-physical-max">?</span></div>
-            <div class="tracker-line" id="tracker-attr-social">Social: <span id="points-social">0</span>/<span id="attr-social-max">?</span></div>
-            <div class="tracker-line" id="tracker-attr-mental">Mental: <span id="points-mental">0</span>/<span id="attr-mental-max">?</span></div>
-        </div>
-        <div class="tracker-group">
-            <div class="tracker-group-label">Skills</div>
-            <div class="tracker-line" id="tracker-skill-physical">Physical: <span id="points-skills-physical">0</span>/<span id="skill-physical-max">?</span></div>
-            <div class="tracker-line" id="tracker-skill-social">Social: <span id="points-skills-social">0</span>/<span id="skill-social-max">?</span></div>
-            <div class="tracker-line" id="tracker-skill-mental">Mental: <span id="points-skills-mental">0</span>/<span id="skill-mental-max">?</span></div>
-        </div>
-        <div class="tracker-group">
-            <div class="tracker-group-label">Disciplines</div>
-            <div class="tracker-line" id="tracker-disciplines"><span id="points-disciplines">0</span>/3 in-clan <span id="predator-disc-indicator"></span></div>
-        </div>
-        <div class="tracker-group">
-            <div class="tracker-group-label">Advantages</div>
-            <div class="tracker-line" id="tracker-advantages"><span id="points-advantages">0</span>/7 points</div>
-        </div>
-        <div class="tracker-group">
-            <div class="tracker-group-label">Flaws</div>
-            <div class="tracker-line" id="tracker-flaws"><span id="points-flaws">0</span>/2 points</div>
-        </div>
+        <div class="tracker-group" id="tracker-lines"></div>
     </div>
 </div>
 
-<!-- Tab Navigation (sticky bottom) -->
 <div class="codex-tabs">
     <div class="codex-tab active" data-tab="0"><span class="codex-tab-numeral">I</span><span class="codex-tab-label">Identity</span></div>
     <div class="codex-tab" data-tab="1"><span class="codex-tab-numeral">II</span><span class="codex-tab-label">Attributes</span></div>
     <div class="codex-tab" data-tab="2"><span class="codex-tab-numeral">III</span><span class="codex-tab-label">Skills</span></div>
     <div class="codex-tab" data-tab="3"><span class="codex-tab-numeral">IV</span><span class="codex-tab-label">Disciplines</span></div>
     <div class="codex-tab" data-tab="4"><span class="codex-tab-numeral">V</span><span class="codex-tab-label">Advantages</span></div>
-    <div class="codex-tab" data-tab="5"><span class="codex-tab-numeral">VI</span><span class="codex-tab-label">Flaws</span></div>
-    <div class="codex-tab" data-tab="6"><span class="codex-tab-numeral">VII</span><span class="codex-tab-label">Submit</span></div>
+    <div class="codex-tab" data-tab="5"><span class="codex-tab-numeral">VI</span><span class="codex-tab-label">Submit</span></div>
 </div>
 
-<!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 {% endblock %}
 
@@ -564,5 +201,5 @@
     const CSRF_TOKEN = '{{ csrf_token }}';
     const editCharacterId = {{ edit_character_id|default:"null" }};
 </script>
-<script src="{% static 'chargen/codex-chargen.js' %}?v=2"></script>
+<script src="{% static 'chargen/codex-chargen.js' %}?v=4"></script>
 {% endblock %}

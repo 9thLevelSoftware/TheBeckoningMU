@@ -1,0 +1,59 @@
+|[R+===================================================================+
+|W|                      HUMANITY SYSTEM                              |
+|[R+===================================================================+|n
+
+Humanity (0-10) is your connection to mortal life and your hold on the
+Beast. New characters start at Humanity 7 (QR p.2; Ancillae at 6).
+
+|WSTAINS|n (QR p.3)
+
+You gain Stains when you break the Chronicle Tenets or your own
+Convictions; the Storyteller says how many. Stains fill the unmarked boxes
+of your Humanity tracker (10 minus your Humanity). If a Stain would
+overfill the tracker, it isn't marked: you take one |wAggravated Willpower
+damage|n instead, for each Stain that doesn't fit.
+
+  Example: Humanity 8 leaves 2 boxes. With 2 Stains already marked, one
+  more Stain becomes 1 Aggravated Willpower damage.
+
+A messy critical doesn't add a Stain by itself.
+
+While Stains fill the tracker (Degeneration) you are Impaired: -2 dice to
+all tests until your Remorse test (QR p.3).
+
+|WREMORSE|n (QR p.3)
+
+At the end of each session, if you have Stains, make a Remorse test with
+|w+remorse|n:
+  1. Roll one die for each unmarked Humanity box: 10 - Humanity - Stains,
+     with a minimum of one die. Remorse uses no Hunger dice.
+  2. Any success: you keep your Humanity.
+  3. No successes: you lose 1 Humanity.
+  Either way, all your Stains are cleared.
+
+  Example: Humanity 7 with 2 Stains rolls 10 - 7 - 2 = 1 die.
+
+Humanity rises only at the Storyteller's discretion (core p.241); it can't
+be bought with XP.
+
+|WCONVICTIONS AND TOUCHSTONES|n (core p.172-173)
+
+Convictions are your personal moral code. You take one to three at
+creation; breaking one costs Stains. Each Conviction has a Touchstone: a
+mortal (or something mortal) that anchors it. Harm to a Touchstone can
+cost Stains, at the Storyteller's discretion.
+
+|WCOMMANDS|n
+
+|w+humanity|n                                 Humanity, Stains, Convictions, Touchstones
+|w+humanity/conviction <text>|n               add a Conviction (up to 3)
+|w+humanity/conviction/remove <number>|n      remove a Conviction
+|w+humanity/touchstone <name>=<description>[/<conviction #>]|n
+                                            add a Touchstone for a Conviction (default 1)
+|w+humanity/touchstone/remove <number>|n      remove a Touchstone
+|w+stain [<count>]|n                          mark Stains on yourself
+|w+stain <character>=<count>|n                (staff) mark Stains on someone else
+|w+remorse|n                                  make your Remorse test (once per 24 hours)
+|w+remorse <character>|n                      (staff) run a character's Remorse test
+
+|ySee also:|n help frenzy-guide, help hunger-guide, help v5-rules-guide

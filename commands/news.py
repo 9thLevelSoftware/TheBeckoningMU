@@ -5,7 +5,6 @@ Allows players to read game news and announcements organized by category.
 """
 
 from evennia import Command
-from evennia import default_cmds
 from django.conf import settings
 import importlib
 
@@ -183,21 +182,3 @@ class CmdNews(Command):
         msg.append("|w" + "=" * 70 + "|n")
 
         self.caller.msg("\n".join(msg))
-
-
-# For backwards compatibility with Evennia's help system
-class CmdNews2(default_cmds.CmdHelp):
-    """
-    Alternative news command using Evennia's default help system.
-    This is a fallback in case the file-based system isn't set up.
-    """
-
-    key = "news2"
-    aliases = []
-    help_category = "General"
-    locks = "cmd:all()"
-
-    def func(self):
-        """Redirect to help system."""
-        self.caller.msg("|yNote: Using fallback news system. File-based news not configured.|n")
-        super().func()

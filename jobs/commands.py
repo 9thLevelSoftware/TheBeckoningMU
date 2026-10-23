@@ -4,13 +4,14 @@ Jobs commands - focused, single-responsibility command classes.
 Provides player-facing and admin commands for the Jobs system.
 """
 
+from evennia import default_cmds
+from evennia.utils import class_from_module
+from .models import Job, Bucket, Comment
+from evennia.accounts.models import AccountDB
 from django.conf import settings
 from django.db import Error as DbError
 from django.db import transaction
-from evennia.utils import class_from_module
-
 from . import utils
-from .models import Bucket, Comment, Job
 
 COMMAND_DEFAULT_CLASS = class_from_module(settings.COMMAND_DEFAULT_CLASS)
 
@@ -19,193 +20,178 @@ COMMAND_DEFAULT_CLASS = class_from_module(settings.COMMAND_DEFAULT_CLASS)
 # Player-Facing Commands (Open permissions)
 # =============================================================================
 
-
 class CmdJobs(COMMAND_DEFAULT_CLASS):
     """
-    List all available jobs.
+    List open jobs you can see.
 
     Usage:
-      jobs                    - List all open jobs
+      jobs                    - List open jobs
       +job/list               - Same as above (standard syntax)
-      jobs <bucket_name>      - List jobs in a specific bucket
+      jobs <bucket_name>      - List open jobs in a specific bucket
 
+    Staff see every job. Players see the jobs they created or are
+    assigned to.
+    
     Examples:
       jobs
       +job/list
       jobs Bugs
     """
-
+    
     key = "jobs"
     aliases = ["+jobs", "+job/list"]
     locks = "cmd:all()"
     help_category = "Jobs"
-
+    
     def func(self):
+        if self.switches and self.switches != ["list"]:
+            self.caller.msg(f"Unknown or staff-only switch: /{self.switches[0]}. See help jobs.")
+            return
         if self.args:
             # List jobs in specific bucket
             bucket = utils.get_bucket(self.caller, self.args.strip())
             if not bucket:
                 return
-
-            jobs = bucket.jobs.filter(status="OPEN")
+            
+            jobs = utils.jobs_visible_to(self.caller, bucket.jobs.filter(status="OPEN"))
             output = utils.format_job_list(jobs, f"Open Jobs in {bucket.name}")
         else:
             # List all open jobs
-            jobs = Job.objects.filter(status="OPEN")
+            jobs = utils.jobs_visible_to(self.caller, Job.objects.filter(status="OPEN"))
             output = utils.format_job_list(jobs, "All Open Jobs")
-
+        
         self.caller.msg(output)
 
 
 class CmdJobView(COMMAND_DEFAULT_CLASS):
     """
     View details of a specific job.
-
+    
     Usage:
-      job <job_id>
-      +job/view <job_id>      - Same as above (standard syntax)
+      job <bucket>/<number>
+      job <number>            - When only one bucket has that number
+      +job/view <bucket>/<number>
+
+    Job numbers are per bucket, so "job 1" is ambiguous once two buckets
+    each have a job 1.
 
     Examples:
-      job 5
-      +job/view 42
+      job Bugs/5
+      +job/view Approval/42
     """
-
+    
     key = "job"
     aliases = ["+job", "+job/view"]
     locks = "cmd:all()"
     help_category = "Jobs"
-
+    
     def func(self):
-        if not self.args:
-            self.caller.msg("Usage: job <job_id>")
+        # A player's "job/claim X" lands here when job/claim is locked to them.
+        if self.switches and self.switches != ["view"]:
+            self.caller.msg(f"Unknown or staff-only switch: /{self.switches[0]}. See help job.")
             return
-
+        if not self.args:
+            self.caller.msg("Usage: job <bucket>/<number>")
+            return
+        
         job = utils.get_job(self.caller, self.args.strip())
         if not job:
             return
-
+        
         if not utils.can_view_job(self.caller, job):
             self.caller.msg("You don't have permission to view this job.")
             return
-
-        output = utils.format_job_view(job)
+        
+        output = utils.format_job_view(job, self.caller)
         self.caller.msg(output)
 
 
 class CmdJobClaim(COMMAND_DEFAULT_CLASS):
     """
-    Claim an unassigned job.
+    Claim an unassigned job (staff).
 
     Usage:
-      job/claim <job_id>
+      job/claim <bucket>/<number>
 
     Examples:
-      job/claim 5
+      job/claim Bugs/5
     """
 
     key = "job/claim"
     aliases = ["+job/claim"]
-    locks = "cmd:all()"
+    locks = "cmd:perm(Builder)"
     help_category = "Jobs"
-
+    
     def func(self):
         if not self.args:
-            self.caller.msg("Usage: job/claim <job_id>")
+            self.caller.msg("Usage: job/claim <bucket>/<number>")
             return
-
+        
         job = utils.get_job(self.caller, self.args.strip())
         if not job:
             return
-
+        
         if job.status != "OPEN":
             self.caller.msg("This job is not available for claiming.")
             return
-
+        
         if job.players.exists():
             self.caller.msg("This job is already assigned to someone.")
             return
-
+        
         # Claim the job
         with transaction.atomic():
-            job.players.add(self.caller.account)
+            job.players.add(utils.account_of(self.caller))
             job.save()
-        from chronicle.services import record_event
-
-        record_event(
-            idempotency_key=f"jobs:{job.pk}:job.claimed:{job.updated_at.isoformat()}",
-            source_app="jobs",
-            source_type="Job",
-            source_id=str(job.pk),
-            kind="job.claimed",
-            title="Job claimed",
-            summary="A job was claimed.",
-            payload={"job_state": job.status, "job_priority": job.priority},
-            visibility="participants",
-            actor=self.caller.account,
-            participants=utils.job_participant_characters(job),
-            occurred_at=job.updated_at,
-        )
-
-        self.caller.msg(f"You have claimed job #{job.sequence_number}: {job.title}")
+        utils.record_job_transition(job, "job.claimed", self.caller)
+        
+        self.caller.msg(f"You have claimed job {job.ref}: {job.title}")
 
 
 class CmdJobDone(COMMAND_DEFAULT_CLASS):
     """
-    Mark a job assigned to you as complete.
+    Close a job.
 
     Usage:
-      job/done <job_id>
-      job/complete <job_id>
+      job/done <bucket>/<number>
+      +job/complete <bucket>/<number>
+
+    Staff close jobs. A player may close (withdraw) a job they created.
 
     Examples:
-      job/done 5
-      job/complete 42
+      job/done Bugs/5
+      +job/complete Approval/42
     """
-
+    
     key = "job/done"
     aliases = ["+job/complete", "+job/done"]
     locks = "cmd:all()"
     help_category = "Jobs"
-
+    
     def func(self):
         if not self.args:
-            self.caller.msg("Usage: job/done <job_id>")
+            self.caller.msg("Usage: job/done <bucket>/<number>")
             return
-
+        
         job = utils.get_job(self.caller, self.args.strip())
         if not job:
             return
-
+        
         if not utils.can_complete_job(self.caller, job):
             self.caller.msg("You don't have permission to complete this job.")
             return
-
+        
         if job.completed:
             self.caller.msg("This job is already completed.")
             return
-
+        
         # Complete the job
         job.completed = True
         job.status = "CLOSED"
         job.save()
-        from chronicle.services import record_event
-
-        record_event(
-            idempotency_key=f"jobs:{job.pk}:job.completed:{job.updated_at.isoformat()}",
-            source_app="jobs",
-            source_type="Job",
-            source_id=str(job.pk),
-            kind="job.completed",
-            title="Job completed",
-            summary="A job was completed.",
-            payload={"job_state": job.status, "job_priority": job.priority},
-            visibility="participants",
-            actor=self.caller.account,
-            participants=utils.job_participant_characters(job),
-            occurred_at=job.updated_at,
-        )
-
-        self.caller.msg(f"Job #{job.sequence_number}: {job.title} has been marked as complete.")
+        utils.record_job_transition(job, "job.completed", self.caller)
+        
+        self.caller.msg(f"Job {job.ref}: {job.title} has been marked as complete.")
 
 
 class CmdJobComment(COMMAND_DEFAULT_CLASS):
@@ -213,41 +199,48 @@ class CmdJobComment(COMMAND_DEFAULT_CLASS):
     Add a private comment to a job.
 
     Usage:
-      job/comment <job_id> = <comment>
+      job/comment <bucket>/<number> = <comment>
+
+    Private comments are shown to staff and to the comment's author only.
 
     Examples:
-      job/comment 5 = Working on this now
-      job/comment 42 = Need more information about the bug
+      job/comment Bugs/5 = Working on this now
+      job/comment Bugs/42 = Need more information about the bug
     """
-
+    
     key = "job/comment"
     aliases = ["+job/comment", "+job/add"]
     locks = "cmd:all()"
     help_category = "Jobs"
-
+    
     def func(self):
         if not self.args or "=" not in self.args:
-            self.caller.msg("Usage: job/comment <job_id> = <comment>")
+            self.caller.msg("Usage: job/comment <bucket>/<number> = <comment>")
             return
-
+        
         try:
             job_id, comment_text = self.args.split("=", 1)
         except ValueError:
-            self.caller.msg("Usage: job/comment <job_id> = <comment>")
+            self.caller.msg("Usage: job/comment <bucket>/<number> = <comment>")
             return
-
+        
         job = utils.get_job(self.caller, job_id.strip())
         if not job:
             return
-
+        
         if not utils.check_job_permission(self.caller, job):
             self.caller.msg("You don't have permission to comment on this job.")
             return
-
+        
         # Add the comment
         try:
-            Comment.objects.create(job=job, author=self.caller.account, content=comment_text.strip(), public=False)
-            self.caller.msg(f"Private comment added to job #{job.sequence_number}.")
+            comment = Comment.objects.create(
+                job=job,
+                author=utils.account_of(self.caller),
+                content=comment_text.strip(),
+                public=False
+            )
+            self.caller.msg(f"Private comment added to job {job.ref}.")
         except DbError as e:
             self.caller.msg(f"A database error occurred while adding the comment: {e}")
 
@@ -255,43 +248,50 @@ class CmdJobComment(COMMAND_DEFAULT_CLASS):
 class CmdJobPublic(COMMAND_DEFAULT_CLASS):
     """
     Add a public comment to a job.
-
+    
     Usage:
-      job/public <job_id> = <comment>
+      job/public <bucket>/<number> = <comment>
+
+    Public comments are shown to everyone who can see the job.
 
     Examples:
-      job/public 5 = This issue has been resolved
-      job/public 42 = Update: Still investigating
+      job/public Bugs/5 = This issue has been resolved
+      job/public Bugs/42 = Update: Still investigating
     """
-
+    
     key = "job/public"
     aliases = ["+job/public"]
     locks = "cmd:all()"
     help_category = "Jobs"
-
+    
     def func(self):
         if not self.args or "=" not in self.args:
-            self.caller.msg("Usage: job/public <job_id> = <comment>")
+            self.caller.msg("Usage: job/public <bucket>/<number> = <comment>")
             return
-
+        
         try:
             job_id, comment_text = self.args.split("=", 1)
         except ValueError:
-            self.caller.msg("Usage: job/public <job_id> = <comment>")
+            self.caller.msg("Usage: job/public <bucket>/<number> = <comment>")
             return
-
+        
         job = utils.get_job(self.caller, job_id.strip())
         if not job:
             return
-
+        
         if not utils.check_job_permission(self.caller, job):
             self.caller.msg("You don't have permission to comment on this job.")
             return
-
+        
         # Add the public comment
         try:
-            Comment.objects.create(job=job, author=self.caller.account, content=comment_text.strip(), public=True)
-            self.caller.msg(f"Public comment added to job #{job.sequence_number}.")
+            comment = Comment.objects.create(
+                job=job,
+                author=utils.account_of(self.caller),
+                content=comment_text.strip(),
+                public=True
+            )
+            self.caller.msg(f"Public comment added to job {job.ref}.")
         except DbError as e:
             self.caller.msg(f"A database error occurred while adding the comment: {e}")
 
@@ -300,25 +300,28 @@ class CmdJobPublic(COMMAND_DEFAULT_CLASS):
 # "My Jobs" Player Commands
 # =============================================================================
 
-
 class CmdMyJobs(COMMAND_DEFAULT_CLASS):
     """
-    List all jobs you have created.
+    List the jobs you have created.
 
     Usage:
-      myjobs
+      myjobs          - Your open jobs
+      myjobs all      - Your jobs, including closed ones
 
     Examples:
       myjobs
     """
-
+    
     key = "myjobs"
     aliases = ["+myjobs", "+job/mine"]
     locks = "cmd:all()"
     help_category = "Jobs"
-
+    
     def func(self):
-        jobs = Job.objects.filter(creator=self.caller.account)
+        jobs = Job.objects.filter(creator=utils.account_of(self.caller))
+        if self.args.strip().lower() != "all":
+            jobs = jobs.filter(status="OPEN")
+        jobs = jobs.select_related("bucket").prefetch_related("players")
         output = utils.format_job_list(jobs, "My Jobs")
         self.caller.msg(output)
 
@@ -330,9 +333,14 @@ class CmdJobSubmit(COMMAND_DEFAULT_CLASS):
     Usage:
       job/submit <bucket_name> <title> = <description>
 
+    Players may submit to the buckets 'buckets' lists (Requests and Bugs
+    by default); staff may submit to any bucket. A bucket name may have
+    spaces (job/submit Hunt Scenes Friday hunt = ...); the rest before =
+    is the title.
+
     Examples:
       job/submit Bugs Character sheet not saving = My character sheet keeps resetting
-      job/submit Features Add new command = Would like a +time command
+      job/submit Requests Scene at Elysium = Could staff run a scene on Friday?
     """
 
     key = "job/submit"
@@ -344,49 +352,36 @@ class CmdJobSubmit(COMMAND_DEFAULT_CLASS):
         if not self.args or "=" not in self.args:
             self.caller.msg("Usage: job/submit <bucket_name> <title> = <description>")
             return
-
+        
         try:
             bucket_and_title, description = self.args.split("=", 1)
-            parts = bucket_and_title.strip().split(" ", 1)
-            if len(parts) < 2:
+            bucket_name, title = utils.split_bucket_and_title(bucket_and_title)
+            if not title:
                 self.caller.msg("Usage: job/submit <bucket_name> <title> = <description>")
                 return
-            bucket_name, title = parts
         except ValueError:
             self.caller.msg("Usage: job/submit <bucket_name> <title> = <description>")
             return
-
+        
         bucket = utils.get_bucket(self.caller, bucket_name.strip())
         if not bucket:
             return
-
+        if not bucket.player_submit and not utils.is_staff(self.caller):
+            names = ", ".join(b.name for b in utils.player_buckets()) or "none yet"
+            self.caller.msg(f"You can't file jobs in '{bucket.name}'. Player buckets: {names}.")
+            return
+        
         # Create the job
         try:
             job = Job.objects.create(
                 bucket=bucket,
                 title=title.strip(),
                 description=description.strip(),
-                creator=self.caller.account,
-                status="OPEN",
+                creator=utils.account_of(self.caller),
+                status="OPEN"
             )
-            from chronicle.services import record_event
-
-            record_event(
-                idempotency_key=f"jobs:{job.pk}:job.created:{job.created_at.isoformat()}",
-                source_app="jobs",
-                source_type="Job",
-                source_id=str(job.pk),
-                kind="job.created",
-                title="Job created",
-                summary="A job was created.",
-                payload={"job_state": job.status, "job_priority": job.priority},
-                visibility="participants",
-                actor=self.caller.account,
-                participants=(self.caller,),
-                occurred_at=job.created_at,
-            )
-            self.caller.msg(f"Job #{job.sequence_number} created in bucket '{bucket.name}': {job.title}")
-
+            utils.record_job_transition(job, "job.created", self.caller)
+            self.caller.msg(f"Job {job.ref} created: {job.title}")
         except DbError as e:
             self.caller.msg(f"A database error occurred while creating the job: {e}")
 
@@ -395,69 +390,52 @@ class CmdJobSubmit(COMMAND_DEFAULT_CLASS):
 # Admin Job Commands (Builder+ permissions)
 # =============================================================================
 
-
 class CmdJobCreate(COMMAND_DEFAULT_CLASS):
     """
     Create a new job in any bucket (admin).
-
+    
     Usage:
       job/create <bucket_name> <title> = <description>
-
+    
     Examples:
       job/create Bugs Server crash = Investigating server stability issues
     """
-
+    
     key = "job/create"
     aliases = ["+job/admin/create"]
     locks = "cmd:perm(Builder)"
     help_category = "Jobs"
-
+    
     def func(self):
         if not self.args or "=" not in self.args:
             self.caller.msg("Usage: job/create <bucket_name> <title> = <description>")
             return
-
+        
         try:
             bucket_and_title, description = self.args.split("=", 1)
-            parts = bucket_and_title.strip().split(" ", 1)
-            if len(parts) < 2:
+            bucket_name, title = utils.split_bucket_and_title(bucket_and_title)
+            if not title:
                 self.caller.msg("Usage: job/create <bucket_name> <title> = <description>")
                 return
-            bucket_name, title = parts
         except ValueError:
             self.caller.msg("Usage: job/create <bucket_name> <title> = <description>")
             return
-
+        
         bucket = utils.get_bucket(self.caller, bucket_name.strip())
         if not bucket:
             return
-
+        
         # Create the job
         try:
             job = Job.objects.create(
                 bucket=bucket,
                 title=title.strip(),
                 description=description.strip(),
-                creator=self.caller.account,
-                status="OPEN",
+                creator=utils.account_of(self.caller),
+                status="OPEN"
             )
-            from chronicle.services import record_event
-
-            record_event(
-                idempotency_key=f"jobs:{job.pk}:job.created:{job.created_at.isoformat()}",
-                source_app="jobs",
-                source_type="Job",
-                source_id=str(job.pk),
-                kind="job.created",
-                title="Job created",
-                summary="A job was created.",
-                payload={"job_state": job.status, "job_priority": job.priority},
-                visibility="participants",
-                actor=self.caller.account,
-                participants=(self.caller,),
-                occurred_at=job.created_at,
-            )
-            self.caller.msg(f"Job #{job.sequence_number} created in bucket '{bucket.name}': {job.title}")
+            utils.record_job_transition(job, "job.created", self.caller)
+            self.caller.msg(f"Job {job.ref} created: {job.title}")
         except DbError as e:
             self.caller.msg(f"A database error occurred while creating the job: {e}")
 
@@ -465,154 +443,142 @@ class CmdJobCreate(COMMAND_DEFAULT_CLASS):
 class CmdJobAssign(COMMAND_DEFAULT_CLASS):
     """
     Assign a job to a player (admin).
-
+    
     Usage:
-      job/assign <job_id> = <player_name>
+      job/assign <bucket>/<number> = <player_name>
 
     Examples:
-      job/assign 5 = Alice
-      job/assign 42 = Bob
+      job/assign Bugs/5 = Alice
+      job/assign Bugs/42 = Bob
     """
-
+    
     key = "job/assign"
     aliases = ["+job/assign"]
     locks = "cmd:perm(Builder)"
     help_category = "Jobs"
-
+    
     def func(self):
         if not self.args or "=" not in self.args:
-            self.caller.msg("Usage: job/assign <job_id> = <player_name>")
+            self.caller.msg("Usage: job/assign <bucket>/<number> = <player_name>")
             return
-
+        
         try:
             job_id, player_name = self.args.split("=", 1)
         except ValueError:
-            self.caller.msg("Usage: job/assign <job_id> = <player_name>")
+            self.caller.msg("Usage: job/assign <bucket>/<number> = <player_name>")
             return
-
+        
         job = utils.get_job(self.caller, job_id.strip())
         if not job:
             return
-
+        
         account = utils.get_account(self.caller, player_name.strip())
         if not account:
             return
-
+        
         # Assign the job
         job.players.add(account)
         job.save()
-
-        self.caller.msg(f"Job #{job.sequence_number} assigned to {account.username}.")
+        
+        self.caller.msg(f"Job {job.ref} assigned to {account.username}.")
 
 
 class CmdJobReopen(COMMAND_DEFAULT_CLASS):
     """
     Reopen a completed job (admin).
-
+    
     Usage:
-      job/reopen <job_id>
+      job/reopen <bucket>/<number>
 
     Examples:
-      job/reopen 5
+      job/reopen Bugs/5
     """
-
+    
     key = "job/reopen"
     aliases = ["+job/reopen"]
     locks = "cmd:perm(Builder)"
     help_category = "Jobs"
-
+    
     def func(self):
         if not self.args:
-            self.caller.msg("Usage: job/reopen <job_id>")
+            self.caller.msg("Usage: job/reopen <bucket>/<number>")
             return
-
+        
         job = utils.get_job(self.caller, self.args.strip())
         if not job:
             return
-
+        
         if not job.completed:
             self.caller.msg("This job is not completed.")
             return
-
+        
         # Reopen the job
         job.completed = False
         job.status = "OPEN"
         job.save()
-        from chronicle.services import record_event
-
-        record_event(
-            idempotency_key=f"jobs:{job.pk}:job.reopened:{job.updated_at.isoformat()}",
-            source_app="jobs",
-            source_type="Job",
-            source_id=str(job.pk),
-            kind="job.reopened",
-            title="Job reopened",
-            summary="A job was reopened.",
-            payload={"job_state": job.status, "job_priority": job.priority},
-            visibility="staff",
-            actor=self.caller.account,
-            participants=(),
-            occurred_at=job.updated_at,
-        )
-
-        self.caller.msg(f"Job #{job.sequence_number}: {job.title} has been reopened.")
+        utils.record_job_transition(job, "job.reopened", self.caller)
+        
+        self.caller.msg(f"Job {job.ref}: {job.title} has been reopened.")
 
 
 class CmdJobDelete(COMMAND_DEFAULT_CLASS):
     """
     Delete a job (admin).
-
+    
     Usage:
-      job/delete <job_id>
+      job/delete <bucket>/<number>
 
     Examples:
-      job/delete 5
+      job/delete Bugs/5
     """
-
+    
     key = "job/delete"
     aliases = ["+job/delete"]
     locks = "cmd:perm(Builder)"
     help_category = "Jobs"
-
+    
     def func(self):
         if not self.args:
-            self.caller.msg("Usage: job/delete <job_id>")
+            self.caller.msg("Usage: job/delete <bucket>/<number>")
             return
-
+        
         job = utils.get_job(self.caller, self.args.strip())
         if not job:
             return
-
+        
         job_title = job.title
-        job_id = job.sequence_number
+        job_ref = job.ref
         job.delete()
 
-        self.caller.msg(f"Job #{job_id}: {job_title} has been deleted.")
+        self.caller.msg(f"Job {job_ref}: {job_title} has been deleted.")
 
 
 # =============================================================================
 # Bucket Management Commands (Admin only)
 # =============================================================================
 
-
 class CmdBuckets(COMMAND_DEFAULT_CLASS):
     """
-    List all job buckets.
-
+    List job buckets.
+    
     Usage:
       buckets
-
-    Examples:
-      buckets
+    
+    Players see the buckets they may file jobs in with job/submit
+    (Requests and Bugs by default); staff see every bucket, with a
+    "player" mark on those.
     """
-
+    
     key = "buckets"
     aliases = ["+buckets"]
-    locks = "cmd:perm(Builder)"
+    locks = "cmd:all()"
     help_category = "Jobs"
-
+    
     def func(self):
-        buckets = Bucket.objects.all()
+        if utils.is_staff(self.caller):
+            buckets = Bucket.objects.all()
+        else:
+            buckets = utils.player_buckets()
         output = utils.format_bucket_list(buckets)
         self.caller.msg(output)
 
@@ -620,43 +586,53 @@ class CmdBuckets(COMMAND_DEFAULT_CLASS):
 class CmdBucketCreate(COMMAND_DEFAULT_CLASS):
     """
     Create a new job bucket (admin).
-
+    
     Usage:
       bucket/create <name> = <description>
-
+      bucket/create/player <name> = <description>
+    
+    /player lets players file jobs in it with job/submit (and see it in
+    'buckets'); without it only staff can.
+    
     Examples:
       bucket/create Features = Feature requests from players
       bucket/create Bugs = Bug reports and fixes
     """
-
+    
     key = "bucket/create"
     aliases = ["+bucket/create"]
     locks = "cmd:perm(Builder)"
     help_category = "Jobs"
-
+    
     def func(self):
         if not self.args or "=" not in self.args:
             self.caller.msg("Usage: bucket/create <name> = <description>")
             return
-
+        
         try:
             name, description = self.args.split("=", 1)
         except ValueError:
             self.caller.msg("Usage: bucket/create <name> = <description>")
             return
-
+        
         name = name.strip()
         description = description.strip()
-
+        
         # Check if bucket already exists
         if Bucket.objects.filter(name__iexact=name).exists():
             self.caller.msg(f"Bucket '{name}' already exists.")
             return
-
+        
         # Create the bucket
         try:
-            bucket = Bucket.objects.create(name=name, description=description, created_by=self.caller.account)
-            self.caller.msg(f"Bucket '{bucket.name}' created.")
+            bucket = Bucket.objects.create(
+                name=name,
+                description=description,
+                created_by=utils.account_of(self.caller),
+                player_submit="player" in self.switches,
+            )
+            who = "players and staff" if bucket.player_submit else "staff"
+            self.caller.msg(f"Bucket '{bucket.name}' created ({who} can submit).")
         except DbError as e:
             self.caller.msg(f"A database error occurred while creating the bucket: {e}")
 
@@ -664,76 +640,76 @@ class CmdBucketCreate(COMMAND_DEFAULT_CLASS):
 class CmdBucketView(COMMAND_DEFAULT_CLASS):
     """
     View details of a specific bucket.
-
+    
     Usage:
       bucket <bucket_name>
-
+    
     Examples:
       bucket Bugs
       bucket Features
     """
-
+    
     key = "bucket"
     aliases = ["+bucket"]
     locks = "cmd:perm(Builder)"
     help_category = "Jobs"
-
+    
     def func(self):
         if not self.args:
             self.caller.msg("Usage: bucket <bucket_name>")
             return
-
+        
         bucket = utils.get_bucket(self.caller, self.args.strip())
         if not bucket:
             return
-
+        
         # Show bucket details and its jobs
         output = f"|wBucket: {bucket.name}|n\n"
         output += f"|wDescription:|n {bucket.description}\n"
-
+        
         if bucket.created_by:
             output += f"|wCreated by:|n {bucket.created_by.username}\n\n"
         else:
-            output += "|wCreated by:|n System\n\n"
-
-        jobs = bucket.jobs.all()
+            output += f"|wCreated by:|n System\n\n"
+        
+        jobs = bucket.jobs.select_related("bucket").prefetch_related("players")
         job_list = utils.format_job_list(jobs, f"Jobs in {bucket.name}")
         output += job_list
-
+        
         self.caller.msg(output)
 
 
 class CmdBucketDelete(COMMAND_DEFAULT_CLASS):
     """
     Delete a job bucket (admin).
-
+    
     Usage:
       bucket/delete <bucket_name>
-
+    
     Examples:
       bucket/delete OldBucket
     """
-
+    
     key = "bucket/delete"
     aliases = ["+bucket/delete"]
     locks = "cmd:perm(Builder)"
     help_category = "Jobs"
-
+    
     def func(self):
         if not self.args:
             self.caller.msg("Usage: bucket/delete <bucket_name>")
             return
-
+        
         bucket = utils.get_bucket(self.caller, self.args.strip())
         if not bucket:
             return
-
+        
         # Check if bucket has jobs
         if bucket.jobs.exists():
             self.caller.msg(f"Bucket '{bucket.name}' contains jobs and cannot be deleted.")
             return
-
+        
         bucket_name = bucket.name
         bucket.delete()
-
+        
         self.caller.msg(f"Bucket '{bucket_name}' has been deleted.")

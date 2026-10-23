@@ -35,7 +35,7 @@ benefit. They share resources and work toward common goals.
   Accept an invitation to join a coterie.
 
 |y+coterie/leave|n
-  Leave your current coterie.
+  Leave your current coterie (a leader disbands it instead).
 
 |yExamples:|n
   +coterie/invite Bob
@@ -77,7 +77,7 @@ benefit. They share resources and work toward common goals.
 |WCOTERIE RANKS:|n
 
 |yLeader|n
-  - Created the coterie or was promoted
+  - Created the coterie (leadership can't be handed on)
   - Can invite/kick members
   - Can promote/demote members
   - Can set resources
@@ -90,6 +90,9 @@ benefit. They share resources and work toward common goals.
 |yMember|n
   - Standard membership
   - Benefits from shared resources
+
+Resource ratings are a record for roleplay and the Storyteller; the
+game doesn't add them to rolls.
 
 |WSOCIAL STANDING:|n
 
@@ -116,7 +119,7 @@ Social standing in V5 is determined by:
 
 |yBoons|n
   Favors owed to or held over other Kindred.
-  See |yhelp boons|n for details on the boon system.
+  See |yhelp boons-guide|n for details on the boon system.
 
 |yCoterie|n
   Strength in numbers - coterie resources can supplement
@@ -124,6 +127,6 @@ Social standing in V5 is determined by:
 
 |WRELATED TOPICS:|n
 
-|ySee also:|n help coteries, help status, help boons, help v5
+|ySee also:|n help coteries, help status-guide, help boons-guide, help v5-rules-guide
 
 |[r+===================================================================+|n

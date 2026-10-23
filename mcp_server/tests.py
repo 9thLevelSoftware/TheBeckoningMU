@@ -25,6 +25,8 @@ from oauth2_provider.models import AccessToken as OAuthAccessToken
 from oauth2_provider.models import Application as OAuthApplication
 from oauth2_provider.models import set_token_value
 
+from traits.models import CharacterBio
+
 from . import auth
 from .app import RequestProtection, create_application
 from .tools import _require_token, register_tools
@@ -282,6 +284,11 @@ class RequestProtectionTests(IsolatedAsyncioTestCase):
 
 
 class MCPAccountIsolationTests(EvenniaTest):
+    def setUp(self):
+        super().setUp()
+        CharacterBio.objects.create(character=self.char1, account=self.account, status="approved")
+        CharacterBio.objects.create(character=self.char2, account=self.account2, status="approved")
+
     @override_settings(
         MCP_OAUTH_ISSUER="https://game.example.test/o",
         MCP_RESOURCE_URL="https://mcp.example.test",
@@ -359,6 +366,11 @@ class MCPApplicationConfigurationTests(SimpleTestCase):
 
 
 class MCPTransportIntegrationTests(EvenniaTest):
+    def setUp(self):
+        super().setUp()
+        CharacterBio.objects.create(character=self.char1, account=self.account, status="approved")
+        CharacterBio.objects.create(character=self.char2, account=self.account2, status="approved")
+
     @override_settings(
         MCP_OAUTH_ISSUER="https://game.example.test/o",
         MCP_RESOURCE_URL="https://mcp.example.test/mcp",
@@ -439,7 +451,7 @@ class MCPTransportIntegrationTests(EvenniaTest):
 
 
 class OAuthApplicationRegistrationTests(TestCase):
-    def test_registration_is_staff_only(self):
+    def test_registration_requires_evennia_builder_not_django_staff(self):
         user_model = get_user_model()
         player = user_model.objects.create_user(username="oauth-player", password="test")
         staff = user_model.objects.create_user(username="oauth-staff", password="test", is_staff=True)
@@ -458,5 +470,8 @@ class OAuthApplicationRegistrationTests(TestCase):
         self.assertFalse(OAuthApplication.objects.filter(user=player).exists())
 
         self.client.force_login(staff)
+        self.assertEqual(self.client.get("/o/applications/").status_code, 403)
+        self.assertEqual(self.client.post("/o/applications/register/").status_code, 403)
+        staff.permissions.add("Builder")
         self.assertEqual(self.client.get("/o/applications/").status_code, 200)
         self.assertEqual(self.client.get("/o/applications/register/").status_code, 200)

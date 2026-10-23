@@ -1,170 +1,97 @@
-# Coteries
+|[R+===================================================================+
+|W|                           COTERIES                                |
+|[R+===================================================================+|n
 
-## What is a Coterie?
+A |ycoterie|n is a group of vampires who band together for mutual
+benefit, protection and shared resources: the Kindred equivalent of a
+crew. The game records the coterie, its members and four shared
+resource ratings.
 
-A coterie is a group of vampires who band together for mutual benefit, protection,
-and shared resources. In Vampire: The Masquerade 5th Edition, coteries represent
-the vampire equivalent of a "pack" or "crew" - a close-knit group that shares
-resources, secrets, and often works toward common goals.
+|WCOTERIE STRUCTURE:|n
 
-Coteries can control shared resources such as:
-- **Domain**: Territory controlled by the coterie
-- **Haven**: Shared safe houses and lairs
-- **Herd**: Reliable feeding sources
-- **Contacts**: Mortal allies and connections
+|yLeader|n - the founder. Only the leader can invite, promote, demote and
+  remove members, set resources and disband the coterie. A leader can't
+  leave; they disband the coterie instead. There is no command to hand
+  leadership to someone else.
 
-## Coterie Structure
+|yLieutenant|n - a trusted member, promoted by the leader. The rank has no
+  extra commands; what it means is up to the coterie and the Storyteller.
 
-Coteries have a simple hierarchy:
+|yMember|n - a regular member.
 
-- **Leader**: The founder who manages the coterie and its resources. Only the
-  leader can invite members, manage resources, promote/demote members, and
-  disband the coterie.
+|WCREATING A COTERIE:|n
 
-- **Lieutenant**: Trusted second-in-command. May have additional responsibilities
-  granted by the leader.
+|y+coterie/create <name>=<description>|n
+  Found a new coterie; you become its leader. You can't already be in
+  a coterie.
 
-- **Member**: Regular coterie members who share in the group's resources and
-  protection.
+|yExample:|n
+  +coterie/create Night Watch=Protectors of the Elysium
 
-## Creating a Coterie
+|WMANAGING MEMBERS:|n
 
-Use `+coterie/create <name>=<description>` to found a new coterie. You must not
-already be in a coterie.
+|y+coterie/invite <character>|n        (leader only)
+  Invite a character. They accept with |y+coterie/join <your name>|n.
 
-Example:
-  `+coterie/create Night Watch=Protectors of the Elysium who maintain order`
+|y+coterie/join <leader name>|n
+  Accept a pending invitation from that leader.
 
-## Managing Members
+|y+coterie/promote <character>|n       (leader only)
+  Make a member a lieutenant.
 
-**Inviting Members** (Leader only)
-  `+coterie/invite <character>`
+|y+coterie/demote <character>|n        (leader only)
+  Make a lieutenant a member again.
 
-  Sends an invitation to another character. They must use `+coterie/join <your name>`
-  to accept.
+|y+coterie/kick <character>|n          (leader only)
+  Remove a member.
 
-**Joining a Coterie**
-  `+coterie/join <leader name>`
+|y+coterie/leave|n
+  Leave your coterie (not the leader).
 
-  Accept a pending invitation from a coterie leader.
+|y+coterie/disband|n                   (leader only)
+  Disband the coterie; every member is removed.
 
-**Promoting Members** (Leader only)
-  `+coterie/promote <character>`
+|WRESOURCES:|n
 
-  Promote a member to lieutenant rank.
+|y+coterie/resources|n
+  View the coterie's resource ratings.
 
-**Demoting Members** (Leader only)
-  `+coterie/demote <character>`
+|y+coterie/resource <type>=<value>|n   (leader only)
+  Set a rating from 0 to 5. Types: domain, haven, herd, contacts.
 
-  Demote a lieutenant back to member rank.
+|yExamples:|n
+  +coterie/resource domain=3
+  +coterie/resource herd=1
 
-**Removing Members** (Leader only)
-  `+coterie/kick <character>`
+The ratings are a record for roleplay and for the Storyteller; the game
+doesn't add them to rolls or feeding. Individual Backgrounds (such as
+Herd or Contacts) are separate: see |yhelp backgrounds-guide|n.
 
-  Remove a member from the coterie.
+  |wDomain|n   - territory the coterie controls
+  |wHaven|n    - the quality and security of its shared havens
+  |wHerd|n     - mortal feeding sources it has cultivated
+  |wContacts|n - mortal informants and connections
 
-**Leaving a Coterie**
-  `+coterie/leave`
+|WVIEWING:|n
 
-  Leave your current coterie. Leaders must disband the coterie instead.
+|y+coterie|n
+  Your coterie and your role. The leader also sees its resources and
+  the member list; members see the resources with |y+coterie/resources|n.
 
-**Disbanding** (Leader only)
-  `+coterie/disband`
+|y+social|n
+|y+social <character>|n
+  Status, boons and coterie membership in one display.
 
-  Disband the coterie completely. All members are removed.
+|WTIPS FOR COTERIE PLAY:|n
 
-## Managing Resources
+  - Choose members whose skills, clans and Disciplines complement
+    each other.
+  - Coordinate OOC so everyone benefits from membership.
+  - Use the resources in your roleplay: meet in your Haven, lean on
+    your Contacts.
+  - Boons are owed between characters, not coteries, though a
+    coterie can act together to repay one.
 
-**Viewing Resources**
-  `+coterie/resources`
+|[r+===================================================================+|n
 
-  View all coterie resources and their ratings.
-
-**Setting Resources** (Leader only)
-  `+coterie/resource <type>=<value>`
-
-  Set a resource rating (0-5).
-
-  Resource types: domain, haven, herd, contacts
-
-  Examples:
-    `+coterie/resource domain=3`
-    `+coterie/resource haven=2`
-    `+coterie/resource herd=1`
-    `+coterie/resource contacts=4`
-
-## Resource Descriptions
-
-**Domain (0-5)**
-  Territory under the coterie's control. Higher ratings indicate larger or more
-  valuable territory. Domain provides safe hunting grounds and political influence.
-
-**Haven (0-5)**
-  The quality and security of the coterie's shared havens. Higher ratings mean
-  better protected, more comfortable, or more numerous safe houses.
-
-**Herd (0-5)**
-  Reliable mortal feeding sources cultivated by the coterie. A higher Herd rating
-  means easier and safer feeding for coterie members.
-
-**Contacts (0-5)**
-  Mortal allies, informants, and connections the coterie can call upon. Higher
-  ratings provide access to more influential or numerous contacts.
-
-## Integration with Social Systems
-
-Coteries integrate with the broader social systems of Kindred society:
-
-**Status**: Coterie leaders often have Status in Kindred society. A well-respected
-coterie can enhance its members' standing.
-
-**Boons**: Coteries can owe and be owed boons as a group, not just as individuals.
-The leader manages collective prestation.
-
-**Political Standing**: Your coterie membership is displayed when using the
-`+social` command, showing your role and coterie affiliation.
-
-## Viewing Coterie Information
-
-**Your Coterie**
-  `+coterie`
-
-  View complete information about your coterie, including members (if leader),
-  resources, and your role.
-
-**Social Standing**
-  `+social`
-  `+social <character>`
-
-  View comprehensive social information including Status, Boons, and Coterie
-  membership all in one display.
-
-## Tips for Coterie Play
-
-1. **Choose complementary members**: A good coterie has vampires with different
-   skills, clans, and capabilities.
-
-2. **Pool your backgrounds**: The coterie system represents characters combining
-   their Background dots to create shared resources.
-
-3. **Communicate OOC**: Coordinate with your coterie members outside the game to
-   ensure everyone benefits from membership.
-
-4. **Use your resources**: Don't just track resources - incorporate them into
-   your roleplay. Feed from your Herd, meet in your Haven, leverage your Contacts.
-
-5. **Political power**: A united coterie has more influence than individual
-   vampires. Use this to your advantage in Kindred politics.
-
-## Related Commands
-
-- `+status` - View and manage Status
-- `+boon` - Manage boons and prestation
-- `+social` - View comprehensive social standing
-- `+sheet` - View your character sheet (includes coterie info)
-
-## See Also
-
-- `help Status`
-- `help Boons`
-- `help Backgrounds`
+|ySee also:|n help social_commands, help status-guide, help boons-guide, help backgrounds-guide

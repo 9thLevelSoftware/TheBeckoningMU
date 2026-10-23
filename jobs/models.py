@@ -8,7 +8,8 @@ jobs, comments, and tags following BBS-style sequence numbering.
 import sqlite3
 import time
 
-from django.db import OperationalError, connections, models, router, transaction
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, OperationalError, connections, models, router, transaction
 from django.db.models import F, Max
 from evennia.accounts.models import AccountDB
 
@@ -23,7 +24,14 @@ class Bucket(models.Model):
     description = models.TextField(help_text="Description of what this bucket is for")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    is_archived = models.BooleanField(default=False, help_text="Archived buckets are hidden from normal views")
+    is_archived = models.BooleanField(
+        default=False,
+        help_text="Archived buckets are hidden from normal views"
+    )
+    player_submit = models.BooleanField(
+        default=False,
+        help_text="Players may file jobs here with job/submit, and see it in 'buckets'"
+    )
     created_by = models.ForeignKey(
         AccountDB,
         on_delete=models.SET_NULL,
@@ -121,6 +129,18 @@ class Job(models.Model):
     def __str__(self):
         return f"Job {self.sequence_number}: {self.title}"
 
+    def clean(self):
+        """Reject a priority or status that isn't one of the model's choices."""
+        if self.priority not in dict(self.PRIORITY_CHOICES):
+            raise ValidationError({"priority": f"Unknown priority {self.priority!r}."})
+        if self.status not in dict(self.STATUS_CHOICES):
+            raise ValidationError({"status": f"Unknown status {self.status!r}."})
+
+    @property
+    def ref(self):
+        """The job's address, `<bucket>/<n>` (numbers are per bucket)."""
+        return f"{self.bucket.name}/{self.sequence_number}"
+
     def save(self, *args, **kwargs):
         """
         Allocate and insert while holding the bucket's database write lock.
@@ -130,12 +150,13 @@ class Job(models.Model):
         MySQL can lock the existing parent row. Keep the insert in that same
         transaction so a second creator observes its committed number.
         """
+        self.clean()
         if self.pk or self.sequence_number:
             return super().save(*args, **kwargs)
 
         database = kwargs.get("using") or router.db_for_write(type(self), instance=self)
         connection = connections[database]
-        attempts = 8 if connection.vendor == "sqlite" and not connection.in_atomic_block else 1
+        attempts = 8 if connection.vendor == "sqlite" and not connection.in_atomic_block else 2
         for attempt in range(attempts):
             try:
                 with transaction.atomic(using=database):
@@ -151,6 +172,14 @@ class Job(models.Model):
                     )
                     self.sequence_number = (max_seq or 0) + 1
                     return super().save(*args, **kwargs)
+            except IntegrityError:
+                # Preserve the base branch's savepoint retry for a stale
+                # allocation (including callers already in a transaction).
+                self.sequence_number = 0
+                self.pk = None
+                self._state.adding = True
+                if attempt:
+                    raise
             except OperationalError as error:
                 self.sequence_number = 0
                 cause = error.__cause__
@@ -158,6 +187,7 @@ class Job(models.Model):
                 if (
                     connection.vendor != "sqlite"
                     or code not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+                    or connection.in_atomic_block
                     or attempt + 1 == attempts
                 ):
                     raise

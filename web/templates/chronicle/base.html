@@ -21,7 +21,7 @@
     <a href="/">The Beckoning</a>
     <a href="{% url 'chronicle_public' %}">Public Chronicle</a>
     {% if user.is_authenticated %}<a href="{% url 'chronicle_mine' %}">My Chronicle</a>{% endif %}
-    {% if user.is_staff %}<a href="{% url 'narrative_ops' %}">Story Operations</a>{% endif %}
+    {% if can_manage_stories %}<a href="{% url 'narrative_ops' %}">Story Operations</a>{% endif %}
 </header>
 <main>{% block content %}{% endblock %}</main>
 </body>

@@ -8,6 +8,8 @@ from oauth2_provider.views.application import (
     ApplicationUpdate,
 )
 
+from chronicle.services import staff_authorized
+
 app_name = "staff_oauth_apps"
 
 
@@ -15,7 +17,7 @@ class StaffOnlyApplicationView(UserPassesTestMixin):
     raise_exception = True
 
     def test_func(self):
-        return self.request.user.is_staff
+        return staff_authorized(self.request.user)
 
 
 class StaffApplicationList(StaffOnlyApplicationView, ApplicationList):

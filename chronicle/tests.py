@@ -7,7 +7,8 @@ from evennia.typeclasses.attributes import Attribute
 from evennia.utils.dbserialize import to_pickle
 from evennia.utils.test_resources import EvenniaTest
 
-from boons.utils import offer_boon
+from boons.models import Boon
+from boons.utils import get_boon_totals, offer_boon
 from chronicle.models import ChronicleEvent
 from chronicle.read_services import character_chronicle_for_account, character_summary_for_account
 from chronicle.services import (
@@ -19,9 +20,21 @@ from chronicle.services import (
     redact_event,
 )
 from status.utils import set_earned_status
+from traits.models import CharacterBio
+from typeclasses.characters import Character
 
 
-class ChronicleEventServiceTests(EvenniaTest):
+class OwnedCharacterTestCase(EvenniaTest):
+    character_typeclass = Character
+
+    def setUp(self):
+        super().setUp()
+        self.account.permissions.clear()
+        CharacterBio.objects.create(character=self.char1, account=self.account, status="approved")
+        CharacterBio.objects.create(character=self.char2, account=self.account2, status="approved")
+
+
+class ChronicleEventServiceTests(OwnedCharacterTestCase):
     def record(
         self, *, key="event-1", title="A public scene", visibility=ChronicleEvent.Visibility.PUBLIC, participants=()
     ):
@@ -92,8 +105,7 @@ class ChronicleEventServiceTests(EvenniaTest):
 
         deliver(self.char1, source)
         event = ChronicleEvent.objects.get(idempotency_key="private-transition")
-        self.account.is_staff = True
-        self.account.save(update_fields=["is_staff"])
+        self.account.permissions.add("Builder")
         publish_event(event.pk, self.account)
         deliver(self.char2, other_source)
 
@@ -133,8 +145,7 @@ class ChronicleEventServiceTests(EvenniaTest):
             participants=(self.char1,),
         )
         staff = self.account
-        staff.is_staff = True
-        staff.save(update_fields=["is_staff"])
+        staff.permissions.add("Builder")
         publish_event(event.pk, staff)
 
         self.assertQuerySetEqual(participant_events(self.char1.account), [event])
@@ -143,8 +154,7 @@ class ChronicleEventServiceTests(EvenniaTest):
 
     def test_correction_replaces_public_projection_only_when_approved(self):
         staff = self.account
-        staff.is_staff = True
-        staff.save(update_fields=["is_staff"])
+        staff.permissions.add("Builder")
         original = self.record(key="original")
         publish_event(original.pk, staff)
 
@@ -164,8 +174,7 @@ class ChronicleEventServiceTests(EvenniaTest):
 
     def test_redaction_clears_displayable_content_and_hides_event(self):
         staff = self.account
-        staff.is_staff = True
-        staff.save(update_fields=["is_staff"])
+        staff.permissions.add("Builder")
         event = self.record(key="redacted")
         publish_event(event.pk, staff)
 
@@ -241,8 +250,7 @@ class ChronicleEventServiceTests(EvenniaTest):
             participants=(self.char1,),
         )
         staff = self.account
-        staff.is_staff = True
-        staff.save(update_fields=["is_staff"])
+        staff.permissions.add("Builder")
 
         response = self.client.get("/chronicle/")
         self.assertEqual(response.status_code, 200)
@@ -269,8 +277,7 @@ class ChronicleEventServiceTests(EvenniaTest):
             participants=(self.char2,),
         )
         staff = self.account
-        staff.is_staff = True
-        staff.save(update_fields=["is_staff"])
+        staff.permissions.add("Builder")
         publish_event(own_event.pk, staff)
         publish_event(other_event.pk, staff)
         self.client.force_login(self.char1.account)
@@ -287,8 +294,7 @@ class ChronicleEventServiceTests(EvenniaTest):
         self.assertNotEqual(self.client.get("/staff/narrative-ops/").status_code, 200)
 
         staff = self.account
-        staff.is_staff = True
-        staff.save(update_fields=["is_staff"])
+        staff.permissions.add("Builder")
         self.client.force_login(staff)
         response = self.client.get("/staff/narrative-ops/")
         self.assertEqual(response.status_code, 200)
@@ -300,8 +306,7 @@ class ChronicleEventServiceTests(EvenniaTest):
     def test_staff_console_corrects_and_redacts_events(self):
         event = self.record(key="staff-correction")
         staff = self.account
-        staff.is_staff = True
-        staff.save(update_fields=["is_staff"])
+        staff.permissions.add("Builder")
         self.client.force_login(staff)
 
         self.client.post(f"/staff/narrative-ops/events/{event.pk}/publish/")
@@ -346,8 +351,7 @@ class ChronicleEventServiceTests(EvenniaTest):
         self.assertEqual(fact.status, MemoryFact.Status.DRAFT)
 
         staff = self.account
-        staff.is_staff = True
-        staff.save(update_fields=["is_staff"])
+        staff.permissions.add("Builder")
         self.client.force_login(staff)
         response = self.client.get("/staff/narrative-ops/")
         self.assertContains(response, "A sourced memory awaiting review.")
@@ -362,20 +366,17 @@ class ChronicleEventServiceTests(EvenniaTest):
         self.assertEqual(fact.status, MemoryFact.Status.REDACTED)
         self.assertEqual(fact.text, "")
 
-    def test_boon_ledger_report_is_read_only(self):
-        from boons.models import BoonLedger
-
-        ledger = BoonLedger.objects.create(
-            character=self.char1,
-            total_debt_weight=99,
-            net_weight=99,
-        )
-        expected = ledger.calculate_values()
-        ledger.refresh_from_db()
-
-        self.assertEqual(expected["total_debt_weight"], 0)
-        self.assertEqual(ledger.total_debt_weight, 99)
-        self.assertEqual(ledger.net_weight, 99)
+    def test_boon_totals_are_derived_from_live_rows_without_writes(self):
+        owed = Boon.objects.create(debtor=self.char1, creditor=self.char2, boon_type="minor", status="accepted")
+        Boon.objects.create(debtor=self.char2, creditor=self.char1, boon_type="major", status="called_in")
+        Boon.objects.create(debtor=self.char1, creditor=self.char2, boon_type="life", status="offered")
+        with CaptureQueriesContext(connection) as queries:
+            totals = get_boon_totals(self.char1)
+        self.assertEqual(totals.total_debt_weight, 2)
+        self.assertEqual(totals.total_credit_weight, 3)
+        self.assertTrue(all(query["sql"].lstrip().upper().startswith("SELECT") for query in queries))
+        Boon.objects.filter(pk=owed.pk).update(status="fulfilled")
+        self.assertEqual(get_boon_totals(self.char1).total_debt_weight, 0)
 
     def test_staff_console_redacts_staff_origin_memory_without_retaining_note(self):
         from narrative.models import MemoryFact, NarrativePersona
@@ -387,8 +388,7 @@ class ChronicleEventServiceTests(EvenniaTest):
             staff_entry="Sensitive staff provenance.",
             visibility=MemoryFact.Visibility.STAFF,
         )
-        self.account.is_staff = True
-        self.account.save(update_fields=["is_staff"])
+        self.account.permissions.add("Builder")
         self.client.force_login(self.account)
 
         response = self.client.post(f"/staff/narrative-ops/memories/{fact.pk}/redact/")
@@ -402,9 +402,8 @@ class ChronicleEventServiceTests(EvenniaTest):
         self.assertNotContains(self.client.get("/staff/narrative-ops/"), "Sensitive staff provenance.")
 
 
-class CharacterPersistenceProjectionTests(EvenniaTest):
+class CharacterPersistenceProjectionTests(OwnedCharacterTestCase):
     def test_summary_bypasses_cached_attributes_and_models_without_writing(self):
-        from boons.models import BoonLedger
         from status.models import CamarillaPosition, CharacterStatus
 
         old_stats = {"attributes": {"physical": {"strength": 1}}}
@@ -417,7 +416,7 @@ class CharacterPersistenceProjectionTests(EvenniaTest):
         old_name = self.char1.key
         position = CamarillaPosition.objects.create(name="Old position")
         status = CharacterStatus.objects.create(character=self.char1, earned_status=1, position=position)
-        ledger = BoonLedger.objects.create(character=self.char1, total_debt_weight=1)
+        owed = Boon.objects.create(debtor=self.char1, creditor=self.char2, boon_type="trivial", status="accepted")
 
         # QuerySet.update represents another process: it changes persisted rows
         # without refreshing this process's idmapper or Attribute handler caches.
@@ -433,7 +432,9 @@ class CharacterPersistenceProjectionTests(EvenniaTest):
         ObjectDB.objects.filter(pk=self.char1.pk).update(db_key="Current persisted name")
         CharacterStatus.objects.filter(pk=status.pk).update(earned_status=4, position_status=2, temporary_status=-1)
         CamarillaPosition.objects.filter(pk=position.pk).update(name="Current persisted position")
-        BoonLedger.objects.filter(pk=ledger.pk).update(total_debt_weight=5, total_credit_weight=8, net_weight=3)
+        Boon.objects.filter(pk=owed.pk).update(boon_type="life")
+        Boon.objects.create(debtor=self.char2, creditor=self.char1, boon_type="life", status="accepted")
+        Boon.objects.create(debtor=self.char2, creditor=self.char1, boon_type="major", status="disputed")
 
         with CaptureQueriesContext(connection) as queries:
             summary = character_summary_for_account(self.account, self.char1.pk)
@@ -452,12 +453,17 @@ class CharacterPersistenceProjectionTests(EvenniaTest):
         self.assertEqual(self.char1.db.stats, old_stats)
         self.assertEqual(status.earned_status, 1)
         self.assertEqual(position.name, "Old position")
-        self.assertEqual(ledger.total_debt_weight, 1)
+        self.assertEqual(owed.boon_type, "trivial")
 
     def test_persisted_owner_transfer_denies_old_owner_and_reads_current_name(self):
         self.assertEqual(self.char1.account, self.account)
         self.assertIsNotNone(character_summary_for_account(self.account, self.char1.pk))
-        ObjectDB.objects.filter(pk=self.char1.pk).update(db_account_id=self.account2.pk, db_key="Transferred name")
+        # db_account is puppet/session state, never application ownership.
+        ObjectDB.objects.filter(pk=self.char1.pk).update(db_account_id=self.account2.pk)
+        self.assertIsNotNone(character_summary_for_account(self.account, self.char1.pk))
+        self.assertIsNone(character_summary_for_account(self.account2, self.char1.pk))
+        CharacterBio.objects.filter(character=self.char1).update(account=self.account2)
+        ObjectDB.objects.filter(pk=self.char1.pk).update(db_key="Transferred name")
 
         self.assertEqual(self.char1.account, self.account)
         self.assertIsNone(character_summary_for_account(self.account, self.char1.pk))

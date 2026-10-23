@@ -2,13 +2,10 @@
 Builder commands package.
 """
 
-from .promote_abandon import CmdPromote, CmdAbandon
-from .sandbox import CmdGotoSandbox, CmdListSandboxes, CmdCleanupSandbox
+from .sandbox import CmdCleanupSandbox, CmdGotoSandbox, CmdListSandboxes
 
 __all__ = [
-    "CmdPromote",
-    "CmdAbandon",
+    "CmdCleanupSandbox",
     "CmdGotoSandbox",
     "CmdListSandboxes",
-    "CmdCleanupSandbox",
 ]

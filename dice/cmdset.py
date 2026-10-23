@@ -17,7 +17,7 @@ To integrate with your game:
 """
 
 from evennia import CmdSet
-from .commands import CmdRoll, CmdRollPower, CmdRouse, CmdShowDice
+from .commands import CmdPower, CmdRoll, CmdRouse, CmdShowDice
 
 
 class DiceCmdSet(CmdSet):
@@ -26,7 +26,7 @@ class DiceCmdSet(CmdSet):
 
     Contains commands for:
     - roll: Basic dice pool rolling with Hunger
-    - power: Discipline power rolling with automatic pool calculation
+    - power (+power): use a discipline power: eligibility, roll, Rouse checks, effects
     - rouse: Rouse checks with Blood Potency rerolls
     - showdice: Dice mechanics reference
 
@@ -42,6 +42,6 @@ class DiceCmdSet(CmdSet):
         Populate the command set with dice commands.
         """
         self.add(CmdRoll())
-        self.add(CmdRollPower())
+        self.add(CmdPower())
         self.add(CmdRouse())
         self.add(CmdShowDice())

@@ -1,0 +1,88 @@
+|[R+===================================================================+
+|W|                        FRENZY SYSTEM                              |
+|[R+===================================================================+|n
+
+Frenzy is when the Beast takes control, overriding your rational mind with
+primal instinct. Vampires can enter frenzy when provoked, starving, or
+confronted with their banes (fire, sunlight, etc.).
+
+|WFRENZY TYPES:|n (V5 Quick Reference 2.0 p.4, p.13)
+
+|WFury Frenzy|n - you stop at nothing to destroy the cause of the provocation
+  Friend killed 2, Lover or Touchstone hurt 3, Lover or Touchstone
+  killed 4, physical provocation or harassment 2, insulted by an
+  inferior 2, public humiliation 2
+
+|WHunger Frenzy|n - you seek fresh human blood from the closest source
+  Sight of an open wound or overpowering smell of blood at Hunger 4+ 2,
+  taste of blood at Hunger 4+ 3, failing a Rouse check at Hunger 5 4
+
+|WTerror Frenzy (Rotschreck)|n - you flee the danger, heedless of anything
+  in your way
+  Bonfire 2, being burned 2, inside a burning building 3, obscured
+  sunlight (through a window) 3, fully exposed to direct sunlight 4
+
+The number after each provocation is the Difficulty of the frenzy test.
+
+|WRESISTING FRENZY:|n
+
+Roll |WWillpower + Humanity / 3|n (current Willpower plus a third of your
+Humanity, rounded down) against the provocation's Difficulty. If you fail,
+the Storyteller takes control of you until the frenzy ends. You can spend
+Willpower to regain control from a frenzy. The frenzy test is a Willpower
+test: it uses |wno Hunger dice|n and no Blood Surge.
+
+Clan banes can change the roll: a |yBrujah|n subtracts Bane Severity dice
+from rolls to resist fury frenzy (see help clans).
+
+|yExample:|n A vampire with 5 Willpower and Humanity 7 is publicly
+humiliated (fury, Difficulty 2). They roll 5 + 2 = 7 dice and need two
+successes.
+
+|WHUNGER FRENZY FROM A ROUSE PAST HUNGER 5|n (core p.211)
+
+Hunger never rises above 5. You can't choose to Rouse the Blood at Hunger 5,
+but a Rouse can still be forced on you:
+  - a power with two or three Rouse checks, started below Hunger 5, whose
+    failed checks would take you past 5: you owe a hunger frenzy test at
+    |wDifficulty 4|n for each failed check past 5 (the power still works);
+  - rising for the night (|wrouse/wake|n): the Rouse is rolled even at
+    Hunger 5. If it fails there, Hunger stays at 5, you make one hunger
+    frenzy test at Difficulty 4 (QR p.13), and you fall into torpor (QR p.4;
+    staff decide how long it lasts).
+The command that caused it rolls the test(s) at once; once one fails you
+are in frenzy and the rest aren't rolled. A test still owed shows in
+|whunger|n and on your sheet; roll it with |w+frenzy/pending|n.
+
+|WIN FRENZY|n
+
+The Storyteller takes control of you (QR p.4): in |wfury|n you stop at nothing
+to destroy the source of the provocation, in |whunger|n you seek fresh human
+blood from the closest source, in |wterror|n you flee the danger. You can
+spend Willpower to regain control (QR p.3).
+
+|WRIDING THE WAVE|n (QR p.4)
+
+When a frenzy test is called for you may choose not to resist and "ride the
+wave": you keep control of your character but must play out the frenzy to
+its end.
+
+|WCOMMANDS|n
+
+|w+frenzy|n                               your frenzy test pool and any test you owe
+|w+frenzy/check <type>|n                 the provocations and their difficulties for
+                                        a type: fury, hunger or terror
+|w+frenzy/resist <difficulty> [<type>]|n  roll to resist (the type matters for banes)
+|w+frenzy/pending|n                       roll a hunger frenzy test you owe
+
+|WCLAN BANES & FRENZY|n (see help clans)
+
+|WBrujah|n - Violent Temper: subtract Bane Severity dice from rolls to resist
+  fury frenzy (+frenzy/resist <difficulty> fury applies it).
+|WGangrel|n - Bestial Features: in frenzy, gain animal features equal to Bane
+  Severity, each -1 to an Attribute, lasting one more night (only one if
+  you ride the wave).
+
+|ySee also:|n help humanity-guide, help hunger-guide, help clans, help v5-rules-guide
+
+|[R+===================================================================+|n
