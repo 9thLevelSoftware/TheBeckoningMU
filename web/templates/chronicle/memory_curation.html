@@ -1,0 +1,18 @@
+{% extends "builder/base.html" %}
+{% block title %}Memory Curation and Review{% endblock %}
+{% block content %}<main style="max-width:1000px;margin:auto;padding:24px;">
+<h1>Memory curation and review</h1><p><a href="{% url 'narrative_ops' %}">Story Operations</a> · <a href="{% url 'narrative_ops_personas' %}">NPC personas and IDs</a></p>
+<p>Staff-authored facts only. AI stories do not suggest or write memories. Drafts require a separate approval. Editing approved text withdraws the prior fact and creates a new review draft.</p>
+{% if persona_filter %}<p>Showing persona #{{ persona_filter }}. <a href="{% url 'narrative_ops_memories' %}">Show all personas</a></p>{% endif %}
+<form method="get"><input type="hidden" name="persona_id" value="{{ persona_filter }}"><label>Search <input name="q" value="{{ query }}" maxlength="100"></label><label>Review state <select name="status"><option value="">All states</option>{% for value,label in memory_statuses %}<option value="{{ value }}"{% if selected_status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><button>Search</button></form>
+{% for row in memory_rows %}{% with fact=row.fact %}<article style="border-top:1px solid #444;padding:12px 0;">
+<h2><a href="{% url 'narrative_ops_memory_edit' fact.pk %}">Memory #{{ fact.pk }}</a> · {{ fact.persona.character.key }}</h2>
+<p>{{ row.effective_status }}{% if row.eligibility_note %} · {{ row.eligibility_note }} (stored {{ fact.status }}){% endif %} · {{ fact.visibility }}{% if fact.subject_id %} · subject #{{ fact.subject_id }} {{ fact.subject.key }}{% endif %} · version {{ fact.version }}</p>
+<p>{{ fact.text|default:"[redacted]"|linebreaksbr }}</p><p>Expiry: {{ fact.expires_at|default:"None" }}. Reviewed by {{ fact.approved_by|default:"Unrecorded / not approved" }} at {{ fact.approved_at|default:"Not approved" }}.</p>
+{% if fact.source_event_id %}<p>Source Chronicle #{{ fact.source_event_id }} · {{ fact.source_event.status }} · {{ fact.source_event.title }}</p>{% endif %}
+<p>Staff provenance: {{ fact.staff_entry|default:"[none / redacted]"|linebreaksbr }}</p><a href="{% url 'narrative_ops_memory_edit' fact.pk %}">Review, edit or redact</a>
+</article>{% endwith %}{% empty %}<p>No matching memories.</p>{% endfor %}
+<nav aria-label="Memory pages">{% if memory_rows.has_previous %}<a href="?q={{ query|urlencode }}&status={{ selected_status|urlencode }}&persona_id={{ persona_filter }}&page={{ memory_rows.previous_page_number }}">Previous</a>{% endif %} Page {{ memory_rows.number }} of {{ memory_rows.paginator.num_pages }} {% if memory_rows.has_next %}<a href="?q={{ query|urlencode }}&status={{ selected_status|urlencode }}&persona_id={{ persona_filter }}&page={{ memory_rows.next_page_number }}">Next</a>{% endif %}</nav>
+<h2>Create memory draft</h2><p>Choose an existing persona and optional Character subject. Chronicle IDs are available from <a href="{% url 'narrative_ops' %}">Story Operations</a>; alternatively document staff provenance. Approval rechecks source scope, ancestry and expiry.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Create memory draft</button></form>
+</main>{% endblock %}

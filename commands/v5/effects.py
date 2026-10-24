@@ -6,18 +6,50 @@ Commands for viewing and managing active discipline effects.
 
 from evennia import Command
 from evennia import default_cmds
+from django.db import transaction
+from django.db.models import F
+from evennia.objects.models import ObjectDB
 from .utils.discipline_effects import (
     get_active_effects,
     remove_effect,
     clear_all_effects,
     get_effect_description,
-    tick_effects
+    tick_effects,
+    effect_parameters,
 )
 from world.ansi_theme import (
     BLOOD_RED, DARK_RED, PALE_IVORY, SHADOW_GREY, GOLD, RESET,
     BOX_H, BOX_V, BOX_TL, BOX_TR, BOX_BL, BOX_BR
 )
 from datetime import datetime
+
+
+class _StaffRequiredError(ValueError):
+    pass
+
+
+def _staff_mutation(caller, action, *args):
+    """Use fresh puppeting-account/quell authority at the mutation boundary."""
+    from world.rituals.casting import _refresh, _staff
+
+    roots = ("active_effects", "fleetness_defense_used")
+    if not isinstance(caller, ObjectDB) or not caller.pk or caller._state.adding:
+        raise _StaffRequiredError()
+    try:
+        with transaction.atomic():
+            # Actual write lock, including on SQLite; SELECT FOR UPDATE is not
+            # a write guard there. Reuse the durable ritual authority policy.
+            if not ObjectDB.objects.filter(pk=caller.pk).update(db_key=F("db_key")):
+                raise _StaffRequiredError()
+            try:
+                _staff(caller)
+            except ValueError as error:
+                raise _StaffRequiredError() from error
+            _refresh(caller, roots)
+            return action(caller, *args)
+    except Exception:
+        _refresh(caller, roots)
+        raise
 
 
 class CmdEffects(default_cmds.MuxCommand):
@@ -69,10 +101,6 @@ class CmdEffects(default_cmds.MuxCommand):
         """Display all active effects on the character."""
         caller = self.caller
 
-        # Initialize if needed
-        if not hasattr(caller.db, 'active_effects') or caller.db.active_effects is None:
-            caller.db.active_effects = []
-
         effects = get_active_effects(caller)
 
         # Format output
@@ -93,7 +121,7 @@ class CmdEffects(default_cmds.MuxCommand):
 
     def _format_effect(self, effect):
         """Format a single effect for display."""
-        effect_id = effect.get('id', 'unknown')
+        effect_id = effect.get('id') or 'legacy: staff normalization needed'
         power = effect.get('power', 'Unknown Power')
         discipline = effect.get('discipline', 'Unknown')
         duration = effect.get('duration', 'unknown')
@@ -119,11 +147,11 @@ class CmdEffects(default_cmds.MuxCommand):
 
         # Applied time
         if applied:
-            time_str = applied.strftime("%H:%M:%S")
+            time_str = applied.strftime("%H:%M:%S") if isinstance(applied, datetime) else str(applied)
             lines.append(f"  {SHADOW_GREY}Applied:{RESET} {time_str}")
 
         # Parameters (if any)
-        params = effect.get('parameters', {})
+        params = effect_parameters(effect)
         if params:
             param_strs = []
             for key, value in params.items():
@@ -133,6 +161,9 @@ class CmdEffects(default_cmds.MuxCommand):
             if param_strs:
                 lines.append(f"  {SHADOW_GREY}Effects:{RESET} {', '.join(param_strs)}")
 
+        if effect.get("mechanics_supported") is False:
+            lines.append(f"  {SHADOW_GREY}Legacy record: staff review required; no automatic modifiers.{RESET}")
+
         lines.append("")  # Blank line between effects
 
         return "\n".join(lines)
@@ -141,27 +172,21 @@ class CmdEffects(default_cmds.MuxCommand):
         """Handle clearing effects (staff only)."""
         caller = self.caller
 
-        # Check permissions
-        if not caller.check_permstring("Builder"):
-            caller.msg(f"{BLOOD_RED}Error:{RESET} Only staff can clear effects.")
-            return
-
         if not self.args.strip():
             caller.msg(f"{BLOOD_RED}Usage:{RESET} +effects/clear <effect_id|all>")
             return
 
-        target = self.args.strip().lower()
+        target = self.args.strip()
 
-        # Clear all effects
-        if target == 'all':
-            count = clear_all_effects(caller)
-            caller.msg(f"{GOLD}Cleared {count} effect{'s' if count != 1 else ''}.{RESET}")
+        try:
+            result = (_staff_mutation(caller, clear_all_effects) if target.lower() == 'all'
+                      else _staff_mutation(caller, remove_effect, target))
+        except _StaffRequiredError:
+            caller.msg(f"{BLOOD_RED}Error:{RESET} Only staff can clear effects.")
             return
-
-        # Clear specific effect
-        success = remove_effect(caller, target)
-
-        if success:
+        if target.lower() == 'all':
+            caller.msg(f"{GOLD}Cleared {result} effect{'s' if result != 1 else ''}.{RESET}")
+        elif result:
             caller.msg(f"{GOLD}Effect {target} removed.{RESET}")
         else:
             caller.msg(f"{BLOOD_RED}Error:{RESET} Effect '{target}' not found.")
@@ -170,12 +195,11 @@ class CmdEffects(default_cmds.MuxCommand):
         """Handle ticking turn-based effects (staff only)."""
         caller = self.caller
 
-        # Check permissions
-        if not caller.check_permstring("Builder"):
+        try:
+            expired = _staff_mutation(caller, tick_effects)
+        except _StaffRequiredError:
             caller.msg(f"{BLOOD_RED}Error:{RESET} Only staff can tick effects.")
             return
-
-        expired = tick_effects(caller)
 
         if expired:
             caller.msg(f"{GOLD}Effect tick complete.{RESET}")

@@ -156,9 +156,9 @@ def spend_xp_on_specialty(character, skill_name, specialty_name, reason=""):
     return spend_xp(character, skill_name, "specialty", note=specialty_name, reason=reason)
 
 
-def spend_xp_on_discipline(character, discipline_name, reason=""):
+def spend_xp_on_discipline(character, discipline_name, reason="", power_name=None):
     """Spend XP to raise a discipline. Returns (success, message)."""
-    return spend_xp(character, discipline_name, "discipline", reason=reason)
+    return spend_xp(character, discipline_name, "discipline", note=power_name, reason=reason)
 
 
 def get_xp_log(character, limit=10):

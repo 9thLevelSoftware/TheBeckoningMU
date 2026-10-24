@@ -83,16 +83,9 @@ def find_ground(name):
 
 def _is_physical(pool_text):
     """True if the pool uses a Physical Attribute (so Health impairment applies)."""
-    from world.v5_data import resolve_trait
+    from dice.pool_modifiers import is_physical_pool, resolve_pool_traits
 
-    for part in pool_text.split("+"):
-        try:
-            ref = resolve_trait(part.strip())
-        except UnknownTrait:
-            continue
-        if ref.category == "attributes" and ref.group == "physical":
-            return True
-    return False
+    return is_physical_pool(resolve_pool_traits(part.strip() for part in pool_text.split("+")))
 
 
 def hunting_pool(character, alternative=False):
@@ -259,15 +252,24 @@ def hunt(character, ground, alternative=False, now=None):
         message = f"Your hunting roll ({pool_text}) needs the Storyteller (+hunt/staffed)."
         return {"success": False, "refused": message, "message": message}
 
-    difficulty = HUNTING_GROUNDS[ground]["difficulty"]
+    from world.room_rules import hunting_context
+
+    room_context = hunting_context(character, ground)
+    difficulty = room_context["difficulty"]
     penalty = min(0, character.dice_penalty(physical=_is_physical(pool_text)))
     if penalty:
         breakdown += f", {penalty} (impaired)"
-    roll = roll_v5_pool(max(1, min(MAX_POOL, pool + penalty)), character.dice_hunger, difficulty)
+    from dice.pool_modifiers import effect_modifiers_for_pool, resolve_pool_traits
+
+    traits = resolve_pool_traits(part.strip() for part in pool_text.split("+"))
+    effects = effect_modifiers_for_pool(character, traits, context="noncombat")
+    for label, bonus in effects.items():
+        breakdown += f", +{bonus} ({label})"
+    roll = roll_v5_pool(max(1, min(MAX_POOL, pool + penalty + sum(effects.values()))), character.dice_hunger, difficulty)
     character.last_hunt = now
     result = {"success": roll.is_success, "refused": None, "pool_text": pool_text, "pool": pool,
               "breakdown": breakdown, "difficulty": difficulty, "roll": roll, "feeding": None,
-              "resonance": None, "complication": None}
+              "resonance": None, "complication": None, "room_context": room_context}
 
     if roll.is_messy_critical:
         result["complication"] = random.choice([c for c in HUNTING_COMPLICATIONS if c["severity"] != "minor"])
@@ -297,3 +299,101 @@ def hunt(character, ground, alternative=False, now=None):
     if feeding["penalty_note"]:
         result["message"] += f" (Blood Potency {character.blood_potency}: {feeding['penalty_note']}.)"
     return result
+
+
+
+def serialize_hunt_outcome(result):
+    """Copy a resolved hunt into JSON primitives; never persist the RollResult.
+
+    The command supplies location and before/after Hunger, including on a
+    failed hunt. Pool adjustment is the actual net dice change, including
+    impairment and the existing pool bounds; breakdown retains its explanation.
+    """
+    import json
+
+    roll = result["roll"]
+    feeding = result.get("feeding") or {}
+    rolled = len(roll.regular_dice) + len(roll.hunger_dice)
+    base = result["pool"]
+    snapshot = {
+        "schema_version": 1,
+        "hunting_success": bool(result["success"]),
+        "location": result["location"],
+        "hunger_before": result["hunger_before"],
+        "hunger_after": result["hunger_after"],
+        "hunger_reduction": feeding.get("slaked", 0),
+        "resonance": result.get("resonance"),
+        "complications": [result["complication"]] if result.get("complication") else [],
+        "pool": {"text": result["pool_text"], "base": base, "rolled": rolled,
+                 "breakdown": result["breakdown"]},
+        "modifiers": {"net_dice": rolled - base, "breakdown": result["breakdown"],
+                      "room": result.get("room_context")},
+        "difficulty": result["difficulty"],
+        "dice": {"regular": list(roll.regular_dice), "hunger": list(roll.hunger_dice)},
+        "outcome": {name: getattr(roll, name) for name in (
+            "total_successes", "margin", "result_type", "is_success", "is_critical",
+            "is_messy_critical", "is_bestial_failure")},
+        "feeding": result.get("feeding"),
+        "message": result.get("message", ""),
+    }
+    return json.loads(json.dumps(snapshot))
+
+
+def format_hunt_outcome(snapshot):
+    """Present stored facts only, including partial legacy snapshots without dice."""
+    from collections.abc import Mapping
+
+    snapshot = snapshot if isinstance(snapshot, Mapping) else {}
+    success = snapshot.get("hunting_success")
+    title = "SUCCESSFUL HUNT" if success is True else "HUNT FAILED" if success is False else "HUNT RESULT"
+    lines = [f"|w{title}|n"]
+    pool = snapshot.get("pool")
+    if isinstance(pool, Mapping):
+        lines.append(f"Hunting roll: {pool.get('text', 'unavailable')} ({pool.get('breakdown', 'unavailable')})")
+        lines.append(f"Pool: {pool.get('base', 'unavailable')} base; {pool.get('rolled', 'unavailable')} dice rolled")
+    modifiers = snapshot.get("modifiers")
+    if isinstance(modifiers, Mapping):
+        lines.append(f"Modifiers (net dice, including pool bounds): {modifiers.get('net_dice', 'unavailable')}")
+        room = modifiers.get("room")
+        if isinstance(room, Mapping):
+            modifier = room.get("modifier", 0)
+            if type(modifier) is int and modifier:
+                lines.append(f"Room hunting modifier: {modifier:+d}; difficulty "
+                             f"{room.get('base_difficulty')} -> {room.get('difficulty')}")
+            if room.get("warning"):
+                lines.append(str(room["warning"]))
+    lines.append(f"Difficulty: {snapshot.get('difficulty', 'unavailable')} ({snapshot.get('location', 'unavailable')})")
+    dice = snapshot.get("dice")
+    if isinstance(dice, Mapping) and isinstance(dice.get("regular"), list) and isinstance(dice.get("hunger"), list):
+        lines.append(f"Regular dice: {', '.join(map(str, dice['regular'])) or 'none'}")
+        lines.append(f"Hunger dice: {', '.join(map(str, dice['hunger'])) or 'none'}")
+    else:
+        lines.append("Original dice unavailable (legacy snapshot; not reconstructed).")
+    outcome = snapshot.get("outcome")
+    if isinstance(outcome, Mapping):
+        lines.append(f"Successes: {outcome.get('total_successes', 'unavailable')}; margin: {outcome.get('margin', 'unavailable')}")
+        lines.append("Outcome: " + str(outcome.get("result_type", "unavailable")).replace("_", " ").upper())
+    if snapshot.get("message"):
+        lines.append(str(snapshot["message"]))
+    lines.append(f"Hunger {snapshot.get('hunger_before', 'unavailable')} -> {snapshot.get('hunger_after', 'unavailable')} "
+                 f"(slaked {snapshot.get('hunger_reduction', 'unavailable')})")
+    feeding = snapshot.get("feeding")
+    if isinstance(feeding, Mapping):
+        lines.append(f"Feeding source: {feeding.get('source', 'unavailable')}")
+        if feeding.get("penalty_note"):
+            lines.append(f"Feeding penalty: {feeding['penalty_note']}")
+    resonance = snapshot.get("resonance")
+    if isinstance(resonance, Mapping):
+        lines.append(f"Resonance: {resonance.get('type', 'unavailable')} ({resonance.get('intensity_name', 'unavailable')})")
+    else:
+        lines.append("No resonance gained" if "resonance" in snapshot else "Resonance unavailable")
+    complications = snapshot.get("complications")
+    if isinstance(complications, list):
+        for complication in complications:
+            text = complication.get("desc", "Details unavailable") if isinstance(complication, Mapping) else str(complication)
+            lines.append(f"Complication: {text} (the Storyteller decides what follows)")
+        if not complications:
+            lines.append("No complications recorded")
+    else:
+        lines.append("Complications unavailable")
+    return "\n".join(lines)

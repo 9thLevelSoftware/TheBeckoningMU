@@ -8,9 +8,12 @@ creation commands.
 
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from contextlib import contextmanager, suppress
 from datetime import datetime
 
+from django.db import transaction
+from django.db.models import F
 from evennia.objects.objects import DefaultCharacter
 from evennia.utils.dbserialize import deserialize
 
@@ -173,7 +176,7 @@ def _new_advantages():
 
 
 def _new_experience():
-    return {"total_earned": 0, "total_spent": 0, "log": []}
+    return {"total_earned": 0, "total_spent": 0, "log": [], "power_choices": []}
 
 
 def _as_int(value, label="value"):
@@ -273,7 +276,7 @@ class Character(ObjectParent, DefaultCharacter):
         "pools": _new_pools,
         "humanity_data": _new_humanity_data,
         "advantages": _new_advantages,
-        "experience": lambda: {"total_earned": 0, "total_spent": 0, "log": []},
+        "experience": _new_experience,
     }
 
     def reset_sheet(self):
@@ -905,8 +908,10 @@ class Character(ObjectParent, DefaultCharacter):
 
     @property
     def health_max(self):
-        """Stamina + 3. Derived, never stored."""
-        return self.get_trait("stamina") + 3
+        """Stamina + 3, plus one active Resilience contribution (catalog policy)."""
+        from commands.v5.utils.discipline_effects import active_power_bonus
+
+        return self.get_trait("stamina") + 3 + active_power_bonus(self, "Resilience", "health_levels")
 
     @property
     def willpower_max(self):
@@ -987,7 +992,7 @@ class Character(ObjectParent, DefaultCharacter):
 
         Raises UnknownTrait, WrongCategory or ValueError (the reason) like spend_xp.
         """
-        plan = self._plan_spend(name, category, note)
+        plan = self._plan_spend(name, category, note, quote=True)
         return {key: plan[key] for key in ("kind", "cost", "label", "new")}
 
     def spend_xp(self, name, category, note=None, reason=""):
@@ -1006,17 +1011,56 @@ class Character(ObjectParent, DefaultCharacter):
         refusal changes nothing. Returns {"kind", "cost", "label", "new",
         "xp"}. Raises UnknownTrait, WrongCategory or ValueError.
         """
+        # This entire synchronous unit runs in the game reactor. No web-thread
+        # dispatch or external operation may be held inside its transaction.
+        with self.advancement_transaction():
+            return self._spend_xp(name, category, note, reason)
+
+    @contextmanager
+    def advancement_transaction(self):
+        """Serialize advancement writers and repair Evennia caches on rollback.
+
+        An actual UPDATE acquires the database write lock before reading the
+        sheet (SQLite's select_for_update is a no-op). Other processes using
+        this unit serialize on the same character; game mutations must still
+        be dispatched to the reactor by web callers, outside this transaction.
+        """
+        from evennia.objects.models import ObjectDB
+
+        roots = ("stats", "vampire", "advantages", "experience")
+        try:
+            with transaction.atomic():
+                if not ObjectDB.objects.filter(pk=self.pk).update(db_key=F("db_key")):
+                    raise ValueError("This character no longer exists")
+                self._refresh_advancement_caches(roots)
+                yield
+        except Exception:
+            self._refresh_advancement_caches(roots)
+            raise
+
+    def _refresh_advancement_caches(self, roots):
+        """Refresh Attribute instances as well as handler/idmapper lookups."""
+        for root in roots:
+            attr = self.attributes.get(root, return_obj=True)
+            if attr is not None:
+                with suppress(attr.DoesNotExist):
+                    attr.refresh_from_db()
+                attr.flush_from_cache(force=True)
+        self.attributes.reset_cache()
+        getattr(self, "_prefetched_objects_cache", {}).pop("db_attributes", None)
+
+    def _spend_xp(self, name, category, note, reason):
         plan = self._plan_spend(name, category, note)
         if plan["cost"] > self.xp:
             raise ValueError(f"Insufficient XP. Need {plan['cost']}, have {self.xp}")
 
         stores = {}
         for root, factory in plan["roots"].items():
-            self._store(root, factory)
-            stores[root] = deserialize(self.attributes.get(root))
+            stored = self.attributes.get(root)
+            stores[root] = deserialize(stored) if isinstance(stored, Mapping) else factory()
         plan["apply"](stores)
 
-        experience = deserialize(self._store("experience", _new_experience))
+        experience = deserialize(self._experience())
         experience["total_spent"] = int(experience.get("total_spent", 0)) + plan["cost"]
         balance = int(experience.get("total_earned", 0)) - experience["total_spent"]
         log = list(experience.get("log") or [])
@@ -1026,6 +1070,7 @@ class Character(ObjectParent, DefaultCharacter):
             "reason": plan["label"] + (f" - {reason}" if reason else ""),
             "date": datetime.now().isoformat(),
             "balance": balance,
+            **plan.get("provenance", {}),
         })
         experience["log"] = log
 
@@ -1035,12 +1080,70 @@ class Character(ObjectParent, DefaultCharacter):
         return {"kind": plan["kind"], "cost": plan["cost"], "label": plan["label"], "new": plan["new"],
                 "xp": balance}
 
-    def _plan_spend(self, name, category, note=None):
+    @property
+    def pending_power_choices(self):
+        """Plain pending legacy entitlements, stored with XP through accessors."""
+        choices = self._experience().get("power_choices", [])
+        if not isinstance(choices, Sequence) or isinstance(choices, (str, bytes)):
+            return ()
+        return tuple(deserialize(choice) for choice in choices
+                     if isinstance(choice, Mapping) and choice.get("status") == "pending"
+                     and choice.get("discipline") in DISCIPLINES
+                     and isinstance(choice.get("rating"), int)
+                     and not isinstance(choice["rating"], bool) and 1 <= choice["rating"] <= 5
+                     and isinstance(choice.get("id"), str))
+
+    def claim_discipline_power(self, entitlement_id, power_name):
+        """Consume a proven historical choice once, with no further XP charge."""
+        from world.power_eligibility import validate_power_choice
+
+        with self.advancement_transaction():
+            experience = deserialize(self._experience())
+            choices = experience.get("power_choices", [])
+            if not isinstance(choices, list):
+                raise ValueError("Power-choice history needs staff review")
+            choice = next((item for item in choices if isinstance(item, Mapping)
+                           and item.get("id") == entitlement_id), None)
+            if choice is None:
+                raise ValueError("Unknown power-choice entitlement")
+            power = find_power(power_name)
+            if choice.get("status") == "consumed":
+                if power and choice.get("power") == power["name"]:
+                    return {"entitlement": choice, "power": power["name"], "already_claimed": True}
+                raise ValueError("This power choice has already been claimed")
+            if choice.get("status") != "pending":
+                raise ValueError("This power choice is not pending")
+            if (choice.get("discipline") not in DISCIPLINES
+                    or not isinstance(choice.get("rating"), int) or isinstance(choice["rating"], bool)
+                    or not 1 <= choice["rating"] <= 5):
+                raise ValueError("This power choice needs staff review")
+            ref = resolve_trait(choice["discipline"], "disciplines")
+            rating = self.get_trait(ref.name)
+            if ref.name == "Thin-Blood Alchemy":
+                raise ValueError("Alchemy uses formulas, not power choices")
+            known = {find_power(name)["name"] for name in self.known_powers if find_power(name)
+                     and find_power(name)["discipline"] == ref.name}
+            if len(known) >= rating:
+                raise ValueError("This discipline has no unfilled power choices; ask staff to review")
+            power = validate_power_choice(self, ref.name, min(rating, int(choice["rating"])), power_name)
+            stats = deserialize(self.db.stats)
+            disciplines = stats.setdefault("disciplines", {})
+            entry = _discipline_entry(disciplines.get(ref.key))
+            entry["powers"].append(power["name"])
+            disciplines[ref.key] = entry
+            choice.update(status="consumed", power=power["name"], claimed_at=datetime.now().isoformat())
+            self.attributes.add("stats", stats)
+            self.attributes.add("experience", experience)
+            return {"entitlement": choice, "power": power["name"], "already_claimed": False}
+
+    def _plan_spend(self, name, category, note=None, quote=False):
         """Validate a purchase and return its cost and how to apply it to copied stores."""
         kind = SPEND_KINDS.get(str(category or "").strip().lower())
         if kind is None:
             raise ValueError(f"You can't spend XP on '{category}'")
         planner = getattr(self, f"_plan_{kind}")
+        if kind == "discipline":
+            return planner(str(name or "").strip(), note, quote=quote)
         return planner(str(name or "").strip(), note)
 
     def _plan_attribute(self, name, note):
@@ -1095,7 +1198,9 @@ class Character(ObjectParent, DefaultCharacter):
             return "clan_discipline"
         return "other_discipline"
 
-    def _plan_discipline(self, name, note):
+    def _plan_discipline(self, name, note, quote=False):
+        from world.power_eligibility import validate_power_choice
+
         ref = resolve_trait(name, "disciplines")
         if self.clan and self.clan not in CLANS:
             raise ValueError(f"Your clan ({self.clan}) is not available in this game, so discipline costs "
@@ -1114,7 +1219,8 @@ class Character(ObjectParent, DefaultCharacter):
 
         # Each dot of Thin-Blood Alchemy comes with one formula (core p.282).
         formula = None
-        if ref.name == "Thin-Blood Alchemy":
+        power = None
+        if ref.name == "Thin-Blood Alchemy" and not (quote and not note):
             formula = find_ritual_or_formula("formula", note) if note else None
             if formula is None:
                 raise ValueError("Each Alchemy dot comes with a formula: +spend discipline Thin-Blood Alchemy = "
@@ -1124,6 +1230,8 @@ class Character(ObjectParent, DefaultCharacter):
                                  f"rating is {new}")
             if formula["name"] in self.known_formulas:
                 raise ValueError(f"You already know {formula['name']}")
+        elif ref.name != "Thin-Blood Alchemy" and not (quote and not note):
+            power = validate_power_choice(self, ref.name, new, note)
 
         def apply(stores):
             disciplines = stores["stats"].setdefault("disciplines", {})
@@ -1131,12 +1239,18 @@ class Character(ObjectParent, DefaultCharacter):
             entry["level"] = new
             if formula:
                 entry.setdefault("formulas", []).append(formula["name"])
+            if power:
+                entry["powers"].append(power["name"])
             disciplines[ref.key] = entry
 
         rate = {"clan_discipline": "in-clan", "caitiff_discipline": "Caitiff", "other_discipline": "out-of-clan"}
-        label = f"Raised {ref.name} to {new} ({rate[kind]})" + (f" with {formula['name']}" if formula else "")
+        selected = formula or power
+        label = f"Raised {ref.name} to {new} ({rate[kind]})" + (f" with {selected['name']}" if selected else "")
         return {"kind": kind, "cost": xp_cost(kind, new), "label": label,
-                "new": new, "roots": {"stats": _new_stats}, "apply": apply}
+                "new": new, "roots": {"stats": _new_stats}, "apply": apply,
+                "provenance": {"discipline": ref.name, "rating": new,
+                               "cost_kind": kind,
+                               "power": power["name"] if power else None}}
 
     def _plan_blood_potency(self, name, note):
         new = self.blood_potency + 1

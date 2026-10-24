@@ -13,6 +13,9 @@ urlpatterns = [
     # API endpoints
     path("api/save/", views.SaveProjectView.as_view(), name="save_project"),
     path("api/project/<int:pk>/", views.GetProjectView.as_view(), name="get_project"),
+    path("api/project/<int:pk>/revisions/", views.ForkRevisionView.as_view(), name="fork_revision"),
+    path("api/project/<int:pk>/replacement-plan/", views.ReplacementPlanView.as_view(), name="replacement_plan"),
+    path("api/build/<int:pk>/replace-live/", views.ReplaceLiveView.as_view(), name="replace_live"),
     path(
         "api/project/<int:pk>/delete/",
         views.DeleteProjectView.as_view(),

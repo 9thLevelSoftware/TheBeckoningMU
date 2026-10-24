@@ -14,8 +14,10 @@ just overloads its hooks to have it perform its function.
 
 from evennia.scripts.scripts import DefaultScript
 
+from .objects import BuilderFencedTags
 
-class RoomTriggerScript(DefaultScript):
+
+class RoomTriggerScript(BuilderFencedTags, DefaultScript):
     """
     Script for timed room triggers.
 
@@ -52,6 +54,33 @@ class RoomTriggerScript(DefaultScript):
         """Called when script starts (after server reload too)."""
         pass
 
+    def _step_callback(self):
+        from web.builder.operation_runtime import script_is_fenced
+
+        if script_is_fenced(self):
+            return
+        return super()._step_callback()
+
+    def _unpause_task(self, *args, **kwargs):
+        from web.builder.operation_runtime import script_is_fenced
+
+        if kwargs.get("auto_unpause") and script_is_fenced(self):
+            return
+        return super()._unpause_task(*args, **kwargs)
+
+    def _pause_task(self, auto_pause=False, **kwargs):
+        from web.builder.operation_runtime import script_is_fenced
+
+        if auto_pause and script_is_fenced(self):
+            # Shutdown may stop the in-memory clock, but cannot rewrite the
+            # durable evidence an interrupted operation needs for inspection.
+            task = self.ndb._task
+            if task and task.running:
+                task.stop()
+            self.ndb._task = None
+            return
+        return super()._pause_task(auto_pause=auto_pause, **kwargs)
+
     def at_repeat(self, **kwargs):
         """
         Called every self.interval seconds.
@@ -63,7 +92,11 @@ class RoomTriggerScript(DefaultScript):
             return
 
         # Import here to avoid circular imports
+        from web.builder.operation_runtime import script_is_fenced
         from web.builder.trigger_engine import execute_triggers
+
+        if script_is_fenced(self):
+            return
 
         # Execute as a "timed" trigger type
         # The engine will filter by trigger_id to find this specific trigger

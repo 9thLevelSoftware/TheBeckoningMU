@@ -79,9 +79,18 @@ unavailable, use ordinary |w+hunt|n instead.
   |w+hunt/story start <location> [persona #id]|n - Resolve a hunt and start/resume a story
   |w+hunt/story resume [action]|n                - Continue an active story
   |w+hunt/story <action>|n                       - Submit an action to the active story
+  |w+hunt/story status|n                        - Show your stored hunt result without AI
   |w+hunt/story complete|n                       - Close the active story
   |w+hunt/story opt-out|n                        - Withdraw consent and close the story
 
 AI requests contain your submitted action and only approved, authorized scene
 facts. Generated prose is not a rules ruling or public Chronicle entry. Staff
 must approve any memory fact or public story separately.
+
+The original dice, pool modifiers, outcome, Hunger, Resonance and complications
+appear before a narration request. Failed or timed-out prose does not undo or
+repeat that hunt. Repeated start/resume requests continue the stored scene;
+they never roll again, feed again or reset the hunt cooldown. Status requires
+the character's owning account and works even with AI disabled or consent
+withdrawn. Older saved hunts show their available facts and label original
+dice unavailable; missing dice are never reconstructed or supplied by AI.

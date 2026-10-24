@@ -98,8 +98,14 @@ class ChroniclePermissionMatrixTests(TestCase):
                 {"title": "Corrected public scene", "summary": "Corrected summary", "payload": "{}"},
             ),
             (reverse("narrative_ops_action", args=(self.events["public"].pk, "redact")), {}),
-            (reverse("narrative_ops_memory_action", args=(self.memory.pk, "approve")), {}),
-            (reverse("narrative_ops_memory_action", args=(self.memory.pk, "redact")), {}),
+            (
+                reverse("narrative_ops_memory_action", args=(self.memory.pk, "approve")),
+                {"expected_version": self.memory.version},
+            ),
+            (
+                reverse("narrative_ops_memory_action", args=(self.memory.pk, "redact")),
+                {"expected_version": self.memory.version},
+            ),
             (
                 reverse("narrative_ops_generate"),
                 {"source_ids": [str(self.events["public"].pk)], "mode": "recap"},
@@ -284,6 +290,8 @@ class ChroniclePermissionMatrixTests(TestCase):
         token = client.cookies[settings.CSRF_COOKIE_NAME].value
         for url, data in self._mutations():
             with self.subTest(url=url), self.captureOnCommitCallbacks(execute=True):
+                if "/memories/" in url:
+                    data = {**data, "expected_version": MemoryFact.objects.get(pk=self.memory.pk).version}
                 self.assertEqual(client.post(url, data, HTTP_X_CSRFTOKEN=token).status_code, 302)
         self.events["public-draft"].refresh_from_db()
         self.assertEqual(self.events["public-draft"].status, "published")
@@ -291,12 +299,113 @@ class ChroniclePermissionMatrixTests(TestCase):
         self.assertEqual(self.events["public"].status, "redacted")
         self.assertTrue(ChronicleEvent.objects.filter(title="New curated scene", status="draft").exists())
         self.assertTrue(
-            ChronicleEvent.objects.filter(
-                supersedes=self.events["public"], title="Corrected public scene", status="draft"
-            ).exists()
+            ChronicleEvent.objects.filter(supersedes=self.events["public"], title="", status="redacted").exists()
         )
         self.memory.refresh_from_db()
         self.assertEqual(self.memory.status, "redacted")
         self.assertEqual(self.memory.text, "")
         self.assertIsNotNone(self.memory.approved_at)
         self.assertFalse(ChronicleGenerationRequest.objects.exists())
+
+
+class WithdrawalProjectionTests(TestCase):
+    def setUp(self):
+        from .test_moderation import moderation_fixture
+
+        self.staff, self.a = moderation_fixture("projection")
+        self.owner = get_user_model().objects.create_user(username="projection-owner")
+        self.other = get_user_model().objects.create_user(username="projection-other")
+        self.character = ObjectDB.objects.create(
+            db_key="Projection Player", db_typeclass_path="typeclasses.characters.Character"
+        )
+        CharacterBio.objects.create(character=self.character, account=self.owner)
+        self.b = self.event("public-recap", self.a)
+        self.c = self.event("participant-recap", self.b, visibility="participants")
+        self.c.participants.add(self.character)
+
+    def event(self, key, source=None, **changes):
+        fields = {
+            "source_app": "staff",
+            "source_type": "scene",
+            "source_id": key,
+            "kind": "scene.curated",
+            "title": key,
+            "summary": "WITHDRAWAL-SENTINEL-" + key,
+            "status": "published",
+            "visibility": "public",
+        }
+        fields.update(changes)
+        event = ChronicleEvent.objects.create(idempotency_key=key, **fields)
+        if source:
+            event.source_events.add(source)
+        return event
+
+    def test_html_and_rest_fresh_reads_hide_transitive_and_participant_prose_after_redaction(self):
+        from .services import redact_event
+
+        self.client.force_login(self.owner)
+        urls = [
+            reverse(name)
+            for name in ("chronicle_public", "chronicle_mine", "player_public_chronicle", "player_my_chronicle")
+        ]
+        urls.append(reverse("player_character_chronicle", args=(self.character.pk,)))
+        self.assertContains(self.client.get(reverse("chronicle_mine")), self.c.summary)
+        redact_event(self.a.pk, self.staff)
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertNotIn(self.b.summary, response.content.decode())
+                self.assertNotIn(self.c.summary, response.content.decode())
+
+    def test_warmed_serializer_reloads_sources_content_and_canonical_ownership(self):
+        from .api import serialize_event
+
+        warm = ChronicleEvent.objects.prefetch_related("source_events", "participants").get(pk=self.c.pk)
+        self.assertIsNotNone(serialize_event(warm, "account", self.owner))
+        CharacterBio.objects.filter(character=self.character).update(account=self.other)
+        self.assertIsNone(serialize_event(warm, "account", self.owner))
+        self.assertIsNotNone(serialize_event(warm, "account", self.other))
+        ChronicleEvent.objects.filter(pk=self.a.pk).update(status="redacted")
+        self.assertIsNone(serialize_event(warm, "account", self.other))
+
+    def test_character_scope_cannot_borrow_another_owned_characters_private_sources(self):
+        from .read_services import character_chronicle_for_account
+
+        second = ObjectDB.objects.create(
+            db_key="Second Projection Player", db_typeclass_path="typeclasses.characters.Character"
+        )
+        CharacterBio.objects.create(character=second, account=self.owner)
+        source = self.event("other-character-source", visibility="participants")
+        source.participants.add(second)
+        self.c.source_events.add(source)
+        self.assertNotIn(
+            self.c.pk, [event.pk for event in character_chronicle_for_account(self.owner, self.character.pk)]
+        )
+
+    def test_metadata_drift_and_unknown_generated_provenance_never_receive_historical_rehash(self):
+        import json
+
+        from twisted.internet.defer import succeed
+
+        from .generation import request_draft
+        from .services import event_available, publish_event
+
+        source_id = str(self.a.pk)
+
+        class Provider:
+            def generate(self, _messages):
+                return succeed(json.dumps({"prose": "Generated sentinel.", "citations": [source_id]}))
+
+        with self.captureOnCommitCallbacks(execute=True):
+            request = request_draft(
+                self.staff, [source_id], "recap", provider=Provider(), scheduler=lambda callback: callback()
+            )
+        request.refresh_from_db()
+        publish_event(request.draft_event_id, self.staff)
+        saved = request.source_fingerprints
+        self.assertTrue(event_available(request.draft_event_id, "public"))
+        ChronicleEvent.objects.filter(pk=self.a.pk).update(title="Changed source metadata")
+        self.assertFalse(event_available(request.draft_event_id, "public"))
+        request.refresh_from_db()
+        self.assertEqual(request.source_fingerprints, saved)

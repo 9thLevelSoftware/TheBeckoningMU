@@ -44,6 +44,44 @@ def _torpor_from_damage(character):
     return character.damage["health"]["aggravated"] >= character.health_max
 
 
+class CmdRoomRules(default_cmds.MuxCommand):
+    """Inspect reviewed room policy and Haven adjudication facts (staff).
+
+    Usage:
+        +roomrules [room]
+        +roomrules/haven [room]=intrusion|space|comfort|occult|concealment
+
+    An omitted room uses your current location. Haven actions provide facts
+    for Storyteller adjudication; they never roll or apply an automatic bonus.
+    """
+
+    key = "+roomrules"
+    locks = "cmd:perm(Builder)"
+    help_category = "Admin"
+
+    def func(self):
+        from dice.commands import _is_staff
+        from world.room_rules import haven_context, room_inspection
+
+        if not _is_staff(self.caller):
+            self.caller.msg("Only staff may inspect room rules.")
+            return
+        room = self.caller.search(self.lhs.strip(), global_search=True) if self.lhs else self.caller.location
+        if room is None:
+            return
+        if not inherits_from(room, "evennia.objects.objects.DefaultRoom"):
+            self.caller.msg("Choose a room.")
+            return
+        if "haven" in self.switches:
+            try:
+                context = haven_context(room, self.caller, (self.rhs or "").strip().lower())
+            except ValueError as error:
+                self.caller.msg(str(error))
+                return
+            self.caller.msg(f"Haven action: {context['action']} — staff adjudication required. {context['guidance']}")
+        self.caller.msg(room_inspection(room, self.caller))
+
+
 class CmdTorpor(default_cmds.MuxCommand):
     """
     See or end a character's torpor (staff).

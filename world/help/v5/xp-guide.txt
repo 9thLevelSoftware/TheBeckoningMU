@@ -15,7 +15,9 @@ Experience points (XP) buy new dots. Staff award XP with +xpaward.
 |y+spend attribute <name>|n                   e.g. +spend attribute strength
 |y+spend skill <name>|n                       e.g. +spend skill brawl
 |y+spend specialty <skill> = <specialty>|n   e.g. +spend specialty brawl = Grappling
-|y+spend discipline <name>|n                  e.g. +spend discipline potence
+|y+spend discipline <name> = <power>|n        e.g. +spend discipline Potence = Prowess
+|y+spend/choices|n                            list pending historical power choices
+|y+spend/claim <entitlement-id> = <power>|n   claim a historical choice without XP
 |y+spend advantage <background or merit>|n   e.g. +spend advantage Resources
 |y+spend advantage <background> = <who>|n    e.g. +spend advantage Allies = street gang
 |y+spend bp|n                                 raise Blood Potency by one
@@ -25,6 +27,20 @@ Experience points (XP) buy new dots. Staff award XP with +xpaward.
 Each spend buys one step. The name must be a real trait of that type
 (+spend skill strength is refused), and nothing is charged when a spend is
 refused.
+
+A discipline dot and one eligible, previously unlearned power are bought
+together. The power must belong to that discipline, fit the new rating,
+and satisfy its catalog amalgam requirements. Omitting the power lists
+eligible choices and spends nothing. Cost quotes remain available without
+a choice. Thin-Blood Alchemy keeps its separate dot-plus-formula rule.
+
+Staff can inventory historical dot-only purchases with the offline
+reconcile_discipline_powers management command. Its default is a dry-run;
+explicit --apply --offline issues choice entitlements only when retained
+creation and XP history prove the deficit. Ambiguous records need staff
+review. This never chooses a power or refunds XP. Claims consume a pending
+choice once and charge no XP. A rejected application's replacement sheet
+clears its old choices; a revoked character's retained sheet keeps them.
 
 |WXP COSTS|n (V5 Quick Reference 2.0 p.1)
 

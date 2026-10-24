@@ -3,9 +3,25 @@
 {% block content %}
 <div style="max-width:1100px;margin:0 auto;padding:24px;">
     <h1>Story Operations</h1>
+    <nav aria-label="Narrative curation"><a href="{% url 'narrative_ops_personas' %}">NPC personas and profiles</a> · <a href="{% url 'narrative_ops_memories' %}">All memory facts and review</a></nav>
+    <p>Memory curation is staff-authored. AI stories do not propose or write memory facts.</p>
     {% if messages %}
     <ul>{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul>
     {% endif %}
+
+    <section id="withdrawn-review">
+        <h2>Withdrawn Chronicle review</h2>
+        <p>These entries retain staff-only prose because a source changed or its lineage needs review. To restore a recap, create a new valid draft from current sources, review it, and explicitly publish it. Acknowledging this queue does not restore an entry.</p>
+        {% for event in withdrawn_events %}
+        <article style="border-top:1px solid #444;padding:12px 0;">
+            <h3>#{{ event.pk }} {{ event.title }}</h3>
+            <p>{{ event.summary|linebreaksbr }}</p>
+            <p>{{ event.withdrawal_reason }} · {{ event.withdrawn_at }} · {{ event.withdrawn_by|default:"Legacy migration" }}</p>
+            {% if event.lineage_note %}<p>Source review: {{ event.lineage_note }}</p>{% endif %}
+            <p><a href="?source={{ event.pk }}#source-detail">Review source history</a></p>
+        </article>
+        {% empty %}<p>No withdrawn entries are waiting for source review.</p>{% endfor %}
+    </section>
 
     <section>
         <h2>Curate a Chronicle scene</h2>
@@ -56,8 +72,64 @@
     {% if selected_source %}
     <section id="source-detail">
         <h2>Source #{{ selected_source.pk }}: {{ selected_source.title|default:"[redacted]" }}</h2>
-        <p>{{ selected_source.status }} · {{ selected_source.visibility }}</p>
+        <p>{{ selected_source.status }} · {{ selected_source.visibility }} · version {{ selected_source.version }}</p>
         <p>{{ selected_source.summary|linebreaksbr }}</p>
+        {% if selected_source.status == "published" %}
+            {% if selected_source_active_correction %}
+            <p><a href="?draft={{ selected_source_active_correction.pk }}#correction-editor">Resume correction draft #{{ selected_source_active_correction.pk }} · version {{ selected_source_active_correction.version }}</a></p>
+            {% else %}
+            <form method="post" action="{% url 'narrative_ops_action' selected_source.pk 'begin-correction' %}">
+                {% csrf_token %}<button type="submit">Begin correction draft</button>
+            </form>
+            {% endif %}
+        {% endif %}
+    </section>
+    {% endif %}
+
+    {% if selected_correction %}
+    <section id="correction-editor">
+        <h2>Correction draft #{{ selected_correction.pk }} · version {{ selected_correction.version }}</h2>
+        <p>{{ selected_correction.status }} · Replaces <a href="?source={{ selected_correction.supersedes_id }}#source-detail">original #{{ selected_correction.supersedes_id }}</a>, reviewed at version {{ selected_correction.supersedes_version }}.</p>
+        {% if selected_correction.revision_of_id %}<p>Previous draft: <a href="?draft={{ selected_correction.revision_of_id }}#correction-editor">#{{ selected_correction.revision_of_id }}</a>.</p>{% endif %}
+        {% if selected_correction.status == "draft" %}
+        <p>Editing creates a replacement draft for fresh review. The prior draft remains in staff history. Publication is a separate action on the exact version shown.</p>
+        <form method="post" action="{% url 'narrative_ops_correction_action' selected_correction.pk 'revise' %}">
+            {% csrf_token %}
+            <input type="hidden" name="expected_version" value="{{ selected_correction.version }}">
+            <label>Corrected title <input name="title" maxlength="200" required value="{{ selected_correction.title }}"></label>
+            <label>Corrected summary <textarea name="summary" rows="4">{{ selected_correction.summary }}</textarea></label>
+            <label>Allow-listed payload JSON <textarea name="payload" rows="3">{{ selected_correction_payload_json }}</textarea></label>
+            <button type="submit">Save replacement draft for review</button>
+        </form>
+        <form method="post" action="{% url 'narrative_ops_action' selected_correction.pk 'publish' %}">
+            {% csrf_token %}<input type="hidden" name="expected_version" value="{{ selected_correction.version }}">
+            <button type="submit">Publish reviewed correction version {{ selected_correction.version }}</button>
+        </form>
+        <form method="post" action="{% url 'narrative_ops_correction_action' selected_correction.pk 'discard' %}">
+            {% csrf_token %}<input type="hidden" name="expected_version" value="{{ selected_correction.version }}">
+            <button type="submit">Discard correction draft</button>
+        </form>
+        {% else %}
+        <p>This version is retained as staff history and cannot be edited or published.</p>
+        <p>{{ selected_correction.summary|linebreaksbr }}</p>
+        {% if active_correction %}<p><a href="?draft={{ active_correction.pk }}#correction-editor">Resume active correction draft #{{ active_correction.pk }} · version {{ active_correction.version }}</a></p>{% endif %}
+        {% endif %}
+    </section>
+    {% endif %}
+
+    {% if correction_original %}
+    <section id="correction-history">
+        <h2>Correction history for #{{ correction_original.pk }}</h2>
+        <p>Original status: {{ correction_original.status }} · version {{ correction_original.version }}. Historical draft text is visible only in Story Operations.</p>
+        {% for revision in correction_history %}
+        <article style="border-top:1px solid #444;padding:12px 0;">
+            <h3><a href="?draft={{ revision.pk }}#correction-editor">Correction #{{ revision.pk }}</a> · {{ revision.status }} · version {{ revision.version }}</h3>
+            <p>{{ revision.title|default:"[redacted]" }} · {{ revision.summary|linebreaksbr }}</p>
+            {% if revision.revision_of_id %}<p>Revision of #{{ revision.revision_of_id }}.</p>{% endif %}
+            {% if revision.discarded_at %}<p>Discarded by {{ revision.discarded_by }} · {{ revision.discarded_at }}.</p>{% endif %}
+            {% if revision.published_at %}<p>Published by {{ revision.published_by }} · {{ revision.published_at }}.</p>{% endif %}
+        </article>
+        {% empty %}<p>No correction drafts have been created for this event.</p>{% endfor %}
     </section>
     {% endif %}
 
@@ -66,12 +138,14 @@
         {% for event in draft_events %}
         <article id="event-{{ event.pk }}" style="border-top:1px solid #444;padding:12px 0;">
             <h3>{{ event.title }}</h3>
+            <p>Draft #{{ event.pk }} · version {{ event.version }}</p>
+            {% if event.supersedes_id %}<p>Correction of #{{ event.supersedes_id }} · <a href="?draft={{ event.pk }}#correction-editor">Resume/edit correction</a></p>{% endif %}
             {% if event.ai_generated %}<p>AI-generated draft; staff review is required.</p>{% endif %}
             {% if event.source_events.all %}<p>Sources: {% for source in event.source_events.all %}<a href="?source={{ source.pk }}#source-detail">#{{ source.pk }}</a> {% endfor %}</p>{% endif %}
             <p>{{ event.summary|linebreaksbr }}</p>
             <p>Source: {{ event.source_app }} / {{ event.source_type }} #{{ event.source_id }} · {{ event.kind }} · {{ event.visibility }}</p>
             <form method="post" action="{% url 'narrative_ops_action' event.pk 'publish' %}">
-                {% csrf_token %}<button type="submit">Publish with current visibility</button>
+                {% csrf_token %}<input type="hidden" name="expected_version" value="{{ event.version }}"><button type="submit">Publish with current visibility</button>
             </form>
         </article>
         {% empty %}
@@ -92,10 +166,10 @@
             <p>Staff entry: {{ fact.staff_entry|linebreaksbr }}</p>
             {% endif %}
             <form method="post" action="{% url 'narrative_ops_memory_action' fact.pk 'approve' %}">
-                {% csrf_token %}<button type="submit">Approve memory fact</button>
+                {% csrf_token %}<input type="hidden" name="expected_version" value="{{ fact.version }}"><button type="submit">Approve memory fact</button>
             </form>
             <form method="post" action="{% url 'narrative_ops_memory_action' fact.pk 'redact' %}">
-                {% csrf_token %}<button type="submit">Redact and clear text</button>
+                {% csrf_token %}<input type="hidden" name="expected_version" value="{{ fact.version }}"><button type="submit">Redact and clear text</button>
             </form>
         </article>
         {% empty %}
@@ -108,6 +182,7 @@
         {% for fact in recent_memory_facts %}
         <article style="border-top:1px solid #444;padding:12px 0;">
             <p>{{ fact.persona.character.key }} · {{ fact.status }} · {{ fact.visibility }} · #{{ fact.pk }}</p>
+            <p><a href="{% url 'narrative_ops_memory_edit' fact.pk %}">Review memory #{{ fact.pk }}</a> · version {{ fact.version }}{% if fact.expires_at %} · expires {{ fact.expires_at }}{% endif %}</p>
             <p>{{ fact.text|default:"[redacted]"|linebreaksbr }}</p>
             {% if fact.source_event %}
             <p>Chronicle source #{{ fact.source_event.pk }} · {{ fact.source_event.kind }}</p>
@@ -128,17 +203,19 @@
             <h3>{{ event.title|default:"[redacted]" }}</h3>
             {% if event.ai_generated %}<p>AI-generated Chronicle prose.</p>{% endif %}
             <p>{{ event.summary|linebreaksbr }}</p>
-            <p>{{ event.kind }} · {{ event.status }} · {{ event.visibility }} · #{{ event.pk }}</p>
+            <p>{{ event.kind }} · {{ event.status }} · {{ event.visibility }} · #{{ event.pk }} · version {{ event.version }}</p>
+            {% if event.supersedes_id %}<p>Correction of <a href="?source={{ event.supersedes_id }}#correction-history">#{{ event.supersedes_id }}</a>{% if event.revision_of_id %} · revision of #{{ event.revision_of_id }}{% endif %}.</p>{% endif %}
             {% if event.status == "published" %}
-            <form method="post" action="{% url 'narrative_ops_action' event.pk 'correct' %}">
-                {% csrf_token %}
-                <label>Corrected title <input name="title" maxlength="200" required value="{{ event.title }}"></label>
-                <label>Corrected summary <textarea name="summary" rows="2">{{ event.summary }}</textarea></label>
-                <label>Allow-listed payload JSON <textarea name="payload" rows="2">{{ item.payload_json }}</textarea></label>
-                <button type="submit">Save correction draft</button>
+            {% if item.active_correction %}
+            <p><a href="?draft={{ item.active_correction.pk }}#correction-editor">Resume correction draft #{{ item.active_correction.pk }} · version {{ item.active_correction.version }}</a></p>
+            {% else %}
+            <form method="post" action="{% url 'narrative_ops_action' event.pk 'begin-correction' %}">
+                {% csrf_token %}<button type="submit">Begin correction draft</button>
             </form>
+            {% endif %}
+            <p><a href="?source={{ event.pk }}#correction-history">Review correction history</a></p>
             <form method="post" action="{% url 'narrative_ops_action' event.pk 'redact' %}" onsubmit="return confirm('Redact this Chronicle entry? Its displayable content will be cleared.');">
-                {% csrf_token %}<button type="submit">Redact and clear content</button>
+                {% csrf_token %}<input type="hidden" name="expected_version" value="{{ event.version }}"><button type="submit">Redact and clear content</button>
             </form>
             {% endif %}
         </article>

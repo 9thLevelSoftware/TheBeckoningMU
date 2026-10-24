@@ -1,16 +1,19 @@
 """Staff-authorized, source-bound prose drafting through the existing async transport."""
 
-import hashlib
 import json
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import OperationalError, transaction
+from django.db.models import Q
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from twisted.internet import reactor
 
-from narrative.services import configured_provider
+from narrative.provider_transport import ProviderError, failure_category
+from narrative.services import configured_provider, provider_deadline
 
+from .availability import source_context
 from .models import ChronicleEvent, ChronicleGenerationRequest
 from .services import staff_authorized
 
@@ -18,6 +21,8 @@ MAX_SOURCES = 8
 MAX_DEPENDENCIES = 32
 MAX_SOURCE_CHARACTERS = 12000
 MAX_PROSE_CHARACTERS = 6000
+_draft_transports = {}
+_ANY_CLAIM = object()
 
 
 def _require_staff(actor_id):
@@ -28,34 +33,7 @@ def _require_staff(actor_id):
 
 def _source_context(source_ids):
     """Validate public sources and their bounded ancestry, without persisting text."""
-    events = {}
-    fingerprints = {}
-    pending = set(source_ids)
-    while pending:
-        rows = list(
-            ChronicleEvent.objects.filter(
-                pk__in=pending,
-                status=ChronicleEvent.Status.PUBLISHED,
-                visibility=ChronicleEvent.Visibility.PUBLIC,
-            ).prefetch_related("source_events", "participants")
-        )
-        if {str(event.pk) for event in rows} != pending:
-            raise ValueError("Every source and its dependencies must still be published and public.")
-        pending = set()
-        for event in rows:
-            links = sorted(str(item.pk) for item in event.source_events.all())
-            snapshot = {field.attname: getattr(event, field.attname) for field in event._meta.concrete_fields}
-            snapshot["sources"] = links
-            snapshot["participants"] = sorted(item.pk for item in event.participants.all())
-            fingerprints[str(event.pk)] = hashlib.sha256(
-                json.dumps(snapshot, sort_keys=True, default=str).encode("utf-8")
-            ).hexdigest()
-            events[str(event.pk)] = event
-            pending.update(set(links) - events.keys())
-        pending.difference_update(events)
-        if len(events) + len(pending) > MAX_DEPENDENCIES:
-            raise ValueError("Selected sources have too many dependencies.")
-    selected = [events[source_id] for source_id in source_ids]
+    selected, fingerprints = source_context(source_ids, max_dependencies=MAX_DEPENDENCIES)
     if sum(len(event.title) + len(event.summary) for event in selected) > MAX_SOURCE_CHARACTERS:
         raise ValueError("Selected source text is too long; select fewer sources.")
     return selected, fingerprints
@@ -93,7 +71,13 @@ def request_draft(actor, source_ids, mode, *, request_key=None, provider=None, s
     provider = provider if provider is not None else configured_provider()
     if provider is None:
         raise RuntimeError("Narrative AI is not configured; no drafting request was sent.")
-    values = {"requested_by": actor, "source_ids": source_ids, "source_fingerprints": fingerprints, "mode": mode}
+    values = {
+        "requested_by": actor,
+        "source_ids": source_ids,
+        "source_fingerprints": fingerprints,
+        "mode": mode,
+        "deadline_at": provider_deadline(provider),
+    }
     with transaction.atomic():
         if request_key:
             request, created = ChronicleGenerationRequest.objects.get_or_create(
@@ -128,36 +112,77 @@ def _messages(request, sources):
     ]
 
 
-def _fail(request_id, error):
+def _stop_transport(request_id, cancel=False):
+    waiting = _draft_transports.pop(request_id, None)
+    if waiting:
+        timer, transport = waiting
+        if timer.active():
+            timer.cancel()
+        if cancel and transport is not None and not transport.called:
+            transport.cancel()
+
+
+def _fail(request_id, error, *, stored_error=None, dispatched_at=_ANY_CLAIM):
     # Provider errors may contain credentials or prompts. Retain only a fixed category.
-    ChronicleGenerationRequest.objects.filter(pk=request_id, status="pending").update(
-        status="failed", completed_at=timezone.now(), error=f"{type(error).__name__}: Chronicle drafting failed."
-    )
+    pending = ChronicleGenerationRequest.objects.filter(pk=request_id, status="pending")
+    if dispatched_at is not _ANY_CLAIM:
+        pending = pending.filter(dispatched_at=dispatched_at)
+    pending.update(status="failed", completed_at=timezone.now(), error=stored_error or failure_category(error))
+    _stop_transport(request_id, cancel=True)
 
 
 def _dispatch(request_id, provider):
+    claimed_at = None
     try:
         with transaction.atomic():
-            request = ChronicleGenerationRequest.objects.select_for_update().get(pk=request_id)
-            if request.status != "pending" or request.dispatched_at:
+            now = timezone.now()
+            claimed = (
+                ChronicleGenerationRequest.objects.filter(
+                    pk=request_id,
+                    status="pending",
+                    dispatched_at__isnull=True,
+                )
+                .filter(Q(deadline_at__isnull=True) | Q(deadline_at__gt=now))
+                .update(dispatched_at=now, deadline_at=Coalesce("deadline_at", provider_deadline(provider)))
+            )
+            if not claimed:
+                pending = ChronicleGenerationRequest.objects.filter(pk=request_id, status="pending").first()
+                if pending and pending.deadline_at and pending.deadline_at <= now:
+                    _fail(request_id, ProviderError("timeout"))
                 return
+            request = ChronicleGenerationRequest.objects.get(pk=request_id)
             sources = _authorize(request)
             messages = _messages(request, sources)
             _authorize(request)
-            request.dispatched_at = timezone.now()
-            request.save(update_fields=("dispatched_at",))
         # Persist the claim before HTTP; interrupted dispatches must not be retried.
+        claimed_at = request.dispatched_at
         request.refresh_from_db()
         if request.status != "pending":
             return
+        if request.deadline_at <= timezone.now():
+            raise ProviderError("timeout")
         _authorize(request)
+        timer = getattr(provider, "clock", reactor).callLater(
+            max(0, (request.deadline_at - timezone.now()).total_seconds()),
+            _fail,
+            request_id,
+            ProviderError("timeout"),
+        )
+        _draft_transports[request_id] = (timer, None)
         deferred = provider.generate(messages)
-        deferred.addCallbacks(lambda raw: _accept(request_id, raw), lambda failure: _reject(request_id, failure))
+        _draft_transports[request_id] = (timer, deferred)
+        deferred.addCallbacks(
+            lambda raw: _accept(request_id, raw, request.dispatched_at),
+            lambda failure: _reject(request_id, failure),
+        )
+    except OperationalError:
+        # A losing SQLite writer must not fail the successful worker's claim.
+        return
     except Exception as error:
-        _fail(request_id, error)
+        _fail(request_id, error, dispatched_at=claimed_at)
 
 
-def _accept(request_id, raw):
+def _accept(request_id, raw, dispatched_at=None):
     try:
         value = json.loads(raw) if isinstance(raw, str) else raw
         if not isinstance(value, dict) or set(value) != {"prose", "citations"}:
@@ -172,10 +197,24 @@ def _accept(request_id, raw):
         with transaction.atomic():
             request = ChronicleGenerationRequest.objects.select_for_update().get(pk=request_id)
             if request.status != "pending" or not request.dispatched_at:
+                _stop_transport(request_id)
                 return
+            if dispatched_at is not None and request.dispatched_at != dispatched_at:
+                _stop_transport(request_id)
+                return
+            if request.deadline_at is None or request.deadline_at <= timezone.now():
+                raise ProviderError("timeout")
             sources = _authorize(request)
             if not set(citations).issubset(request.source_ids):
                 raise ValueError("Response cited an unauthorized source.")
+            changed = ChronicleGenerationRequest.objects.filter(
+                pk=request_id,
+                status="pending",
+                dispatched_at=request.dispatched_at,
+                deadline_at__gt=timezone.now(),
+            ).update(status="succeeded", citations=citations, completed_at=timezone.now())
+            if not changed:
+                return
             event = ChronicleEvent.objects.create(
                 idempotency_key=f"chronicle-generation:{request.pk}",
                 source_app="chronicle",
@@ -192,11 +231,8 @@ def _accept(request_id, raw):
             )
             # Link every supplied source, including context the model did not cite.
             event.source_events.set(sources)
-            request.status = "succeeded"
-            request.draft_event = event
-            request.citations = citations
-            request.completed_at = timezone.now()
-            request.save(update_fields=("status", "draft_event", "citations", "completed_at"))
+            ChronicleGenerationRequest.objects.filter(pk=request_id, status="succeeded").update(draft_event=event)
+        _stop_transport(request_id)
     except Exception as error:
         _fail(request_id, error)
     return None
@@ -212,12 +248,23 @@ def recover_pending_drafts(provider=None, scheduler=None):
     provider = provider if provider is not None else configured_provider()
     count = 0
     for request in ChronicleGenerationRequest.objects.filter(status="pending"):
-        if request.dispatched_at or provider is None:
-            _fail(request.pk, RuntimeError("Interrupted or unavailable provider"))
+        if request.dispatched_at:
+            _fail(request.pk, ProviderError("canceled"), stored_error="interrupted")
+            continue
+        if request.deadline_at and request.deadline_at <= timezone.now():
+            _fail(request.pk, ProviderError("timeout"))
+            continue
+        if provider is None:
+            _fail(request.pk, ProviderError("upstream_failure"))
             continue
         (scheduler or reactor.callFromThread)(lambda request_id=request.pk: _dispatch(request_id, provider))
         count += 1
     return count
+
+
+def shutdown_pending_drafts():
+    for request_id in list(_draft_transports):
+        _fail(request_id, ProviderError("canceled"), stored_error="interrupted")
 
 
 def validate_generated_publication(event):

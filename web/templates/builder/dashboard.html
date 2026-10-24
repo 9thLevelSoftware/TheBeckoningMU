@@ -302,6 +302,8 @@
                     <span class="status-badge status-built"><span class="status-dot"></span> Sandbox</span>
                 {% elif project.status == 'live' %}
                     <span class="status-badge status-live"><span class="status-dot"></span> Live</span>
+                {% else %}
+                    <span class="status-badge">{{ project.get_status_display }}</span>
                 {% endif %}
             </div>
 
@@ -322,24 +324,39 @@
             {% endif %}
 
             <div class="project-actions">
+                {% if project.status == 'approved' or project.status == 'built' or project.status == 'live' %}
+                <button class="btn-ghost" type="button" data-fork-id="{{ project.pk }}" data-fork-version="{{ project.version }}">Create draft copy</button>
+                {% endif %}
+                {% if project.status == 'live' and project.live_manifest.schema_version == 2 %}
+                <button class="btn-ghost" type="button" data-fork-id="{{ project.pk }}" data-fork-version="{{ project.version }}" data-fork-intent="replacement">Create replacement revision</button>
+                {% endif %}
+                {% if project.status == 'approved' and project.revision_intent == 'replacement' %}
+                <button class="btn-accent" type="button" data-replace-id="{{ project.pk }}" data-replace-version="{{ project.version }}" data-replace-source="{{ project.replacement_target.project_id }}">Apply reviewed replacement</button>
+                {% endif %}
                 <a href="{% url 'builder:edit_project' project.pk %}" class="btn-ghost" style="text-decoration:none; flex:1; text-align:center;">
                     <i class="bi bi-pencil"></i> Edit
                 </a>
                 {% if project.status == 'draft' %}
                 <button class="btn-accent" style="flex:1;" data-submit-id="{{ project.id }}"
-                        onclick="event.stopPropagation(); submitProject({{ project.id }}, '{{ project.name|escapejs }}')">
+                        data-connection-room="{{ project.connection_room_id|default:'' }}"
+                        data-connection-direction="{{ project.connection_direction|default:'' }}"
+                        onclick="event.stopPropagation(); submitProject({{ project.id }}, '{{ project.name|escapejs }}', this.dataset.connectionRoom, this.dataset.connectionDirection)">
                     <i class="bi bi-send"></i> Submit
                 </button>
                 {% elif project.status == 'built' %}
                 <button class="btn-ghost" style="flex:1;" data-cleanup-id="{{ project.id }}" data-name="{{ project.name }}">
                     <i class="bi bi-trash"></i> Clean up
                 </button>
+                {% if project.revision_intent != 'replacement' %}
                 <button class="btn-accent" style="flex:1;" data-promote-id="{{ project.id }}" data-name="{{ project.name }}"
                         data-connection-room="{{ project.approved_map_data.connection_room_id }}"
                         data-connection-direction="{{ project.approved_map_data.connection_direction }}"
                         data-entry-room="{{ project.approved_entry_room_name }}">
                     <i class="bi bi-rocket"></i> Promote
                 </button>
+                {% else %}
+                <span>After testing, clean up this sandbox before applying its reviewed replacement.</span>
+                {% endif %}
                 {% endif %}
             </div>
         </div>
@@ -435,6 +452,7 @@
                 <div class="mb-3">
                     <label for="submit-connection-direction" class="form-label">Direction from Live Room</label>
                     <select class="form-select" id="submit-connection-direction">
+                        <option value="">Select a direction</option>
                         <option value="n">North (n)</option>
                         <option value="s">South (s)</option>
                         <option value="e">East (e)</option>
@@ -498,23 +516,54 @@
 
 {% block extra_js %}
 <script>
-// CSRF token helper
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}
+// Use Django's rendered token regardless of the configured CSRF cookie name.
+const csrftoken = '{{ csrf_token }}';
 
-const csrftoken = getCookie('csrftoken');
+document.querySelectorAll('[data-fork-id]').forEach(button => {
+    button.addEventListener('click', async event => {
+        event.stopPropagation();
+        if (button.disabled) return;
+        const identity = JSON.stringify(button.dataset);
+        const intent = button.dataset.forkIntent || 'copy';
+        const prompt = intent === 'replacement'
+            ? `Create a replacement draft targeting current live revision #${Number(button.dataset.forkId)}? Staff must review the exact target and changes before it can be applied.`
+            : 'Create an independent draft copy? It will need a new review and connection before publication.';
+        button.disabled = true;
+        if (!await BuilderDialogs.confirm(prompt, button) || !button.isConnected || JSON.stringify(button.dataset) !== identity) { button.disabled = false; return; }
+        try {
+            const response = await fetch(`/builder/api/project/${Number(button.dataset.forkId)}/revisions/`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+                body: JSON.stringify({version: Number(button.dataset.forkVersion), intent})
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not create draft copy');
+            window.location.href = `/builder/edit/${Number(result.id)}/`;
+        } catch (error) {
+            BuilderDialogs.alert(error.message);
+            button.disabled = false;
+        }
+    });
+});
+
+document.querySelectorAll('[data-replace-id]').forEach(button => {
+    button.addEventListener('click', async () => {
+        if (button.disabled) return;
+        const identity = JSON.stringify(button.dataset);
+        button.disabled = true;
+        if (!await BuilderDialogs.confirm(`Apply this reviewed replacement to live revision #${Number(button.dataset.replaceSource)}? All occupants and unreviewed contents must leave the affected area. Removed owned objects will be retired, not purged.`, button) ||
+            !button.isConnected || JSON.stringify(button.dataset) !== identity) { button.disabled = false; return; }
+        try {
+            const response = await fetch(`/builder/api/build/${Number(button.dataset.replaceId)}/replace-live/`, {
+                method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+                body: JSON.stringify({version: Number(button.dataset.replaceVersion)})
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Replacement failed');
+            window.location.reload();
+        } catch (error) { BuilderDialogs.alert(error.message); button.disabled = false; }
+    });
+});
 
 // ── Compute stats ──────────────────────────────────
 (function() {
@@ -540,13 +589,13 @@ const csrftoken = getCookie('csrftoken');
 let currentProjectId = null;
 const submitModal = new bootstrap.Modal(document.getElementById('submitModal'));
 
-function submitProject(id, name) {
+async function submitProject(id, name, connectionRoom = '', connectionDirection = '') {
     currentProjectId = id;
     document.getElementById('submit-project-name').textContent = name;
     document.getElementById('submission-notes').value = '';
-    document.getElementById('submit-connection-direction').value = 'n';
+    document.getElementById('submit-connection-direction').value = connectionDirection;
     submitModal.show();
-    loadConnectionRooms('submit-connection-room');
+    await loadConnectionRooms('submit-connection-room', connectionRoom, id);
 }
 
 document.getElementById('confirm-submit').addEventListener('click', async function() {
@@ -560,7 +609,13 @@ document.getElementById('confirm-submit').addEventListener('click', async functi
     const direction = document.getElementById('submit-connection-direction').value;
 
     if (!roomId) {
-        alert('Please select the live room this area connects to');
+        BuilderDialogs.alert('Please select the live room this area connects to');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-send"></i> Submit';
+        return;
+    }
+    if (!direction) {
+        BuilderDialogs.alert('Please select the direction from the live room');
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-send"></i> Submit';
         return;
@@ -581,12 +636,12 @@ document.getElementById('confirm-submit').addEventListener('click', async functi
             submitModal.hide();
             window.location.reload();
         } else {
-            alert('Error: ' + (data.error || 'Failed to submit project'));
+            BuilderDialogs.alert('Error: ' + (data.error || 'Failed to submit project'));
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-send"></i> Submit';
         }
     } catch (error) {
-        alert('Error submitting project: ' + error.message);
+        BuilderDialogs.alert('Error submitting project: ' + error.message);
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-send"></i> Submit';
     }
@@ -627,8 +682,11 @@ document.querySelectorAll('[data-promote-id]').forEach(btn => btn.addEventListen
 
 document.querySelectorAll('[data-cleanup-id]').forEach(btn => btn.addEventListener('click', async event => {
     event.stopPropagation();
-    if (!confirm(`Delete the sandbox rooms and exits of "${btn.dataset.name}"? The project is kept and can be built again.`)) return;
+    if (btn.disabled) return;
+    const identity = JSON.stringify(btn.dataset);
     btn.disabled = true;
+    if (!await BuilderDialogs.confirm(`Delete the sandbox rooms and exits of "${btn.dataset.name}"? The project is kept and can be built again.`, btn) ||
+        !btn.isConnected || JSON.stringify(btn.dataset) !== identity) { btn.disabled = false; return; }
     try {
         const response = await fetch(`/builder/api/build/${btn.dataset.cleanupId}/cleanup/`, {
             method: 'POST',
@@ -636,27 +694,28 @@ document.querySelectorAll('[data-cleanup-id]').forEach(btn => btn.addEventListen
         });
         const data = await response.json();
         if (data.status === 'success') {
-            alert(`Sandbox cleaned up: ${data.deleted.rooms} rooms, ${data.deleted.exits} exits deleted.`);
+            BuilderDialogs.alert(`Sandbox cleaned up: ${data.deleted.rooms} rooms, ${data.deleted.exits} exits deleted.`);
             window.location.reload();
         } else {
-            alert('Error: ' + (data.error || 'Cleanup failed'));
+            BuilderDialogs.alert('Error: ' + (data.error || 'Cleanup failed'));
             btn.disabled = false;
         }
     } catch (error) {
-        alert('Error cleaning up: ' + error.message);
+        BuilderDialogs.alert('Error cleaning up: ' + error.message);
         btn.disabled = false;
     }
 }));
 
-async function loadConnectionRooms(selectId) {
+async function loadConnectionRooms(selectId, selectedRoom = '', projectId = currentProjectId) {
     const select = document.getElementById(selectId);
     select.innerHTML = '<option value="">Loading rooms...</option>';
     try {
         const response = await fetch('/builder/api/connection-rooms/');
         const data = await response.json();
+        if (currentProjectId !== projectId) return;
 
         if (data.status === 'success') {
-            select.innerHTML = '';
+            select.innerHTML = '<option value="">Select a live room</option>';
             if (data.rooms.length === 0) {
                 select.innerHTML = '<option value="">No available rooms</option>';
             } else {
@@ -666,11 +725,13 @@ async function loadConnectionRooms(selectId) {
                     option.textContent = `${room.name} (#${room.id})`;
                     select.appendChild(option);
                 });
+                select.value = data.rooms.some(room => String(room.id) === String(selectedRoom)) ? String(selectedRoom) : '';
             }
         } else {
             select.innerHTML = '<option value="">Error loading rooms</option>';
         }
     } catch (error) {
+        if (currentProjectId !== projectId) return;
         select.innerHTML = '<option value="">Error loading rooms</option>';
     }
 }
@@ -698,15 +759,15 @@ document.getElementById('confirm-promote').addEventListener('click', async funct
         const data = await response.json();
         if (data.status === 'success') {
             promoteModal.hide();
-            alert(`Project promoted! ${data.promoted_rooms} rooms moved to live world.`);
+            BuilderDialogs.alert(`Project promoted! ${data.promoted_rooms} rooms moved to live world.`);
             window.location.reload();
         } else {
-            alert('Error: ' + (data.error || 'Failed to promote project'));
+            BuilderDialogs.alert('Error: ' + (data.error || 'Failed to promote project'));
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-rocket"></i> Promote to Live';
         }
     } catch (error) {
-        alert('Error promoting project: ' + error.message);
+        BuilderDialogs.alert('Error promoting project: ' + error.message);
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-rocket"></i> Promote to Live';
     }

@@ -790,21 +790,14 @@ def _discipline_errors(sub, merit_names):
 
 
 def _power_errors(sub):
+    from world.power_eligibility import power_requirement_errors
+
     errors = []
     counts = Counter()
     for power_name in sub.discipline_powers:
         power = find_power(power_name)
-        discipline, level = power["discipline"], power["level"]
-        dots = sub.disciplines.get(discipline, 0)
-        if not dots:
-            errors.append(f"Powers: {power_name} is a {discipline} power and you have no {discipline}")
-            continue
-        if level > dots:
-            errors.append(f"Powers: {power_name} needs {discipline} {level}; you have {dots}")
-        if power.get("amalgam"):
-            other, _, other_level = power["amalgam"].rpartition(" ")
-            if sub.disciplines.get(other, 0) < int(other_level):
-                errors.append(f"Powers: {power_name} also needs {power['amalgam']}")
+        discipline = power["discipline"]
+        errors.extend(f"Powers: {error}" for error in power_requirement_errors(power_name, sub.disciplines))
         counts[discipline] += 1
     for discipline, dots in sub.disciplines.items():
         expected = 0 if discipline == ALCHEMY else dots

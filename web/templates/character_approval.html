@@ -490,6 +490,28 @@
             `;
         }
 
+        // Current played sheet only; all applicant-authored values pass through escapeHtml.
+        const sheet = data.sheet || {};
+        const convictions = Array.isArray(sheet.convictions) ? sheet.convictions : [];
+        const touchstones = Array.isArray(sheet.touchstones) ? sheet.touchstones : [];
+        const section = (title, content, empty) => `<div class="trait-category"><h4>${title}</h4>${content || `<p>${empty}</p>`}</div>`;
+        const convictionHTML = convictions.map((text, index) => `<p><strong>Conviction ${index + 1}:</strong> ${escapeHtml(String(text))}</p>`).join('');
+        const touchstoneHTML = touchstones.map(value => {
+            const item = value && typeof value === 'object' ? value : {name: value || 'Unknown touchstone'};
+            const index = item.conviction_index;
+            const link = Number.isInteger(index) && index >= 0 && index < convictions.length
+                ? `Conviction ${index + 1}: ${escapeHtml(String(convictions[index]))}` : 'Unlinked touchstone';
+            return `<div class="power-item"><strong>${escapeHtml(String(item.name || 'Unknown touchstone'))}</strong><p>${escapeHtml(String(item.description || ''))}</p><small>${link}</small></div>`;
+        }).join('');
+        const linkedHTML = section('Convictions and Touchstones',
+            (convictionHTML || '<p>No convictions recorded</p>') + (touchstoneHTML || '<p>No touchstones recorded</p>'), '');
+        const learnedHTML = ['rituals', 'formulas'].map(kind => section(kind === 'rituals' ? 'Rituals' : 'Formulas',
+            (Array.isArray(sheet[kind]) ? sheet[kind] : []).map(name => `<p>${escapeHtml(String(name))}</p>`).join(''), `No ${kind} recorded`)).join('');
+        const notes = sheet.advantage_notes || {};
+        const notesHTML = section('Merit and Flaw Notes', ['merits', 'flaws'].map(kind =>
+            Object.entries(notes[kind] || {}).filter(([name, note]) => note).map(([name, note]) =>
+                `<p><strong>${kind === 'merits' ? 'Merit' : 'Flaw'}: ${escapeHtml(name)}</strong> ${escapeHtml(String(note))}</p>`).join('')).join(''), 'No merit or flaw notes recorded');
+
         // Status badge for detail view
         let detailStatusBadge = '';
         if (data.bio.status === 'rejected') {
@@ -576,6 +598,9 @@
 
                 ${traitsHTML}
                 ${powersHTML}
+                ${linkedHTML}
+                ${learnedHTML}
+                ${notesHTML}
 
                 <div class="action-buttons">${actionsHTML}</div>
             </div>
@@ -588,11 +613,17 @@
         if (revokeBtn) revokeBtn.addEventListener('click', handleRevoke);
     }
 
+    let approvalActionBusy = false;
     async function handleRevoke() {
-        if (!selectedCharacterId) return;
-        const notes = prompt('Revoke approval: why? The player sees this, and anyone playing the character is removed from it.');
-        if (notes === null) return;
-        const response = await fetch(`/api/traits/character/${selectedCharacterId}/approval/`, {
+        if (!selectedCharacterId || approvalActionBusy) return;
+        const characterId = selectedCharacterId;
+        const button = document.getElementById('revoke-btn');
+        approvalActionBusy = true;
+        if (button) button.disabled = true;
+        try {
+        const notes = await BuilderDialogs.prompt('Revoke approval: why? The player sees this, and anyone playing the character is removed from it.', button);
+        if (notes === null || selectedCharacterId !== characterId) return;
+        const response = await fetch(`/api/traits/character/${characterId}/approval/`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN},
             body: JSON.stringify({action: 'revoke', notes: notes})
@@ -603,9 +634,16 @@
             return;
         }
         showToast('Approval revoked.', 'success');
+        if (selectedCharacterId !== characterId) return;
         selectedCharacterId = null;
         loadPendingCharacters();
         document.getElementById('character-detail').innerHTML = '<div class="empty-state"><h4>Approval Revoked</h4></div>';
+        } catch (error) {
+            showToast('Error revoking: ' + error.message, 'danger');
+        } finally {
+            approvalActionBusy = false;
+            if (button && button.isConnected) button.disabled = false;
+        }
     }
 
     function openRejectionModal() {
@@ -628,7 +666,7 @@
         const notes = document.getElementById('rejection-notes-input').value.trim();
 
         if (!notes) {
-            alert('Rejection notes are required. Please explain what needs to be changed.');
+            BuilderDialogs.alert('Rejection notes are required. Please explain what needs to be changed.');
             return;
         }
 
@@ -684,6 +722,7 @@
     }
 
     async function handleApproval(action) {
+        if (approvalActionBusy) return;
         if (!selectedCharacterId) {
             showToast('Please select a character first', 'warning');
             return;
@@ -695,12 +734,19 @@
         }
 
         // Approve flow
-        if (!confirm('Are you sure you want to approve this character? They will be placed in the starting room.')) {
+        const characterId = selectedCharacterId;
+        const button = document.getElementById('approve-btn');
+        approvalActionBusy = true;
+        if (button) button.disabled = true;
+        if (!await BuilderDialogs.confirm('Are you sure you want to approve this character? They will be placed in the starting room.', button)) {
+            approvalActionBusy = false;
+            if (button && button.isConnected) button.disabled = false;
             return;
         }
 
         try {
-            const url = `/api/traits/character/${selectedCharacterId}/approval/`;
+            if (selectedCharacterId !== characterId) return;
+            const url = `/api/traits/character/${characterId}/approval/`;
 
             const response = await fetch(url, {
                 method: 'POST',
@@ -721,6 +767,7 @@
 
             const data = await response.json();
             showToast('Character approved and placed in starting room!', 'success');
+            if (selectedCharacterId !== characterId) return;
 
             // Reload the pending characters list
             selectedCharacterId = null;
@@ -736,6 +783,9 @@
         } catch (error) {
             console.error('Error handling approval:', error);
             showToast('Error approving character: ' + error.message, 'danger');
+        } finally {
+            approvalActionBusy = false;
+            if (button && button.isConnected) button.disabled = false;
         }
     }
 

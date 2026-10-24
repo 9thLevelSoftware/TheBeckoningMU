@@ -3,6 +3,7 @@ import json
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db.models import F
+from django.db.models.deletion import ProtectedError
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -11,9 +12,10 @@ from django.views.generic import TemplateView, View
 from web.permissions import has_perm
 
 from .models import BuildProject, StaleReviewError
+from .operation_runtime import OperationError, require_idle
 from .promotion import promote_project_to_live
 from .sandbox_bridge import create_sandbox_from_project
-from .trigger_actions import list_actions
+from .trigger_actions import ACTION_PARAMETERS, list_actions
 from .trigger_engine import validate_trigger
 from .v5_conditions import list_condition_types
 from .validators import (
@@ -134,6 +136,11 @@ class BuilderRequiredMixin(LoginRequiredMixin):
             return HttpResponseForbidden(
                 "Builder access requires the in-game Builder permission on your account (perm *<account> = Builder)."
             )
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            try:
+                require_idle()
+            except OperationError as exc:
+                return JsonResponse({"status": "error", "error": str(exc)}, status=409)
         return super().dispatch(request, *args, **kwargs)
 
 
@@ -157,9 +164,7 @@ class BuilderDashboardView(BuilderRequiredMixin, TemplateView):
         # User's own projects
         ctx["my_projects"] = BuildProject.objects.filter(user=self.request.user)
         # Public projects from others
-        ctx["public_projects"] = BuildProject.objects.filter(is_public=True).exclude(
-            user=self.request.user
-        )[:20]
+        ctx["public_projects"] = BuildProject.objects.filter(is_public=True).exclude(user=self.request.user)[:20]
         return ctx
 
 
@@ -206,6 +211,75 @@ class BuilderEditorView(BuilderRequiredMixin, TemplateView):
 
 
 # API views
+class ForkRevisionView(BuilderRequiredMixin, View):
+    """Create an independent draft from a frozen reviewed design."""
+
+    def post(self, request, pk, *args, **kwargs):
+        from .revisions import RevisionError, fork_replacement, fork_revision
+
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JsonResponse({"status": "error", "error": "Invalid JSON"}, status=400)
+        if not isinstance(data, dict):
+            return JsonResponse({"status": "error", "error": "Expected a JSON object"}, status=400)
+        intent = data.get("intent", "copy")
+        if intent not in ("copy", "replacement"):
+            return JsonResponse(
+                {"status": "error", "error": "Live replacement requires a separately reviewed replacement plan"},
+                status=409,
+            )
+        try:
+            fork = fork_replacement if intent == "replacement" else fork_revision
+            draft = fork(pk, request.user, data.get("version"))
+        except RevisionError as exc:
+            return JsonResponse({"status": "error", "error": str(exc)}, status=exc.status)
+        return JsonResponse(
+            {
+                "status": "success",
+                "id": draft.pk,
+                "version": draft.version,
+                "revision_of_id": draft.revision_of_id,
+                "root_project_id": draft.root_project_id,
+                "revision_intent": draft.revision_intent,
+            },
+            status=201,
+        )
+
+
+class ReplacementPlanView(BuilderRequiredMixin, View):
+    def get(self, request, pk):
+        from .revisions import RevisionError, prepare_replacement
+
+        project = get_object_or_404(BuildProject, pk=pk)
+        if not can_manage(request.user, project):
+            return JsonResponse({"error": "Not authorized"}, status=403)
+        try:
+            if project.status == "draft":
+                plan = prepare_replacement(pk, request.user)
+            else:
+                plan = (project.approved_map_data or {}).get("replacement") or project.submitted_replacement
+            return JsonResponse({"status": "success", "plan": plan, "version": project.version})
+        except RevisionError as exc:
+            return JsonResponse({"error": str(exc)}, status=exc.status)
+
+
+class ReplaceLiveView(BuilderRequiredMixin, View):
+    def post(self, request, pk):
+        from .live_replacement import ReplacementError, replace_live
+
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+        if not isinstance(data, dict) or type(data.get("version")) is not int:
+            return JsonResponse({"error": "version is required"}, status=400)
+        try:
+            return JsonResponse(replace_live(pk, request.user, data["version"]))
+        except (ReplacementError, OperationError) as exc:
+            return JsonResponse({"status": "error", "error": str(exc)}, status=exc.status)
+
+
 class SaveProjectView(BuilderRequiredMixin, View):
     """Save or create a project."""
 
@@ -213,13 +287,9 @@ class SaveProjectView(BuilderRequiredMixin, View):
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
-            return JsonResponse(
-                {"status": "error", "error": "Invalid JSON"}, status=400
-            )
+            return JsonResponse({"status": "error", "error": "Invalid JSON"}, status=400)
         if not isinstance(data, dict):
-            return JsonResponse(
-                {"status": "error", "error": "Expected a JSON object"}, status=400
-            )
+            return JsonResponse({"status": "error", "error": "Expected a JSON object"}, status=400)
 
         project_id = data.get("id")
         name = data.get("name", "Untitled Project")
@@ -237,17 +307,13 @@ class SaveProjectView(BuilderRequiredMixin, View):
             # Update existing
             project = get_object_or_404(BuildProject, pk=project_id)
             if project.user != request.user:
-                return JsonResponse(
-                    {"status": "error", "error": "Not authorized"}, status=403
-                )
+                return JsonResponse({"status": "error", "error": "Not authorized"}, status=403)
 
             # Optimistic concurrency: the client must say which version it
             # edited, and the write only lands if that is still current.
             client_version = data.get("version")
             if type(client_version) is not int:
-                return JsonResponse(
-                    {"status": "error", "error": "version is required"}, status=400
-                )
+                return JsonResponse({"status": "error", "error": "version is required"}, status=400)
 
             if not project.is_editable():
                 return _locked_response(project)
@@ -303,10 +369,7 @@ def _locked_response(project):
     return JsonResponse(
         {
             "status": "error",
-            "error": (
-                f"Project is '{project.status}': the map is locked once it is "
-                "submitted for review."
-            ),
+            "error": (f"Project is '{project.status}': the map is locked once it is submitted for review."),
         },
         status=409,
     )
@@ -320,9 +383,7 @@ class GetProjectView(BuilderRequiredMixin, View):
 
         # Check visibility
         if not can_view(request.user, project):
-            return JsonResponse(
-                {"status": "error", "error": "Not authorized"}, status=403
-            )
+            return JsonResponse({"status": "error", "error": "Not authorized"}, status=403)
 
         return JsonResponse(
             {
@@ -334,10 +395,13 @@ class GetProjectView(BuilderRequiredMixin, View):
                     "map_data": project.map_data,
                     "is_public": project.is_public,
                     "sandbox_room_id": project.sandbox_room_id,
-                    "can_edit": project.user == request.user
-                    and project.is_editable(),
+                    "can_edit": project.user == request.user and project.is_editable(),
                     "version": project.version,
                     "status": project.status,
+                    "revision_of_id": project.revision_of_id,
+                    "root_project_id": project.root_project_id,
+                    "revision_intent": project.revision_intent,
+                    "replacement_target": project.replacement_target,
                     "created_at": project.created_at.isoformat(),
                     "updated_at": project.updated_at.isoformat(),
                 },
@@ -353,9 +417,7 @@ class DeleteProjectView(BuilderRequiredMixin, View):
         is_admin = has_perm(request.user, "Admin")
 
         if project.user != request.user and not is_admin:
-            return JsonResponse(
-                {"status": "error", "error": "Not authorized"}, status=403
-            )
+            return JsonResponse({"status": "error", "error": "Not authorized"}, status=403)
 
         # Once submitted, the row carries the review record (reviewer,
         # snapshot, connection) and may own built rooms; only Admins remove it.
@@ -363,10 +425,7 @@ class DeleteProjectView(BuilderRequiredMixin, View):
             return JsonResponse(
                 {
                     "status": "error",
-                    "error": (
-                        f"Project is '{project.status}': only drafts can be "
-                        "deleted. Ask an Admin."
-                    ),
+                    "error": (f"Project is '{project.status}': only drafts can be deleted. Ask an Admin."),
                 },
                 status=409,
             )
@@ -379,7 +438,12 @@ class DeleteProjectView(BuilderRequiredMixin, View):
                 status=409,
             )
 
-        project.delete()
+        try:
+            project.delete()
+        except ProtectedError:
+            return JsonResponse(
+                {"status": "error", "error": "Project is retained as revision lineage history."}, status=409
+            )
         return JsonResponse({"status": "success"})
 
     def post(self, request, pk, *args, **kwargs):
@@ -389,7 +453,9 @@ class DeleteProjectView(BuilderRequiredMixin, View):
 
 class PrototypesView(BuilderRequiredMixin, View):
     def get(self, request, *args, **kwargs):
-        return JsonResponse({"status": "not_implemented"}, status=501)
+        from .prototype_catalog import public_catalog
+
+        return JsonResponse({"status": "success", **public_catalog()})
 
 
 class TemplatesView(BuilderRequiredMixin, View):
@@ -408,9 +474,7 @@ class SubmitProjectView(BuilderRequiredMixin, View):
 
         # Only owner can submit their own project
         if project.user != request.user:
-            return JsonResponse(
-                {"status": "error", "error": "Not authorized"}, status=403
-            )
+            return JsonResponse({"status": "error", "error": "Not authorized"}, status=403)
 
         # Validate project is in draft status
         if not project.can_transition_to("submitted"):
@@ -425,13 +489,9 @@ class SubmitProjectView(BuilderRequiredMixin, View):
         try:
             data = json.loads(request.body) if request.body else {}
         except json.JSONDecodeError:
-            return JsonResponse(
-                {"status": "error", "error": "Invalid JSON"}, status=400
-            )
+            return JsonResponse({"status": "error", "error": "Invalid JSON"}, status=400)
         if not isinstance(data, dict):
-            return JsonResponse(
-                {"status": "error", "error": "Expected a JSON object"}, status=400
-            )
+            return JsonResponse({"status": "error", "error": "Expected a JSON object"}, status=400)
 
         # Only a map the sandbox build accepts can go to review: once it is
         # submitted the map is locked, so a bad one would be stuck.
@@ -509,9 +569,7 @@ class BuildReviewView(BuilderRequiredMixin, View):
 
     def get(self, request, *args, **kwargs):
         # Get all projects with submitted status
-        projects = BuildProject.objects.filter(status="submitted").select_related(
-            "user"
-        )
+        projects = BuildProject.objects.filter(status="submitted").select_related("user")
 
         project_list = []
         for project in projects:
@@ -533,9 +591,17 @@ class BuildReviewView(BuilderRequiredMixin, View):
                     "updated_at": project.updated_at.isoformat(),
                     "room_count": len(rooms),
                     "exit_count": len(exits),
+                    "fixtures": project.submitted_prototypes,
+                    "room_settings": {
+                        key: room.get("v5") or {} for key, room in rooms.items() if isinstance(room, dict)
+                    },
+                    "replacement_plan": project.submitted_replacement,
                     "connection": _connection_info(project),
                     "can_review": project.can_be_reviewed_by(request.user),
                     "version": project.version,
+                    "revision_of_id": project.revision_of_id,
+                    "root_project_id": project.root_project_id,
+                    "revision_intent": project.revision_intent,
                 }
             )
 
@@ -557,19 +623,19 @@ class BuildReviewView(BuilderRequiredMixin, View):
                     "username": project.user.username,
                 },
                 "reviewed_by": project.reviewed_by.username,
-                "reviewed_at": (
-                    project.reviewed_at.isoformat() if project.reviewed_at else None
-                ),
+                "reviewed_at": (project.reviewed_at.isoformat() if project.reviewed_at else None),
                 "self_reviewed": project.reviewed_by_id == project.user_id,
                 "outcome": "rejected" if project.status == "draft" else "approved",
                 "connection": _connection_info(project),
+                "revision_intent": project.revision_intent,
+                "revision_of_id": project.revision_of_id,
+                "root_project_id": project.root_project_id,
+                "replacement_target": project.replacement_target,
             }
             for project in reviewed
         ]
 
-        return JsonResponse(
-            {"status": "success", "projects": project_list, "reviewed": reviewed_list}
-        )
+        return JsonResponse({"status": "success", "projects": project_list, "reviewed": reviewed_list})
 
 
 class ApproveRejectProjectView(BuilderRequiredMixin, View):
@@ -584,9 +650,7 @@ class ApproveRejectProjectView(BuilderRequiredMixin, View):
         is_reject = "/reject/" in path
 
         if not is_approve and not is_reject:
-            return JsonResponse(
-                {"status": "error", "error": "Invalid action"}, status=400
-            )
+            return JsonResponse({"status": "error", "error": "Invalid action"}, status=400)
 
         # Builders never review their own work; Admins and above may.
         if not project.can_be_reviewed_by(request.user):
@@ -611,21 +675,15 @@ class ApproveRejectProjectView(BuilderRequiredMixin, View):
         try:
             data = json.loads(request.body) if request.body else {}
         except json.JSONDecodeError:
-            return JsonResponse(
-                {"status": "error", "error": "Invalid JSON"}, status=400
-            )
+            return JsonResponse({"status": "error", "error": "Invalid JSON"}, status=400)
         if not isinstance(data, dict):
-            return JsonResponse(
-                {"status": "error", "error": "Expected a JSON object"}, status=400
-            )
+            return JsonResponse({"status": "error", "error": "Expected a JSON object"}, status=400)
 
         # The version the reviewer looked at; the review only lands if the
         # project is still submitted at that version.
         version = data.get("version")
         if type(version) is not int:
-            return JsonResponse(
-                {"status": "error", "error": "version is required"}, status=400
-            )
+            return JsonResponse({"status": "error", "error": "version is required"}, status=400)
 
         if is_approve:
             # Approve the project
@@ -696,9 +754,7 @@ class BuildSandboxView(BuilderRequiredMixin, View):
         project = get_object_or_404(BuildProject, pk=pk)
 
         if not can_manage(request.user, project):
-            return JsonResponse(
-                {"status": "error", "error": "Not authorized"}, status=403
-            )
+            return JsonResponse({"status": "error", "error": "Not authorized"}, status=403)
 
         # Check project is approved
         if project.status != "approved":
@@ -722,7 +778,7 @@ class BuildSandboxView(BuilderRequiredMixin, View):
             )
 
         # Trigger sandbox creation
-        success, result = create_sandbox_from_project(pk)
+        success, result = create_sandbox_from_project(pk, request.user, project.version)
 
         if success:
             return JsonResponse(
@@ -833,9 +889,7 @@ class PromoteProjectView(BuilderRequiredMixin, View):
 
         # Only the owner or an Admin can promote
         if not can_manage(request.user, project):
-            return JsonResponse(
-                {"status": "error", "error": "Not authorized"}, status=403
-            )
+            return JsonResponse({"status": "error", "error": "Not authorized"}, status=403)
 
         # Check project is in built status
         if project.status != "built":
@@ -851,9 +905,7 @@ class PromoteProjectView(BuilderRequiredMixin, View):
         try:
             data = json.loads(request.body) if request.body else {}
         except json.JSONDecodeError:
-            return JsonResponse(
-                {"status": "error", "error": "Invalid JSON"}, status=400
-            )
+            return JsonResponse({"status": "error", "error": "Invalid JSON"}, status=400)
 
         if not isinstance(data, dict):
             return JsonResponse({"status": "error", "error": "Expected a JSON object"}, status=400)
@@ -892,6 +944,10 @@ class RoomTriggersAPI(BuilderRequiredMixin, View):
     GET /builder/api/projects/<project_id>/rooms/<room_id>/triggers/
     POST /builder/api/projects/<project_id>/rooms/<room_id>/triggers/
     DELETE /builder/api/projects/<project_id>/rooms/<room_id>/triggers/<trigger_id>/
+
+    GET and successful writes return the project version. POST carries the
+    integer version beside the trigger fields; DELETE carries {"version": n}.
+    A stale client receives 409 and must reload before writing again.
     """
 
     def get(self, request, project_id, room_id):
@@ -907,22 +963,20 @@ class RoomTriggersAPI(BuilderRequiredMixin, View):
             room_data = rooms[room_id]
             triggers = room_data.get("triggers", [])
 
-            return JsonResponse({"triggers": triggers})
+            return JsonResponse({"triggers": triggers, "version": project.version})
         except BuildProject.DoesNotExist:
             return JsonResponse({"error": "Project not found"}, status=404)
 
     @staticmethod
-    def _save_map(project, map_data):
-        """Write map_data only if the project is still a draft at the version
-        we read; otherwise return a 409 response."""
-        updated = BuildProject.objects.filter(
-            pk=project.pk, status="draft", version=project.version
-        ).update(
+    def _save_map(project, map_data, expected_version):
+        """Write map_data only while draft at the version the client saw."""
+        updated = BuildProject.objects.filter(pk=project.pk, status="draft", version=expected_version).update(
             map_data=map_data,
             version=F("version") + 1,
             updated_at=timezone.now(),
         )
         if updated:
+            project.version = expected_version + 1
             return None
         project.refresh_from_db()
         if not project.is_editable():
@@ -949,6 +1003,15 @@ class RoomTriggersAPI(BuilderRequiredMixin, View):
                 trigger_data = json.loads(request.body)
             except json.JSONDecodeError:
                 return JsonResponse({"error": "Invalid JSON"}, status=400)
+            if not isinstance(trigger_data, dict):
+                return JsonResponse({"error": "Expected a JSON object"}, status=400)
+            expected_version = trigger_data.pop("version", None)
+            if type(expected_version) is not int:
+                return JsonResponse({"error": "version is required"}, status=400)
+            if expected_version != project.version:
+                return JsonResponse(
+                    {"error": "Project was modified by another session. Reload and try again."}, status=409
+                )
 
             # Validate trigger
             is_valid, error = validate_trigger(trigger_data)
@@ -973,9 +1036,7 @@ class RoomTriggersAPI(BuilderRequiredMixin, View):
                 triggers.append(trigger_data)
 
             if len(triggers) > MAX_TRIGGERS_PER_ROOM:
-                return JsonResponse(
-                    {"error": f"A room may have at most {MAX_TRIGGERS_PER_ROOM} triggers"}, status=400
-                )
+                return JsonResponse({"error": f"A room may have at most {MAX_TRIGGERS_PER_ROOM} triggers"}, status=400)
             timed = sum(
                 count_timed(triggers if rid == room_id else (r.get("triggers") or []))
                 for rid, r in rooms.items()
@@ -990,11 +1051,11 @@ class RoomTriggersAPI(BuilderRequiredMixin, View):
             room_data["triggers"] = triggers
             rooms[room_id] = room_data
             map_data["rooms"] = rooms
-            conflict = self._save_map(project, map_data)
+            conflict = self._save_map(project, map_data, expected_version)
             if conflict:
                 return conflict
 
-            return JsonResponse({"success": True, "trigger": trigger_data})
+            return JsonResponse({"success": True, "trigger": trigger_data, "version": project.version})
 
         except BuildProject.DoesNotExist:
             return JsonResponse({"error": "Project not found"}, status=404)
@@ -1008,6 +1069,17 @@ class RoomTriggersAPI(BuilderRequiredMixin, View):
             project = BuildProject.objects.get(id=project_id, user=request.user)
             if not project.is_editable():
                 return _locked_response(project)
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError:
+                return JsonResponse({"error": "Invalid JSON"}, status=400)
+            if not isinstance(data, dict) or type(data.get("version")) is not int:
+                return JsonResponse({"error": "version is required"}, status=400)
+            expected_version = data["version"]
+            if expected_version != project.version:
+                return JsonResponse(
+                    {"error": "Project was modified by another session. Reload and try again."}, status=409
+                )
             map_data = project.map_data or {}
             rooms = map_data.get("rooms", {})
 
@@ -1027,11 +1099,11 @@ class RoomTriggersAPI(BuilderRequiredMixin, View):
             room_data["triggers"] = new_triggers
             rooms[room_id] = room_data
             map_data["rooms"] = rooms
-            conflict = self._save_map(project, map_data)
+            conflict = self._save_map(project, map_data, expected_version)
             if conflict:
                 return conflict
 
-            return JsonResponse({"success": True})
+            return JsonResponse({"success": True, "version": project.version})
 
         except BuildProject.DoesNotExist:
             return JsonResponse({"error": "Project not found"}, status=404)
@@ -1052,11 +1124,10 @@ class TriggerActionsAPI(BuilderRequiredMixin, View):
             action_metadata[key] = {
                 "name": key.replace("_", " ").title(),
                 "description": self._get_action_description(key),
+                "parameters": ACTION_PARAMETERS[key],
             }
 
-        return JsonResponse(
-            {"actions": action_metadata, "conditions": list_condition_types()}
-        )
+        return JsonResponse({"actions": action_metadata, "conditions": list_condition_types()})
 
     def _get_action_description(self, action_name):
         """Get human-readable description for action."""

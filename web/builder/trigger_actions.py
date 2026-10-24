@@ -10,6 +10,7 @@ character's sheet (`vampire`, `stats`, `experience`, `hunger`, ...).
 """
 
 import logging
+import math
 import re
 
 from .markup import MXP_ERROR, contains_mxp
@@ -25,6 +26,8 @@ MAX_VALUE_LENGTH = 200
 
 
 def _is_primitive(value):
+    if isinstance(value, float) and not math.isfinite(value):
+        return False
     if value is None or isinstance(value, (bool, int, float)):
         return True
     return isinstance(value, str) and len(value) <= MAX_VALUE_LENGTH
@@ -55,6 +58,7 @@ def send_message(obj, message):
             obj.msg(message)
         except Exception as e:
             logger.error(f"Error sending message to {obj}: {e}")
+            raise
 
 
 def emit_message(location, message, exclude=None):
@@ -67,6 +71,7 @@ def emit_message(location, message, exclude=None):
             location.msg_contents(message, exclude=exclude)
         except Exception as e:
             logger.error(f"Error emitting message in {location}: {e}")
+            raise
 
 
 def set_attribute(obj, attr_name, value, target="room"):
@@ -85,6 +90,17 @@ def set_attribute(obj, attr_name, value, target="room"):
 def list_actions():
     """Return the available action names for UI display."""
     return list(ACTION_REGISTRY.keys())
+
+
+ACTION_PARAMETERS = {
+    "send_message": {"message": {"type": "text", "label": "Message", "required": True}},
+    "emit_message": {"message": {"type": "text", "label": "Message", "required": True}},
+    "set_attribute": {
+        "target": {"type": "select", "label": "Target", "options": ["room", "character"]},
+        "attr_name": {"type": "text", "label": "Attribute name", "required": True},
+        "value": {"type": "primitive", "label": "Value (JSON text, number, boolean or null)", "required": True},
+    },
+}
 
 
 # Registry mapping action names to their handler functions

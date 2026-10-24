@@ -1,0 +1,24 @@
+ROOM POLICIES
+
+The chronicle clock uses America/New_York. Day is 06:00 through 17:59;
+night is 18:00 through 05:59. Day-only and night-only rooms restrict entry
+for every character type. Existing exit and room locks still apply.
+
+Restricted rooms use a reviewed list of character IDs. Staff receive no
+automatic exception. An old restricted room with no clear list stays
+closed until its policy is reviewed; a new publication requires the list.
+
+A room's hunting modifier applies to whichever hunting ground you select.
+A positive modifier reduces Difficulty once, to a minimum of 1; a negative
+modifier increases it. The hunt result shows the contribution. Hunger,
+feeding, resonance and the 24-hour cooldown retain their usual rules.
+
+HAVENS
+
+Haven security, size, luxury, warding and hidden-location ratings are facts
+for Storyteller adjudication. They do not automatically grant bonuses,
+capacity, concealed identity, successful intrusion or magical protection.
+
+Ask staff to inspect the room's reviewed properties or the Haven facts
+relevant to intrusion, space, comfort, occult protection or concealment.
+Inspection does not roll or change outcomes.

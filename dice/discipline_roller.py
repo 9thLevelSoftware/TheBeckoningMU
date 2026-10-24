@@ -14,6 +14,7 @@ from typing import Any
 from world.v5_data import BLOOD_POTENCY, UnknownTrait, find_power
 
 from .dice_roller import MAX_DIFFICULTY, MAX_POOL, roll_v5_pool
+from .pool_modifiers import effect_modifiers_for_pool, impairment_for_pool, resolve_pool_traits
 from .rouse_checker import (
     HUNGER_5_REFUSAL,
     MAX_HUNGER,
@@ -135,10 +136,14 @@ def roll_discipline_power(
     surge_dice = _usable_surge(character, with_rouse)
     if surge_dice:
         pool_breakdown["Blood Surge"] = surge_dice
-    degeneration = min(0, character.dice_penalty()) if hasattr(character, "dice_penalty") else 0
-    if degeneration:
-        pool_breakdown["Degeneration (Humanity tracker full)"] = degeneration
-    total_pool = max(1, base_pool + bp_bonus + resonance_bonus + surge_dice + degeneration)
+    traits = resolve_pool_traits(trait_names)
+    impairment = impairment_for_pool(character, traits)
+    effects = effect_modifiers_for_pool(character, traits, context="noncombat" if target is None else None)
+    pool_breakdown.update(impairment["components"])
+    pool_breakdown.update(effects)
+    total_pool = max(
+        1, base_pool + bp_bonus + resonance_bonus + surge_dice + impairment["penalty"] + sum(effects.values())
+    )
     if total_pool > MAX_POOL:
         surge_note = f", including {surge_dice} Blood Surge dice; the surge is kept" if surge_dice else ""
         raise ValueError(f"Pool size cannot exceed {MAX_POOL} dice (got {total_pool}{surge_note})")
@@ -200,13 +205,23 @@ def _roll_defense(target, opposed_by: str) -> dict[str, Any]:
         raise PowerRefused(f"{getattr(target, 'key', target)} can't resist a power; name a character.")
     trait_names = parse_dice_pool(opposed_by)
     pool, breakdown = calculate_pool_from_traits(target, trait_names)
-    pool = min(MAX_POOL, max(1, pool))
+    traits = resolve_pool_traits(trait_names)
+    impairment = impairment_for_pool(target, traits)
+    effects = effect_modifiers_for_pool(target, traits, context="defense")
+    breakdown.update(impairment["components"])
+    breakdown.update(effects)
+    pool = min(MAX_POOL, max(1, pool + impairment["penalty"] + sum(effects.values())))
+    rolled = roll_v5_pool(pool_size=pool, hunger=target.dice_hunger, difficulty=0)
+    if effects.get("Fleetness"):
+        from commands.v5.utils.discipline_effects import consume_fleetness_defense
+
+        consume_fleetness_defense(target)
     return {
         "target": target,
         "opposed_by": opposed_by,
         "dice_pool": pool,
         "dice_pool_breakdown": breakdown,
-        "roll_result": roll_v5_pool(pool_size=pool, hunger=target.dice_hunger, difficulty=0),
+        "roll_result": rolled,
     }
 
 
@@ -346,7 +361,13 @@ def format_defense(defense: dict[str, Any]) -> str:
     dice = " ".join(str(die) for die in roll.regular_dice)
     hunger = " ".join(str(die) for die in roll.hunger_dice)
     shown = f"[{dice}]" + (f" Hunger [{hunger}]" if hunger else "")
-    return f"|w{name} resists|n ({defense['opposed_by']}): {shown} - |w{roll.total_successes}|n successes."
+    modifiers = {
+        label: value
+        for label, value in defense["dice_pool_breakdown"].items()
+        if label in ("Health impairment", "Degeneration (Humanity tracker full)", "Fleetness")
+    }
+    labelled = " [" + "; ".join(f"{label}: {value:+d}" for label, value in modifiers.items()) + "]" if modifiers else ""
+    return f"|w{name} resists|n ({defense['opposed_by']}){labelled}: {shown} - |w{roll.total_successes}|n successes."
 
 
 def _format_discipline_roll_message(

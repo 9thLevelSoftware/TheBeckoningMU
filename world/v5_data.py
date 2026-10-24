@@ -17,6 +17,11 @@ marked "UNVERIFIED" where they appear. Content from books other than the
 core book is kept apart (NON_CORE_CLANS, NON_CORE_DISCIPLINES) and is not
 offered to players.
 
+Existing advertised catalog values, including ritual defaults and creation
+allocations, are owner-approved provisional chronicle rules (2026-10-23),
+not a claim that every entry has primary-source verification. Ritual-specific
+facts absent from this catalog require authenticated Storyteller attestation.
+
 It also builds the trait registry (`TRAIT_REGISTRY`, `resolve_trait`) that
 `typeclasses.characters.Character.get_trait`/`set_trait` use to map a trait
 name to where it is stored on the character.
@@ -298,6 +303,16 @@ def _power(name, rouse, dice_pool, duration, description, *, opposed_by=None, am
 def _ritual(name, level, description, *, dice_pool="Intelligence + Blood Sorcery", opposed_by=None, rouse=1,
             note=None):
     ritual = {"name": name, "level": level, "description": description, "rouse": rouse, "dice_pool": dice_pool}
+    ritual["execution"] = {
+        "policy": "provisional_chronicle", "requires_learned": True, "minimum_rating": level,
+        "target": "staff_attested", "ingredients": "staff_attested", "rouse": rouse,
+        "casting_seconds": level * 5 * 60, "difficulty": level + 1,
+        "dice_pool": dice_pool, "opposed_by": opposed_by,
+        "duration": "staff_attested", "outcome": "staff_adjudicated",
+        "payment_timing": "staff_attested", "cancellation": "staff_attested",
+        "failure_consequences": "staff_attested", "opposed_ties": "staff_attested",
+        "preparation": "identified_staff_checkpoints" if name == "Escape to True Sanctuary" else "staff_attested",
+    }
     if opposed_by:
         ritual["opposed_by"] = opposed_by
     if note:

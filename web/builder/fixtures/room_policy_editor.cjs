@@ -1,0 +1,17 @@
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const start = html.indexOf('// Restricted policy helpers start');
+const end = html.indexOf('// Restricted policy helpers end');
+assert(start >= 0 && end > start, 'production policy controls must exist');
+const context = vm.createContext({canEdit:true, mapData:{rooms:{r1:{name:'Policy room',v5:{day_night:'restricted',restricted_characters:'legacy'}}},exits:{},objects:{}},markDirty:()=>{}});
+vm.runInContext(html.slice(start,end),context);
+vm.runInContext("storeRestrictedPolicy('r1','12, nope')",context);
+assert.equal(context.mapData.rooms.r1.v5.restricted_characters,'12, nope', 'invalid drafts retain exactly what was typed');
+vm.runInContext("storeRestrictedPolicy('r1','12, 34')",context);
+assert.equal(JSON.stringify(context.mapData.rooms.r1.v5.restricted_characters),'[12,34]');
+context.canEdit=false;
+vm.runInContext("storeRestrictedPolicy('r1','56')",context);
+assert.equal(JSON.stringify(context.mapData.rooms.r1.v5.restricted_characters),'[12,34]', 'readonly policy is preserved');
+process.stdout.write(JSON.stringify(context.mapData));

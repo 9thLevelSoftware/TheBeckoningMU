@@ -439,10 +439,13 @@ def format_status_display(character):
     # Sect
     output.append(f"\n|wSect:|n {char_status.sect}")
 
-    # Mechanical bonus
+    # Suggested modifier; the Storyteller decides whether it applies.
     bonus = char_status.get_status_bonus()
     if bonus > 0:
-        output.append(f"\n|wSocial Roll Bonus:|n +{bonus} dice")
+        output.append(
+            f"\n|wSuggested social modifier:|n +{bonus} dice, only when the Storyteller approves; "
+            "add it to your entered pool."
+        )
 
     # Reputation (if set)
     if char_status.reputation:
@@ -599,10 +602,13 @@ def format_character_status(character, char_status):
     # Sect
     output.append(f"\n|wSect:|n {char_status.sect}")
 
-    # Mechanical Bonus
+    # Suggested modifier; the Storyteller decides whether it applies.
     bonus = char_status.get_status_bonus()
     if bonus > 0:
-        output.append(f"\n|wSocial Roll Bonus:|n +{bonus} dice")
+        output.append(
+            f"\n|wSuggested social modifier:|n +{bonus} dice, only when the Storyteller approves; "
+            "add it to your entered pool."
+        )
 
     # Reputation
     if char_status.reputation:

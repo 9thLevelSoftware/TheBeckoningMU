@@ -57,8 +57,10 @@ class CmdGotoSandbox(Command):
 
         room = ObjectDB.objects.filter(pk=project.sandbox_room_id).first()
         if room and room.tags.has("sandbox") and room.is_typeclass("typeclasses.rooms.Room", exact=False):
-            self.caller.move_to(room)
-            self.caller.msg(f"Teleported to sandbox: {project.name}")
+            if self.caller.move_to(room):
+                self.caller.msg(f"Teleported to sandbox: {project.name}")
+            else:
+                self.caller.msg("Could not enter this sandbox.")
         else:
             self.caller.msg("Sandbox entry room not found. It may need cleanup.")
 

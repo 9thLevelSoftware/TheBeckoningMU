@@ -16,10 +16,11 @@ Only vampires roll Hunger dice (Character.dice_hunger).
 """
 
 from dice.dice_roller import MAX_DIFFICULTY, MAX_POOL, roll_v5_pool
+from dice.pool_modifiers import effect_modifiers_for_pool, impairment_for_pool, resolve_pool_traits
 from world.ansi_theme import BLOOD_RED, DARK_RED, GOLD, PALE_IVORY, RESET, SHADOW_GREY
 from world.v5_data import UnknownTrait
 
-from .discipline_effects import get_active_effects
+from .discipline_effects import active_power_bonus, consume_fleetness_defense
 
 DAMAGE_TYPES = ("superficial", "aggravated")
 DEFAULT_ATTACK_POOL = "Strength + Brawl"
@@ -27,15 +28,7 @@ DEFAULT_DEFENSE_POOL = "Dexterity + Athletics"
 IMPAIRMENT_PENALTY = -2
 
 
-def _effect_bonus(character, discipline, key):
-    """The first active effect bonus of ``key`` from ``discipline`` (0 if none)."""
-    for effect in get_active_effects(character):
-        if effect.get("discipline") == discipline and key in effect:
-            return effect.get(key, 0)
-    return 0
-
-
-def get_combat_pool(character, pool_desc, include_impairment=True):
+def get_combat_pool(character, pool_desc, include_impairment=True, *, context=None):
     """
     A combat dice pool from "Attribute + Skill", less impairment (a full
     Health track for this Physical test, and Degeneration; QR p.3).
@@ -46,7 +39,8 @@ def get_combat_pool(character, pool_desc, include_impairment=True):
     """
     base_pool = 0
     breakdown_parts = []
-    for part in (p.strip() for p in pool_desc.split('+')):
+    parts = [part.strip() for part in pool_desc.split('+')]
+    for part in parts:
         try:
             value = character.get_trait(part)
         except UnknownTrait:
@@ -55,16 +49,24 @@ def get_combat_pool(character, pool_desc, include_impairment=True):
         base_pool += value
         breakdown_parts.append(f"{part} {value}")
 
-    impairment = character.dice_penalty(physical=True) if include_impairment else 0
-    final_pool = max(1, min(MAX_POOL, base_pool + impairment))
+    traits = resolve_pool_traits(parts)
+    penalties = impairment_for_pool(character, traits) if include_impairment else {"penalty": 0, "components": {}}
+    impairment = penalties["penalty"]
+    effects = effect_modifiers_for_pool(character, traits, context=context)
+    effect_bonus = sum(effects.values())
+    final_pool = max(1, min(MAX_POOL, base_pool + impairment + effect_bonus))
 
     breakdown = " + ".join(breakdown_parts) + f" = {base_pool}"
     if impairment < 0:
         breakdown += f", {impairment} (impaired)"
-    if final_pool != base_pool + impairment:
+        breakdown += " [" + "; ".join(f"{label}: {value}" for label, value in penalties["components"].items()) + "]"
+    for label, value in effects.items():
+        breakdown += f", +{value} ({label})"
+    if final_pool != base_pool:
         breakdown += f" -> {final_pool}"
     return {"pool": final_pool, "base_pool": base_pool, "impairment": impairment,
-            "breakdown": breakdown, "error": None}
+            "breakdown": breakdown, "error": None, "effect_modifiers": effects,
+            "impairment_components": penalties["components"]}
 
 
 # The defender's standard defenses (core p.123-126): dodge with Dexterity +
@@ -103,7 +105,7 @@ def best_defense_pool(defender, attack_pool_desc):
     candidates = [DODGE_POOL]
     if not any(skill in RANGED_SKILLS for skill in skills):
         candidates += list(CLOSE_DEFENSE_POOLS)
-    return max(candidates, key=lambda desc: get_combat_pool(defender, desc)["base_pool"])
+    return max(candidates, key=lambda desc: get_combat_pool(defender, desc, context="defense")["pool"])
 
 
 def calculate_attack(attacker, defender, attack_pool_desc=DEFAULT_ATTACK_POOL, weapon=0,
@@ -127,22 +129,21 @@ def calculate_attack(attacker, defender, attack_pool_desc=DEFAULT_ATTACK_POOL, w
     """
     if not defense_pool_desc:
         defense_pool_desc = best_defense_pool(defender, attack_pool_desc)
-    attack = get_combat_pool(attacker, attack_pool_desc)
-    defense = get_combat_pool(defender, defense_pool_desc)
+    attack = get_combat_pool(attacker, attack_pool_desc, context="attack")
+    defense = get_combat_pool(defender, defense_pool_desc, context="defense")
     for pool in (attack, defense):
         if pool["error"]:
             return {"success": False, "error": pool["error"], "message": pool["error"]}
 
-    celerity = _effect_bonus(defender, "Celerity", "defense_bonus")
-    if celerity:
-        defense["pool"] = min(MAX_POOL, defense["pool"] + celerity)
-        defense["breakdown"] += f", +{celerity} (Celerity)"
-
     defense_result = roll_v5_pool(defense["pool"], defender.dice_hunger, 0)
+    if defense["effect_modifiers"].get("Fleetness"):
+        consume_fleetness_defense(defender)
     difficulty = min(MAX_DIFFICULTY, max(1, defense_result.total_successes))
     result = roll_v5_pool(attack["pool"], attacker.dice_hunger, difficulty)
 
-    potence_bonus = _effect_bonus(attacker, "Potence", "damage_bonus")
+    attack_traits = resolve_pool_traits(part.strip() for part in attack_pool_desc.split("+"))
+    close_attack = any(ref.category == "skills" and ref.key in ("brawl", "melee") for ref in attack_traits)
+    potence_bonus = active_power_bonus(attacker, "Prowess", "damage_bonus") if close_attack else 0
     success = result.is_success
     margin = max(1, result.total_successes - defense_result.total_successes) if success else 0
     damage = margin + weapon + potence_bonus if success else 0
@@ -199,7 +200,7 @@ def apply_damage(character, damage_amount, damage_type="superficial", halve=True
         return {"success": False, "message": f"Invalid damage type: {damage_type}", "health_status": ""}
 
     # Fortitude's damage reduction applies to Superficial damage only.
-    soak = _effect_bonus(character, "Fortitude", "damage_reduction") if damage_type == "superficial" else 0
+    soak = active_power_bonus(character, "Toughness", "damage_reduction") if damage_type == "superficial" else 0
     amount = max(0, damage_amount - soak)
     halved = False
     if damage_type == "superficial" and halve and character.halves_superficial:

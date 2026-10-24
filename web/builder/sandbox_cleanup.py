@@ -25,8 +25,10 @@ Cleanup never deletes the BuildProject record.
 """
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -109,14 +111,89 @@ def recorded_objects(project, *, require_sandbox=True):
     return rooms, exits, skipped
 
 
-def check_deletable(rooms, exits):
+def recorded_fixtures(project):
+    """Verify dedicated exact identities, reviewed provenance and placement.
+
+    This is deliberately separate from the Room/Exit deletion predicate.
+    No tags can add an object to this allowlist. Missing, moved, type-swapped,
+    account-bearing or nonempty fixtures refuse the entire operation.
+    """
+    from evennia.objects.models import ObjectDB
+
+    from .manifests import fixture_provenance
+    from .prototype_catalog import FIXTURE_TYPECLASS
+    from .revisions import approved_snapshot_hash
+
+    record = project.built_object_ids or {}
+    ids = record.get("fixtures", {})
+    definitions = (project.approved_map_data or {}).get("prototypes", {})
+    manifest = project.fixture_manifest or {}
+    if not ids and not definitions and not manifest:
+        return []
+    try:
+        placements = manifest["placements"]
+        valid = (
+            manifest["schema_version"] == 1
+            and manifest["project_id"] == project.pk
+            and manifest["approved_version"] == project.version
+            and manifest["approved_snapshot_hash"] == approved_snapshot_hash(project.approved_map_data)
+            and set(placements) == set(ids)
+            and set(placements) <= set(definitions)
+            and (record.get("cleanup_started") or set(placements) == set(definitions))
+        )
+        if not valid:
+            raise ValueError("manifest binding")
+        expected_ids = set(ids.values())
+        if len(expected_ids) != len(ids) or any(type(i) is not int for i in expected_ids):
+            raise ValueError("duplicate or invalid recorded ids")
+        objects = {obj.pk: obj for obj in ObjectDB.objects.filter(pk__in=expected_ids)}
+        tagged = ids_with_tags(expected_ids, [f"project_{project.pk}", "sandbox"])
+        if set(objects) != expected_ids or tagged != expected_ids:
+            raise ValueError("missing objects or provenance tags")
+        for key, entry in placements.items():
+            obj = objects[ids[key]]
+            reviewed = definitions[key]
+            provenance = fixture_provenance(project, key, reviewed)
+            if (
+                entry["object_id"] != obj.pk
+                or entry["typeclass"] != FIXTURE_TYPECLASS
+                or obj.db_typeclass_path != FIXTURE_TYPECLASS
+                or obj.db_destination_id is not None
+                or _has_player(obj)
+                or entry["map_room_id"] != reviewed["placement"]["room_id"]
+                or entry["room_id"] != record["rooms"][entry["map_room_id"]]
+                or obj.db_location_id != entry["room_id"]
+                or any(entry.get(field) != value for field, value in provenance.items())
+                or not isinstance(obj.db.builder_fixture, Mapping)
+                or dict(obj.db.builder_fixture) != provenance
+            ):
+                raise ValueError(f"fixture '{key}' identity or provenance")
+        if ObjectDB.objects.filter(db_location_id__in=expected_ids).exists():
+            raise ValueError("foreign fixture contents")
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise CleanupError(
+            "Recorded fixture identity, placement, contents or reviewed provenance no longer matches "
+            f"({exc}). Ask an Admin to inspect it."
+        ) from None
+    return list(objects.values())
+
+
+def check_deletable(rooms, exits, fixtures=()):
     """Raise CleanupError if deleting these rooms would touch anything else."""
     from evennia.objects.models import ObjectDB
 
     room_ids = [room.id for room in rooms]
     exit_ids = [exit_obj.id for exit_obj in exits]
-    inside = ObjectDB.objects.filter(db_location_id__in=room_ids).exclude(pk__in=exit_ids)
-    occupied = sorted({f"{obj.db_location.db_key} (#{obj.db_location_id})" for obj in inside if _has_player(obj)})
+    inside = ObjectDB.objects.filter(db_location_id__in=room_ids).exclude(
+        pk__in=exit_ids + [obj.pk for obj in fixtures]
+    )
+    occupied = sorted(
+        {
+            f"{obj.db_location.db_key} (#{obj.db_location_id})"
+            for obj in inside
+            if _has_player(obj) or obj.is_typeclass("typeclasses.characters.Character", exact=False)
+        }
+    )
     if occupied:
         raise CleanupError("A character is still inside: " + ", ".join(occupied) + ". Move them out first.")
     foreign = (
@@ -167,25 +244,58 @@ def _remove_scripts(object_ids):
 
 
 def _delete_rows(object_ids):
-    """Delete the objects' Attributes, then the objects (their tag and
-    Attribute links go with them); idmapper flushes each instance on
-    pre_delete. Returns how many objects were deleted."""
+    """Delete Attributes and objects as one short database persistence unit.
+
+    This queryset-only transaction contains no Evennia moves, object.delete
+    hooks, timers or reactor handoff. The outer cleanup remains autocommit.
+    Django deletion clears cached instance PKs before commit, so rollback
+    must also repair the preexisting idmapper references and handlers.
+    """
     from evennia.objects.models import ObjectDB
     from evennia.typeclasses.attributes import Attribute
 
     if not object_ids:
         return 0
-    attr_ids = ObjectDB.db_attributes.through.objects.filter(objectdb_id__in=object_ids).values_list(
-        "attribute_id", flat=True
+    objects = [(obj.pk, obj) for obj in ObjectDB.objects.filter(pk__in=object_ids)]
+    attr_ids = list(
+        ObjectDB.db_attributes.through.objects.filter(objectdb_id__in=object_ids).values_list("attribute_id", flat=True)
     )
-    Attribute.objects.filter(pk__in=list(attr_ids)).delete()
-    rows = ObjectDB.objects.filter(pk__in=object_ids)
-    count = rows.count()
-    rows.delete()
-    return count
+    cached_attributes = [(pk, Attribute.get_cached_instance(pk)) for pk in attr_ids]
+    try:
+        with transaction.atomic():
+            Attribute.objects.filter(pk__in=attr_ids).delete()
+            ObjectDB.objects.filter(pk__in=object_ids).delete()
+    except BaseException as exc:
+        failures = []
+        for pk, attribute in cached_attributes:
+            if attribute is None:
+                continue
+            try:
+                attribute.pk = pk
+                attribute.refresh_from_db()
+                Attribute.cache_instance(attribute)
+            except Exception:
+                logger.exception("Cleanup rollback: could not refresh cached Attribute #%s", pk)
+                failures.append(pk)
+        for pk, obj in objects:
+            try:
+                obj.pk = pk
+                obj.refresh_from_db()
+                ObjectDB.cache_instance(obj)
+                obj.attributes.reset_cache()
+                obj.tags.reset_cache()
+            except Exception:
+                logger.exception("Cleanup rollback: could not refresh cached object #%s", pk)
+                failures.append(pk)
+        if failures:
+            raise RuntimeError(
+                "Cleanup deletion failed and cached state could not be restored; staff inspection is required"
+            ) from exc
+        raise
+    return len(objects)
 
 
-def delete_recorded(rooms, exits):
+def delete_recorded(rooms, exits, fixtures=()):
     """
     Delete the given recorded exits and rooms in bulk (a handful of queries
     per step rather than ~45 per object, R-2): evict loose items, stop and
@@ -196,11 +306,14 @@ def delete_recorded(rooms, exits):
     """
     room_ids = [room.id for room in rooms]
     exit_ids = [exit_obj.id for exit_obj in exits]
+    fixture_ids = [obj.pk for obj in fixtures]
     deleted_rooms = deleted_exits = 0
     errors = []
     try:
-        _evict_contents(room_ids, exit_ids)
-        _remove_scripts(room_ids + exit_ids)
+        _evict_contents(room_ids, exit_ids + fixture_ids)
+        _remove_scripts(room_ids + exit_ids + fixture_ids)
+        if fixture_ids:
+            _delete_rows(fixture_ids)
         deleted_exits = _delete_rows(exit_ids)
         deleted_rooms = _delete_rows(room_ids)
     except Exception as e:
@@ -220,7 +333,12 @@ def cleanup_unit(project_id: int) -> dict[str, Any]:
     project has no sandbox or deleting it would touch anything else.
     """
     from .models import BuildProject
+    from .operation_runtime import OperationError, require_idle
 
+    try:
+        require_idle()
+    except OperationError as exc:
+        raise CleanupError(str(exc)) from exc
     project = BuildProject.objects.filter(pk=project_id).first()
     if project is None:
         raise CleanupError("Project not found")
@@ -228,6 +346,7 @@ def cleanup_unit(project_id: int) -> dict[str, Any]:
         raise CleanupError("Project has no active sandbox")
 
     rooms, exits, skipped = recorded_objects(project)
+    fixtures = recorded_fixtures(project)
     if skipped:
         # Clearing the record would leave these with no handle cleanup can
         # trust, so refuse until staff sort them out.
@@ -235,8 +354,11 @@ def cleanup_unit(project_id: int) -> dict[str, Any]:
             "Recorded sandbox objects no longer match the build (tags changed or an account "
             "is attached): " + ", ".join(f"#{i}" for i in skipped) + ". Ask an Admin to check them."
         )
-    check_deletable(rooms, exits)
-    deleted_rooms, deleted_exits, errors = delete_recorded(rooms, exits)
+    check_deletable(rooms, exits, fixtures)
+    deleted_rooms, deleted_exits, errors = delete_recorded(rooms, exits, fixtures)
+    from evennia.objects.models import ObjectDB
+
+    remaining_fixtures = set(ObjectDB.objects.filter(pk__in=[obj.pk for obj in fixtures]).values_list("id", flat=True))
 
     if errors:
         # Keep what's left on record (still built) so cleanup can be retried.
@@ -248,22 +370,35 @@ def cleanup_unit(project_id: int) -> dict[str, Any]:
             **record,
             "rooms": {k: v for k, v in (record.get("rooms") or {}).items() if v in remaining},
             "exits": {k: v for k, v in (record.get("exits") or {}).items() if v in remaining},
+            "fixtures": {k: v for k, v in (record.get("fixtures") or {}).items() if v in remaining_fixtures},
+            "cleanup_started": True,
         }
+        manifest = project.fixture_manifest
+        if manifest:
+            manifest = {
+                **manifest,
+                "placements": {
+                    key: entry
+                    for key, entry in manifest["placements"].items()
+                    if entry["object_id"] in remaining_fixtures
+                },
+            }
         BuildProject.objects.filter(pk=project_id, status="built").update(
-            built_object_ids=record, updated_at=timezone.now()
+            built_object_ids=record, fixture_manifest=manifest, updated_at=timezone.now()
         )
     else:
         BuildProject.objects.filter(pk=project_id, status="built").update(
             status="approved",
             sandbox_room_id=None,
             built_object_ids={},
+            fixture_manifest={},
             updated_at=timezone.now(),
         )
 
     return {
         "deleted_rooms": deleted_rooms,
         "deleted_exits": deleted_exits,
-        "deleted_objects": 0,
+        "deleted_objects": len(fixtures) - len(remaining_fixtures),
         "errors": errors,
     }
 

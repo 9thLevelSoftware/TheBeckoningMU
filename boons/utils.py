@@ -6,7 +6,7 @@ Helper functions for managing boons (Prestation) in Kindred society.
 
 from types import SimpleNamespace
 
-from django.db.models import Count
+from django.db.models import Count, Q
 
 from .models import BOON_WEIGHTS, OUTSTANDING_STATUSES, Boon
 
@@ -50,25 +50,130 @@ def is_character(obj):
     return inherits_from(obj, "typeclasses.characters.Character")
 
 
-def share_account(char1, char2):
-    """
-    True if both characters belong to one account (alts can't trade boons).
+def canonical_owner_id(character):
+    """Return persistent ownership, independent of puppet/playable links."""
+    from traits.models import CharacterBio
 
-    A character's account is its puppeting/linked account (`.account`, which
-    web chargen sets), or any account that lists it among its playable
-    characters.
-    """
-    for one, other in ((char1, char2), (char2, char1)):
-        account = one.account
-        if account and (other.account == account or other in account.characters.all()):
-            return True
-    return False
+    return CharacterBio.objects.filter(character_id=character.pk).values_list("account_id", flat=True).first()
+
+
+def share_account(char1, char2):
+    """Only canonical, non-null ownership establishes co-ownership."""
+    owner = canonical_owner_id(char1)
+    return owner is not None and owner == canonical_owner_id(char2)
+
+
+def boon_view_level(actor, boon):
+    """Keep reading authority separate from the existing ruling authority."""
+    if is_staff(actor):
+        return "staff"
+    if actor.pk in (boon.debtor_id, boon.creditor_id):
+        return "case"
+    if not boon.is_public:
+        return "none"
+    account = getattr(actor, "account", None)
+    return "case" if account and account.check_permstring("Harpy") else "summary"
+
+
+def project_boon(boon, view_level):
+    """Allowlisted projection; no participant prose enters a public summary."""
+    if view_level not in ("summary", "case", "staff"):
+        return {}
+    data = {
+        "ID": boon.pk, "Type": boon.get_boon_type_display(),
+        "Debtor": boon.debtor.key, "Creditor": boon.creditor.key,
+        "Status": boon.get_status_display(), "Original favor": boon.description,
+    }
+    if view_level in ("case", "staff"):
+        data.update({
+            "Visibility": "Public" if boon.is_public else "Private",
+            "Request": boon.called_in_description, "Case record": boon.fulfillment_description,
+            "Debtor confirmed": boon.debtor_confirmed, "Creditor confirmed": boon.creditor_confirmed,
+            "Disputed from": boon.disputed_from, "Dispute upheld": boon.dispute_upheld,
+            "Acknowledged by Harpy": boon.acknowledged_by_harpy,
+            "Harpy": boon.harpy.key if boon.harpy_id else "",
+            "Witnesses": ", ".join(boon.witnesses.values_list("db_key", flat=True)),
+            "Created": boon.created_date, "Accepted": boon.accepted_date,
+            "Called in": boon.called_in_date, "Fulfilled": boon.fulfilled_date,
+            "Modified": boon.modified_date,
+        })
+    if view_level == "staff":
+        data["Staff notes"] = boon.staff_notes
+    return data
+
+
+def format_boon_detail(projected):
+    """Render every projected value without truncating stored case text."""
+    return "\n".join(f"{label}: {value if value is not None else 'Not recorded'}" for label, value in projected.items())
 
 
 def is_staff(character):
     """Builder or higher on the character's account (superusers included)."""
     account = getattr(character, "account", None)
     return bool(account) and account.check_permstring("Builder")
+
+
+def _positive_boon_id(value):
+    """Validate user supplied IDs without consulting any hidden record."""
+    if isinstance(value, bool) or not str(value).isascii() or not str(value).isdigit() or int(value) <= 0:
+        raise ValueError("Boon cursor must be a positive integer.")
+    if int(value) > 9223372036854775807:
+        raise ValueError("Boon cursor must be a positive integer within the ID range.")
+    return int(value)
+
+
+def list_visible_boons(actor, *, mode, before=None, counterpart_id=None, page_size=20):
+    """Current visible records in stable descending-ID pages, with no hidden counts."""
+    if mode not in ("outstanding", "history", "adjudication"):
+        raise ValueError("Unknown boon discovery mode.")
+    if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size <= 0:
+        raise ValueError("Page size must be a positive integer.")
+    page_size = min(page_size, 100)
+    parties = Q(debtor_id=actor.pk) | Q(creditor_id=actor.pk)
+    records = Boon.objects.all()
+    # Apply the S1 read boundary before cursor selection and the limit.
+    if not is_staff(actor):
+        records = records.filter(Q(is_public=True) | parties)
+    if mode in ("outstanding", "history"):
+        records = records.filter(parties)
+    if mode == "outstanding":
+        records = records.filter(status__in=OUTSTANDING_STATUSES)
+    if counterpart_id is not None:
+        counterpart_id = _positive_boon_id(counterpart_id)
+        records = records.filter(Q(debtor_id=counterpart_id) | Q(creditor_id=counterpart_id))
+    if before is not None:
+        records = records.filter(pk__lt=_positive_boon_id(before))
+    found = list(records.select_related("debtor", "creditor", "harpy").order_by("-pk")[:page_size + 1])
+    shown = found[:page_size]
+    return SimpleNamespace(
+        rows=[project_boon(boon, boon_view_level(actor, boon)) for boon in shown],
+        next_before=shown[-1].pk if len(found) > page_size else None,
+    )
+
+
+def format_boon_page(page, command):
+    """Each row has enough identity and state to open the full record."""
+    output = [
+        f"#{row['ID']} - {row['Debtor']} → {row['Creditor']} - {row['Type']} - {row['Status']}"
+        f" | +boon/view {row['ID']}"
+        for row in page.rows
+    ]
+    if not output:
+        output.append("No visible boons on this page.")
+    if page.next_before is not None:
+        output.append(f"Next: {command} before={page.next_before}")
+    output.append("Pages reflect current records. Return to the first page to see new records.")
+    return "\n".join(output)
+
+
+def parse_boon_cursor(args):
+    """Parse the documented optional before=<id> command argument."""
+    args = args.strip()
+    if not args:
+        return None
+    if not args.startswith("before="):
+        raise ValueError("Use before=<positive boon ID>.")
+    return _positive_boon_id(args[len("before="):])
 
 
 def can_resolve(actor, boon):
@@ -577,9 +682,7 @@ def format_boon_ledger(caller, ledger):
     Returns:
         str: Formatted boon ledger display
     """
-    from world.ansi_theme import (
-        BLOOD_RED, DARK_RED, GOLD, PALE_IVORY, RESET, SHADOW_GREY
-    )
+    from world.ansi_theme import BLOOD_RED, DARK_RED, GOLD, PALE_IVORY, RESET, SHADOW_GREY
 
     output = []
     output.append("\n|c*" + "=" * 78 + "*|n")
@@ -631,6 +734,7 @@ def format_boon_ledger(caller, ledger):
     output.append(net_line)
 
     output.append(f"\n{SHADOW_GREY}Use |w+boon <character>|x to see boons with specific individuals.{RESET}")
+    output.append("Use |w+boon/list|n for every outstanding debt or |w+boon/history|n for complete history.")
 
     # Close the box
     output.append("\n|c*" + "=" * 78 + "*|n")
@@ -651,9 +755,7 @@ def format_boons_with_character(caller, target, boons, net_position):
     Returns:
         str: Formatted boons display
     """
-    from world.ansi_theme import (
-        PALE_IVORY, RESET, GOLD, BLOOD_RED, SHADOW_GREY
-    )
+    from world.ansi_theme import BLOOD_RED, GOLD, PALE_IVORY, RESET, SHADOW_GREY
 
     output = []
     output.append("\n|c*" + "=" * 78 + "*|n")
@@ -673,6 +775,7 @@ def format_boons_with_character(caller, target, boons, net_position):
         return "\n".join(output)
 
     # List boons
+    output.append("Complete history: |w+boon/history|n. Open any record with |w+boon/view <boon #>|n.")
     output.append(f"\n{PALE_IVORY}Boon History:{RESET}")
     for boon in boons[:10]:  # Last 10 boons
         if boon.debtor == caller:
@@ -682,6 +785,7 @@ def format_boons_with_character(caller, target, boons, net_position):
 
         status_color = GOLD if boon.status in OUTSTANDING_STATUSES else SHADOW_GREY
         output.append(f"\n#{boon.id} - {direction} - {PALE_IVORY}{boon.get_boon_type_display()}{RESET}")
+        output.append(f"  Detail: +boon/view {boon.id}")
         output.append(f"  Status: {status_color}{boon.status.title()}{RESET}")
         output.append(f"  {SHADOW_GREY}{boon.description[:60]}{'...' if len(boon.description) > 60 else ''}{RESET}")
 
@@ -702,9 +806,7 @@ def format_pending_boons(caller, pending):
     Returns:
         str: Formatted pending boons display
     """
-    from world.ansi_theme import (
-        PALE_IVORY, RESET, GOLD, BLOOD_RED, SHADOW_GREY
-    )
+    from world.ansi_theme import BLOOD_RED, GOLD, PALE_IVORY, RESET, SHADOW_GREY
 
     output = []
     output.append("\n|c*" + "=" * 78 + "*|n")
@@ -718,6 +820,7 @@ def format_pending_boons(caller, pending):
         has_pending = True
         output.append(f"\n{GOLD}To Accept (offered to you):{RESET}")
         for boon in pending['to_accept']:
+            output.append(f"  Complete case: +boon/view {boon.id}")
             output.append(f"  #{boon.id} - {boon.get_boon_type_display()} from {boon.debtor.key}")
             output.append(f"    {SHADOW_GREY}{boon.description[:60]}{RESET}")
             output.append(f"    {SHADOW_GREY}Use: +boonaccept {boon.id} or +boondecline {boon.id}{RESET}")
@@ -727,6 +830,7 @@ def format_pending_boons(caller, pending):
         has_pending = True
         output.append(f"\n{BLOOD_RED}Called In (you must repay):{RESET}")
         for boon in pending['called_in_on_you']:
+            output.append(f"  Complete case: +boon/view {boon.id}")
             output.append(f"  #{boon.id} - {boon.get_boon_type_display()} to {boon.creditor.key}")
             output.append(f"    {SHADOW_GREY}Request: {boon.called_in_description[:55]}{RESET}")
             output.append(f"    {SHADOW_GREY}When done, both of you confirm: +boonfulfill {boon.id} = <description>{RESET}")
@@ -736,6 +840,7 @@ def format_pending_boons(caller, pending):
         has_pending = True
         output.append(f"\n{PALE_IVORY}Awaiting Fulfillment (you called in):{RESET}")
         for boon in pending['awaiting_fulfillment']:
+            output.append(f"  Complete case: +boon/view {boon.id}")
             output.append(f"  #{boon.id} - {boon.get_boon_type_display()} from {boon.debtor.key}")
             output.append(f"    {SHADOW_GREY}Request: {boon.called_in_description[:55]}{RESET}")
             output.append(f"    {SHADOW_GREY}When repaid, confirm: +boonfulfill {boon.id} = <description>{RESET}")

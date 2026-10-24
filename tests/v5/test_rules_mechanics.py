@@ -315,10 +315,10 @@ class XPCostTableTests(EvenniaTest):
 
     def test_clan_discipline_new_level_x5(self):
         self.char.set_trait("Potence", 1)
-        self.assertEqual(self.spend("Potence", "discipline"), 10)
+        self.assertEqual(self.spend("Potence", "discipline", "Prowess"), 10)
 
     def test_other_discipline_new_level_x7(self):
-        self.assertEqual(self.spend("Auspex", "discipline"), 7)
+        self.assertEqual(self.spend("Auspex", "discipline", "Heightened Senses"), 7)
 
     # F-043: Caitiff disciplines cost new level x 6.
     def test_caitiff_discipline_cost(self):
@@ -326,7 +326,7 @@ class XPCostTableTests(EvenniaTest):
         cost, new_rating, _in_clan = xp_utils.get_xp_cost_discipline(self.char, "potence")
         self.assertEqual(new_rating, 1)
         self.assertEqual(cost, 6)
-        self.assertEqual(self.spend("Potence", "discipline"), 6)
+        self.assertEqual(self.spend("Potence", "discipline", "Lethal Body"), 6)
 
     def test_ritual_level_x3(self):
         self.char.clan = "Tremere"

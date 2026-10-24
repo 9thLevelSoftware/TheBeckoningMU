@@ -1,0 +1,15 @@
+{% extends "builder/base.html" %}
+{% block title %}NPC Persona Curation{% endblock %}
+{% block content %}
+<main style="max-width:1000px;margin:auto;padding:24px;">
+<h1>NPC persona curation</h1><p><a href="{% url 'narrative_ops' %}">Story Operations</a> · <a href="{% url 'narrative_ops_memories' %}">Memory curation</a></p>
+<p>Register persistent account-less NPC Characters. Profiles are player-facing context for opted-in stories.</p>
+<form method="get"><label>Search personas or NPCs <input name="q" value="{{ query }}" maxlength="100"></label><button>Search</button></form>
+<h2>Registered personas</h2>
+{% for persona in personas %}<article><h3>#{{ persona.pk }} {{ persona.character.key }}</h3><p>{{ persona.profile|linebreaksbr }}</p><p>Version {{ persona.version }} · registered by {{ persona.registered_by|default:"Legacy / unrecorded" }} · {{ persona.created_at }}</p><a href="{% url 'narrative_ops_persona_edit' persona.pk %}">Edit profile</a></article>{% empty %}<p>No matching personas.</p>{% endfor %}
+<nav aria-label="Persona pages">{% if personas.has_previous %}<a href="?q={{ query|urlencode }}&page={{ personas.previous_page_number }}">Previous</a>{% endif %} Page {{ personas.number }} of {{ personas.paginator.num_pages }} {% if personas.has_next %}<a href="?q={{ query|urlencode }}&page={{ personas.next_page_number }}">Next</a>{% endif %}</nav>
+<h2>Available NPC Characters</h2><p>Use a Character ID below in the registration form. Search by name or ID; a custom Character subclass can also be registered by its ID.</p>
+{% for npc in candidates %}<p>#{{ npc.id }} {{ npc.db_key }}</p>{% empty %}<p>No matching unregistered NPCs.</p>{% endfor %}
+<nav aria-label="NPC pages">{% if candidates.has_previous %}<a href="?q={{ query|urlencode }}&npc_page={{ candidates.previous_page_number }}">Previous NPCs</a>{% endif %} Page {{ candidates.number }} of {{ candidates.paginator.num_pages }} {% if candidates.has_next %}<a href="?q={{ query|urlencode }}&npc_page={{ candidates.next_page_number }}">Next NPCs</a>{% endif %}</nav>
+<h2>Register persona</h2><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Register persona</button></form>
+</main>{% endblock %}

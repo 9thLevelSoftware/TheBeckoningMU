@@ -9,6 +9,8 @@ from django.conf import settings
 from evennia.utils import create
 from evennia.utils.test_resources import EvenniaCommandTest
 
+from traits.models import CharacterBio
+
 from .commands import (
     CmdBoon,
     CmdBoonAccept,
@@ -29,6 +31,7 @@ class BoonLifecycleTests(EvenniaCommandTest):
             account.permissions.add(perm)
         char = create.create_object(settings.BASE_CHARACTER_TYPECLASS, key=name, location=self.room1, home=self.room1)
         char.account = account
+        CharacterBio.objects.create(character=char, account=account)
         return char
 
     def setUp(self):
@@ -165,6 +168,7 @@ class BoonLifecycleTests(EvenniaCommandTest):
         account = self.alice.account
         alt = create.create_object(settings.BASE_CHARACTER_TYPECLASS, key="Altea", location=self.room1, home=self.room1)
         account.characters.add(alt)  # playable, not puppeted
+        CharacterBio.objects.create(character=alt, account=account)
         output = self.call(CmdBoonGive(), "Altea minor = Self-dealing", caller=self.alice)
         self.assertIn("same account", output)
         alt.account = account  # puppeted / web-linked
@@ -233,6 +237,7 @@ class BoonLifecycleTests(EvenniaCommandTest):
         alt = create.create_object(settings.BASE_CHARACTER_TYPECLASS, key=key, location=self.room1, home=self.room1)
         alt.account = character.account
         character.account.characters.add(alt)
+        CharacterBio.objects.create(character=alt, account=character.account)
         return alt
 
     def test_harpy_cannot_rule_via_alt_on_same_account(self):

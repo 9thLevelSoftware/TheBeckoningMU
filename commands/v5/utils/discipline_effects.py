@@ -1,474 +1,397 @@
-"""
-Discipline Effect Tracking System
+"""Canonical effect creation, safe legacy normalization and effect lifecycle."""
 
-Manages active discipline powers with durations, ongoing effects,
-and Blood Sorcery rituals for V5.
-"""
-
+from collections import Counter
+from collections.abc import Mapping, Sequence
 from datetime import datetime
-import uuid
 from typing import Optional, Dict, List, Any
+import uuid
+
+from evennia.utils.dbserialize import deserialize
+from world.v5_data import DISCIPLINES, find_power
+
+EFFECT_SCHEMA_VERSION = 1
+ALCHEMY = "Thin-Blood Alchemy"
+PARAMETER_KEYS = frozenset({
+    "turns", "visibility", "enhanced", "disguised", "type", "target", "perception_bonus",
+    "shared_senses", "speed_boost", "defense_bonus", "damage_reduction", "health_levels",
+    "attraction", "untouchable", "night_vision", "claws", "damage_bonus", "transformed", "ritual",
+})
+DURATIONS = frozenset({"instant", "turn", "scene", "night", "permanent", "passive"})
+
+
+def make_effect(*, effect_id, source_kind, power, discipline, duration, parameters, applied,
+                turns_remaining=None):
+    """Build one versioned record using the existing duration/parameter meanings."""
+    if not isinstance(parameters, Mapping):
+        raise ValueError("Effect parameters must be a mapping")
+    return {"schema_version": EFFECT_SCHEMA_VERSION, "id": effect_id,
+            "activation_id": effect_id, "source_kind": source_kind, "power": power,
+            "discipline": discipline, "duration": duration, "parameters": deserialize(parameters),
+            "applied": applied, "turns_remaining": turns_remaining}
+
+
+def _catalog_effect(name, source_kind=None):
+    power = find_power(name)
+    if power is not None and source_kind in (None, "discipline"):
+        return power, "discipline", power["discipline"]
+    wanted = str(name or "").casefold()
+    for discipline, field, kind in ((ALCHEMY, "formulas", "alchemy"),
+                                     ("Blood Sorcery", "rituals", "ritual")):
+        if source_kind not in (None, kind):
+            continue
+        entries = DISCIPLINES[discipline].get(field, {})
+        groups = entries.values() if isinstance(entries, Mapping) else [entries]
+        for group in groups:
+            for entry in group:
+                if entry["name"].casefold() == wanted:
+                    return entry, kind, discipline
+    return None, source_kind or "unknown", None
+
+
+def _normalize_record(record, *, persist=False):
+    """Return (plain record, reasons); never reconstruct elapsed durations."""
+    if not isinstance(record, Mapping):
+        return deserialize(record), ["Unsupported non-mapping effect"]
+    effect = deserialize(record)
+    if effect.get("schema_version") not in (None, EFFECT_SCHEMA_VERSION):
+        return effect, ["Unsupported effect schema version"]
+    reasons = []
+    name = effect.get("power") or effect.get("name")
+    source = effect.get("source_kind") or ("alchemy" if effect.get("type") == "alchemy" else None)
+    catalog, kind, discipline = _catalog_effect(name, source)
+    if catalog is None:
+        reasons.append("Unknown effect source/power; mechanics require staff review")
+    elif effect.get("discipline") not in (None, discipline):
+        reasons.append("Effect discipline conflicts with its catalog source")
+    effect.setdefault("power", catalog["name"] if catalog else name or "Unknown Power")
+    effect.setdefault("discipline", discipline or "Unknown")
+    effect.setdefault("source_kind", kind)
+    effect["schema_version"] = EFFECT_SCHEMA_VERSION
+    params = effect.get("parameters", {})
+    if not isinstance(params, Mapping):
+        reasons.append("Malformed effect parameters")
+        # Preserve the original value; effect_parameters will refuse it.
+    else:
+        params = deserialize(params)
+        for key in PARAMETER_KEYS:
+            if key in effect and key not in ("type",):
+                if key in params and params[key] != effect[key]:
+                    reasons.append(f"Conflicting parameter: {key}")
+                else:
+                    params[key] = deserialize(effect[key])
+        effect["parameters"] = params
+    duration = effect.get("duration")
+    if not isinstance(duration, str) or duration not in DURATIONS:
+        reasons.append("Unknown duration; no automatic expiry")
+    if effect.get("duration") == "turn":
+        turns = effect.get("turns_remaining")
+        if not isinstance(turns, int) or isinstance(turns, bool):
+            reasons.append("Unknown remaining turns; no elapsed-duration reconstruction")
+    effect.setdefault("turns_remaining", None)
+    effect.setdefault("applied", None)
+    identity = effect.get("id")
+    if not isinstance(identity, str) or not identity.strip():
+        if identity not in (None, ""):
+            reasons.append("Malformed effect ID")
+        if persist:
+            if identity not in (None, ""):
+                effect.setdefault("legacy_id", identity)
+            effect["id"] = uuid.uuid4().hex
+    effect["mechanics_supported"] = not reasons
+    return effect, reasons
+
+
+def normalize_effects(character, *, persist=False, retire_instant=False):
+    """Inventory by default; explicit persistence assigns missing IDs once.
+
+    Unknown records/metadata and historical duplicates survive. Retirement
+    requires an explicit request plus a catalog formula with literal instant
+    duration (Counterfeit's dynamic duration is deliberately insufficient).
+    """
+    raw = character.db.active_effects
+    report = {"records": [], "changes": [], "unresolved": [], "retired": [], "retire_candidates": []}
+    if raw is None:
+        return report
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        report["unresolved"].append({"index": None, "reason": "Unsupported effect store", "record": deserialize(raw)})
+        return report
+    original = deserialize(raw)
+    counts = Counter(e.get("id") for e in original if isinstance(e, Mapping) and isinstance(e.get("id"), str))
+    for index, record in enumerate(original):
+        effect, reasons = _normalize_record(record, persist=persist)
+        if isinstance(effect, Mapping):
+            if isinstance(effect.get("id"), str) and counts[effect["id"]] > 1:
+                reasons.append("Duplicate effect ID; selective removal and mechanics require staff review")
+                if effect.get("schema_version") == EFFECT_SCHEMA_VERSION:
+                    effect["mechanics_supported"] = False
+            catalog, kind, _ = _catalog_effect(effect.get("power"), effect.get("source_kind"))
+            instant = (kind == "alchemy" and catalog is not None
+                       and catalog.get("duration_text") == "instant" and effect.get("duration") == "instant"
+                       and not reasons)
+            if instant:
+                candidate = {"index": index, "id": effect.get("id"), "power": effect.get("power")}
+                report["retire_candidates"].append(candidate)
+                if persist and retire_instant:
+                    report["retired"].append(candidate)
+                    report["changes"].append({"index": index, "action": "retired_verified_instant"})
+                    continue
+        for reason in reasons:
+            report["unresolved"].append({"index": index, "reason": reason, "record": deserialize(record)})
+        if effect != record:
+            report["changes"].append({"index": index, "action": "normalized"})
+        report["records"].append(effect)
+    if persist and report["records"] != original:
+        character.attributes.add("active_effects", report["records"])
+    return report
+
+
+def effect_parameters(effect: Mapping) -> Mapping:
+    """Safe mechanical boundary; unsupported records contribute no parameters."""
+    normalized, reasons = _normalize_record(effect)
+    if reasons or not isinstance(normalized, Mapping) or effect.get("mechanics_supported") is False:
+        return {}
+    params = normalized.get("parameters", {})
+    return params if isinstance(params, Mapping) else {}
+
+
+def active_power_bonus(character, power_name, parameter):
+    """Use the strongest supported named-power contribution, never a sum.
+
+    Unknown, duplicate-ID and malformed parameter records contribute nothing.
+    A legacy arbitrary number cannot exceed the user's current discipline.
+    """
+    catalog = find_power(power_name)
+    if catalog is None:
+        return 0
+    rating = character.get_trait(catalog["discipline"])
+    if rating < catalog["level"]:
+        return 0
+    bonuses = []
+    for effect in get_active_effects(character):
+        if str(effect.get("power", "")).casefold() != catalog["name"].casefold():
+            continue
+        value = effect_parameters(effect).get(parameter, 0)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            bonuses.append(min(value, rating))
+    return max(bonuses, default=0)
+
+
+def fleetness_defense_used(character):
+    """Persistent turn usage is independent of effect IDs and reactivation."""
+    return bool(character.attributes.get("fleetness_defense_used", default=False))
+
+
+def consume_fleetness_defense(character):
+    character.attributes.add("fleetness_defense_used", True)
 
 
 def apply_effect(character, power_dict: Dict[str, Any], duration: str,
-                 parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """
-    Apply a discipline power effect to a character.
-
-    Args:
-        character: The character object
-        power_dict: Dictionary containing power data (name, discipline, etc)
-        duration: Duration type - 'scene', 'turn', 'permanent', or 'instant'
-        parameters: Optional dict of effect-specific parameters
-
-    Returns:
-        Dict containing the created effect
-    """
-    parameters = parameters or {}
-
-    # Initialize active_effects if needed
-    if character.db.active_effects is None:
-        character.db.active_effects = []
-
-    # Don't track instant effects
-    if duration == 'instant':
+                 parameters: Optional[Dict[str, Any]] = None, *, effect_id=None, source_kind="discipline"):
+    """Append one new activation record; instant actions leave no lasting effect."""
+    if not duration or duration == "instant":
         return None
-
-    # Create effect dict
-    effect = {
-        'id': str(uuid.uuid4())[:8],  # Short unique ID
-        'power': power_dict.get('name', 'Unknown Power'),
-        'discipline': power_dict.get('discipline', 'Unknown'),
-        'duration': duration,
-        'turns_remaining': parameters.get('turns', 1) if duration == 'turn' else None,
-        'applied': datetime.now(),
-        'parameters': parameters
-    }
-
-    # Add effect to character
-    character.db.active_effects.append(effect)
-
+    params = deserialize(parameters) if isinstance(parameters, Mapping) else {}
+    effect = make_effect(effect_id=effect_id or uuid.uuid4().hex, source_kind=source_kind,
+                         power=power_dict.get("name", "Unknown Power"),
+                         discipline=power_dict.get("discipline", "Unknown"), duration=duration,
+                         parameters=params, applied=datetime.now(),
+                         turns_remaining=params.get("turns", 1) if duration == "turn" else None)
+    raw = character.db.active_effects
+    if raw is None:
+        effects = []
+    elif isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)):
+        effects = list(deserialize(raw))
+    else:
+        # Preserve an opaque legacy store as one uninterpreted record when an
+        # explicit activation needs to append. Do not discard or unpack it.
+        effects = [deserialize(raw)]
+    effects.append(effect)
+    character.attributes.add("active_effects", effects)
     return effect
 
 
 def remove_effect(character, effect_id: str) -> bool:
-    """
-    Remove an active effect from a character.
-
-    Args:
-        character: The character object
-        effect_id: The ID of the effect to remove
-
-    Returns:
-        bool: True if effect was removed, False if not found
-    """
-    if not character.db.active_effects:
+    """Remove exactly one canonical ID; malformed/ambiguous history survives."""
+    raw = character.db.active_effects
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)) or not isinstance(effect_id, str):
         return False
-
-    initial_count = len(character.db.active_effects)
-    character.db.active_effects = [
-        e for e in character.db.active_effects if e['id'] != effect_id
-    ]
-
-    return len(character.db.active_effects) < initial_count
+    matches = [i for i, effect in enumerate(raw) if isinstance(effect, Mapping) and effect.get("id") == effect_id]
+    if len(matches) != 1:
+        return False
+    effects = list(deserialize(raw))
+    effects.pop(matches[0])
+    character.attributes.add("active_effects", effects)
+    return True
 
 
 def get_active_effects(character, filter_discipline: Optional[str] = None) -> List[Dict[str, Any]]:
-    """
-    Get all active effects on a character.
-
-    Args:
-        character: The character object
-        filter_discipline: Optional discipline name to filter by
-
-    Returns:
-        List of effect dicts
-    """
-    if not character.db.active_effects:
-        return []
-
-    effects = character.db.active_effects
-
+    """Read normalized views without IDs/writes; retain opaque entries for display."""
+    report = normalize_effects(character)
+    effects = [effect if isinstance(effect, Mapping) else
+               {"power": "Unrecognized legacy effect", "discipline": "Unknown", "legacy_record": effect,
+                "mechanics_supported": False} for effect in report["records"]]
+    if report["unresolved"] and not effects:
+        effects = [{"power": "Unrecognized legacy effect store", "discipline": "Unknown",
+                    "mechanics_supported": False}]
     if filter_discipline:
-        effects = [e for e in effects if e.get('discipline', '').lower() == filter_discipline.lower()]
-
+        effects = [e for e in effects if str(e.get("discipline", "")).casefold() == filter_discipline.casefold()]
     return effects
 
 
 def tick_effects(character) -> List[Dict[str, Any]]:
-    """
-    Decrement turn-based effect durations and remove expired effects.
-
-    Args:
-        character: The character object
-
-    Returns:
-        List of expired effects that were removed
-    """
-    if not character.db.active_effects:
+    """Tick only recorded integer turn counters; preserve unknown history."""
+    raw = character.db.active_effects
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
         return []
-
-    expired = []
-    remaining = []
-
-    for effect in character.db.active_effects:
-        if effect['duration'] == 'turn' and effect['turns_remaining'] is not None:
-            effect['turns_remaining'] -= 1
-
-            if effect['turns_remaining'] <= 0:
-                expired.append(effect)
-            else:
-                remaining.append(effect)
+    expired, remaining = [], []
+    changed = False
+    # Support is a store-level decision: individually valid records can still
+    # have ambiguous duplicate identities. Keep their original data untouched.
+    report = normalize_effects(character)
+    unresolved_indices = {item["index"] for item in report["unresolved"]}
+    for index, effect in enumerate(deserialize(raw)):
+        turns = effect.get("turns_remaining") if isinstance(effect, Mapping) else None
+        if (isinstance(effect, Mapping) and effect.get("schema_version") in (None, EFFECT_SCHEMA_VERSION)
+                and index not in unresolved_indices and effect.get("duration") == "turn"
+                and isinstance(turns, int) and not isinstance(turns, bool)):
+            effect["turns_remaining"] = turns - 1
+            changed = True
+            (expired if effect["turns_remaining"] <= 0 else remaining).append(effect)
         else:
             remaining.append(effect)
-
-    character.db.active_effects = remaining
-
+    if changed:
+        character.attributes.add("active_effects", remaining)
+    # The existing staff tick is the explicit turn boundary. Do not infer time
+    # from timestamps, logins, activation IDs, or another character's actions.
+    if character.attributes.get("fleetness_defense_used") is True:
+        character.attributes.add("fleetness_defense_used", False)
     return expired
 
 
-def get_effect_description(effect: Dict[str, Any]) -> str:
-    """
-    Get a formatted description of an effect.
-
-    Args:
-        effect: The effect dict
-
-    Returns:
-        str: Formatted description
-    """
-    power = effect.get('power', 'Unknown')
-    discipline = effect.get('discipline', 'Unknown')
-    duration = effect.get('duration', 'unknown')
-
-    desc = f"{power} ({discipline})"
-
-    if duration == 'scene':
-        desc += " - Active until end of scene"
-    elif duration == 'turn':
-        turns = effect.get('turns_remaining', 0)
-        desc += f" - {turns} turn{'s' if turns != 1 else ''} remaining"
-    elif duration == 'permanent':
-        desc += " - Permanent effect"
-
-    return desc
+def get_effect_description(effect: Mapping) -> str:
+    if not isinstance(effect, Mapping):
+        return "Unrecognized legacy effect (staff review)"
+    description = f"{effect.get('power', effect.get('name', 'Unknown'))} ({effect.get('discipline', 'Unknown')})"
+    if effect.get("duration") == "scene":
+        description += " - Active until end of scene"
+    elif effect.get("duration") == "turn":
+        description += f" - {effect.get('turns_remaining', 'unknown')} turns remaining"
+    elif effect.get("duration") == "permanent":
+        description += " - Permanent effect"
+    return description
 
 
-def has_active_effect(character, power_name: str) -> Optional[Dict[str, Any]]:
-    """
-    Check if character has a specific power effect active.
-
-    Args:
-        character: The character object
-        power_name: Name of the power to check
-
-    Returns:
-        Effect dict if active, None otherwise
-    """
-    effects = get_active_effects(character)
-
-    for effect in effects:
-        if effect.get('power', '').lower() == power_name.lower():
-            return effect
-
-    return None
+def has_active_effect(character, power_name: str):
+    return next((effect for effect in get_active_effects(character)
+                 if str(effect.get("power", "")).casefold() == power_name.casefold()), None)
 
 
 def clear_all_effects(character) -> int:
-    """
-    Remove all active effects from a character.
-
-    Args:
-        character: The character object
-
-    Returns:
-        int: Number of effects removed
-    """
-    if not character.db.active_effects:
+    """Explicit staff clearing may remove all records, including unsupported ones."""
+    raw = character.db.active_effects
+    if raw is None:
         return 0
-
-    count = len(character.db.active_effects)
-    character.db.active_effects = []
-
+    count = len(raw) if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)) else 1
+    character.attributes.add("active_effects", [])
     return count
 
 
-# Power-specific effect handlers
+def power_effect_parameters(character, power, parameters=None, target=None):
+    """Named catalog contributions, assembled before creating one record.
 
-def apply_obfuscate_effect(character, power_name: str, parameters: Optional[Dict] = None):
+    Fleetness has licensed Basic Rules support; Prowess and Fortitude use the
+    owner's approved provisional catalog policy, not invented fixed bonuses.
     """
-    Apply Obfuscate power effects (invisibility, disguise, etc).
-
-    Args:
-        character: The character object
-        power_name: Name of the Obfuscate power
-        parameters: Optional effect parameters
-    """
-    power_name_lower = power_name.lower()
-
-    # Map power names to effects
-    if 'cloak' in power_name_lower or 'silence' in power_name_lower:
-        # Cloak of Shadows - invisibility
-        params = parameters or {}
-        params['visibility'] = 'invisible'
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Obfuscate'},
-                    'scene', params)
-
-    elif 'vanish' in power_name_lower:
-        # Vanish from Mind's Eye - enhanced invisibility
-        params = parameters or {}
-        params['visibility'] = 'vanished'
-        params['enhanced'] = True
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Obfuscate'},
-                    'scene', params)
-
-    elif 'mask' in power_name_lower:
-        # Mask of a Thousand Faces - disguise
-        params = parameters or {}
-        params['disguised'] = True
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Obfuscate'},
-                    'scene', params)
-
-
-def apply_dominate_effect(character, power_name: str, target=None, parameters: Optional[Dict] = None):
-    """
-    Apply Dominate power effects (mental commands, memory alteration).
-
-    Args:
-        character: The character object (user of power)
-        power_name: Name of the Dominate power
-        target: Target of the domination (if applicable)
-        parameters: Optional effect parameters
-    """
-    power_name_lower = power_name.lower()
-
-    if 'compel' in power_name_lower:
-        # Compel - simple command
-        params = parameters or {}
-        params['type'] = 'command'
-        params['target'] = str(target) if target else 'unknown'
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Dominate'},
-                    'scene', params)
-
-    elif 'mesmerize' in power_name_lower:
-        # Mesmerize - implant false emotion
-        params = parameters or {}
-        params['type'] = 'emotion'
-        params['target'] = str(target) if target else 'unknown'
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Dominate'},
-                    'scene', params)
+    params = deserialize(parameters) if isinstance(parameters, Mapping) else {}
+    name, discipline = power["name"].casefold(), power["discipline"]
+    if discipline == "Obfuscate":
+        if "cloak" in name or "silence" in name:
+            params["visibility"] = "invisible"
+        elif "vanish" in name:
+            params.update(visibility="vanished", enhanced=True)
+        elif "mask" in name:
+            params["disguised"] = True
+    elif discipline == "Dominate":
+        if "compel" in name or "mesmerize" in name:
+            params.update(type="command" if "compel" in name else "emotion", target=str(target) if target else "unknown")
+    elif discipline == "Auspex":
+        if "heightened" in name or "senses" in name:
+            params["perception_bonus"] = 2
+        elif "share" in name:
+            params["shared_senses"] = True
+    elif discipline == "Celerity":
+        if name == "fleetness":
+            params["dexterity_bonus"] = character.get_trait("Celerity")
+    elif discipline == "Potence":
+        if name == "prowess":
+            params["damage_bonus"] = character.get_trait("Potence")
+    elif discipline == "Fortitude":
+        if name == "resilience":
+            params["health_levels"] = character.get_trait("Fortitude")
+        elif name == "toughness":
+            params["damage_reduction"] = character.get_trait("Fortitude")
+    elif discipline == "Presence":
+        if "awe" in name:
+            params["attraction"] = True
+        elif "majesty" in name:
+            params["untouchable"] = True
+    elif discipline == "Protean":
+        if "eyes" in name and "beast" in name:
+            params["night_vision"] = True
+        elif "feral" in name or "weapons" in name:
+            params.update(claws=True, damage_bonus=2)
+        elif "shapechange" in name or "earth" in name:
+            params["transformed"] = True
+    return params
 
 
-def apply_auspex_effect(character, power_name: str, parameters: Optional[Dict] = None):
-    """
-    Apply Auspex power effects (heightened senses, telepathy).
-
-    Args:
-        character: The character object
-        power_name: Name of the Auspex power
-        parameters: Optional effect parameters
-    """
-    power_name_lower = power_name.lower()
-
-    if 'heightened' in power_name_lower or 'senses' in power_name_lower:
-        # Heightened Senses - enhanced perception
-        params = parameters or {}
-        params['perception_bonus'] = 2
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Auspex'},
-                    'scene', params)
-
-    elif 'share' in power_name_lower:
-        # Share the Senses - see through another's eyes
-        params = parameters or {}
-        params['shared_senses'] = True
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Auspex'},
-                    'scene', params)
+def _apply_specific(character, discipline, power_name, parameters=None, target=None):
+    power = {"name": power_name, "discipline": discipline}
+    params = power_effect_parameters(character, power, parameters, target)
+    return apply_effect(character, power, "scene", params)
 
 
-def apply_celerity_effect(character, power_name: str, parameters: Optional[Dict] = None):
-    """
-    Apply Celerity power effects (speed boosts, defense bonuses).
-
-    Args:
-        character: The character object
-        power_name: Name of the Celerity power
-        parameters: Optional effect parameters
-    """
-    power_name_lower = power_name.lower()
-
-    if 'fleetness' in power_name_lower:
-        # Fleetness - movement speed
-        params = parameters or {}
-        params['speed_boost'] = True
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Celerity'},
-                    'scene', params)
-
-    elif 'draught' in power_name_lower or 'elegance' in power_name_lower:
-        # Draught of Elegance - defense bonus
-        params = parameters or {}
-        params['defense_bonus'] = 2
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Celerity'},
-                    'scene', params)
+def apply_obfuscate_effect(character, power_name, parameters=None):
+    return _apply_specific(character, "Obfuscate", power_name, parameters)
 
 
-def apply_fortitude_effect(character, power_name: str, parameters: Optional[Dict] = None):
-    """
-    Apply Fortitude power effects (damage resistance, resilience).
-
-    Args:
-        character: The character object
-        power_name: Name of the Fortitude power
-        parameters: Optional effect parameters
-    """
-    power_name_lower = power_name.lower()
-
-    if 'resilience' in power_name_lower:
-        # Resilience - damage reduction
-        params = parameters or {}
-        params['damage_reduction'] = 2
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Fortitude'},
-                    'scene', params)
-
-    elif 'enduring' in power_name_lower:
-        # Enduring Beasts - enhanced toughness
-        params = parameters or {}
-        params['health_levels'] = 2
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Fortitude'},
-                    'scene', params)
+def apply_dominate_effect(character, power_name, target=None, parameters=None):
+    return _apply_specific(character, "Dominate", power_name, parameters, target)
 
 
-def apply_presence_effect(character, power_name: str, parameters: Optional[Dict] = None):
-    """
-    Apply Presence power effects (awe, majesty, emotional influence).
-
-    Args:
-        character: The character object
-        power_name: Name of the Presence power
-        parameters: Optional effect parameters
-    """
-    power_name_lower = power_name.lower()
-
-    if 'awe' in power_name_lower:
-        # Awe - attract attention
-        params = parameters or {}
-        params['attraction'] = True
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Presence'},
-                    'scene', params)
-
-    elif 'majesty' in power_name_lower:
-        # Majesty - cannot be attacked
-        params = parameters or {}
-        params['untouchable'] = True
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Presence'},
-                    'scene', params)
+def apply_auspex_effect(character, power_name, parameters=None):
+    return _apply_specific(character, "Auspex", power_name, parameters)
 
 
-def apply_protean_effect(character, power_name: str, parameters: Optional[Dict] = None):
-    """
-    Apply Protean power effects (transformations, animal features).
+def apply_celerity_effect(character, power_name, parameters=None):
+    return _apply_specific(character, "Celerity", power_name, parameters)
 
-    Args:
-        character: The character object
-        power_name: Name of the Protean power
-        parameters: Optional effect parameters
-    """
-    power_name_lower = power_name.lower()
 
-    if 'eyes' in power_name_lower and 'beast' in power_name_lower:
-        # Eyes of the Beast - night vision
-        params = parameters or {}
-        params['night_vision'] = True
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Protean'},
-                    'scene', params)
+def apply_fortitude_effect(character, power_name, parameters=None):
+    return _apply_specific(character, "Fortitude", power_name, parameters)
 
-    elif 'feral' in power_name_lower or 'weapons' in power_name_lower:
-        # Feral Weapons - claws
-        params = parameters or {}
-        params['claws'] = True
-        params['damage_bonus'] = 2
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Protean'},
-                    'scene', params)
 
-    elif 'shapechange' in power_name_lower or 'earth' in power_name_lower:
-        # Shapechange forms
-        params = parameters or {}
-        params['transformed'] = True
-        apply_effect(character,
-                    {'name': power_name, 'discipline': 'Protean'},
-                    'scene', params)
+def apply_presence_effect(character, power_name, parameters=None):
+    return _apply_specific(character, "Presence", power_name, parameters)
+
+
+def apply_protean_effect(character, power_name, parameters=None):
+    return _apply_specific(character, "Protean", power_name, parameters)
 
 
 # Blood Sorcery Ritual System
 
 def perform_ritual(character, ritual_name: str, ingredients: Optional[List[str]] = None) -> Dict[str, Any]:
-    """
-    Perform a Blood Sorcery ritual.
+    """Compatibility request path: never grant a free ritual or assume ingredients."""
+    from world.rituals.casting import begin_cast, prepare_cast
 
-    Args:
-        character: The character object
-        ritual_name: Name of the ritual
-        ingredients: Optional list of required ingredients
-
-    Returns:
-        Dict with success status and message
-    """
-    # Check if character has Blood Sorcery
-    blood_sorcery_level = character.get_trait('Blood Sorcery')
-
-    if blood_sorcery_level == 0:
-        return {
-            'success': False,
-            'message': "You do not know Blood Sorcery."
-        }
-
-    # Placeholder ritual system
-    # In full implementation, would check ritual level requirements,
-    # ingredients, casting time, etc.
-
-    result = {
-        'success': True,
-        'message': f"You begin the ritual of {ritual_name}...",
-        'ritual': ritual_name,
-        'casting_time': 'varies',
-        'ingredients_used': ingredients or []
-    }
-
-    # Apply ritual effect (basic placeholder)
-    ritual_lower = ritual_name.lower()
-
-    if 'ward' in ritual_lower or 'protection' in ritual_lower:
-        params = {'type': 'protective', 'ritual': ritual_name}
-        apply_effect(character,
-                    {'name': ritual_name, 'discipline': 'Blood Sorcery'},
-                    'scene', params)
-    elif 'scrying' in ritual_lower or 'clairvoyance' in ritual_lower:
-        params = {'type': 'divination', 'ritual': ritual_name}
-        apply_effect(character,
-                    {'name': ritual_name, 'discipline': 'Blood Sorcery'},
-                    'scene', params)
-    else:
-        # Generic ritual effect
-        params = {'type': 'ritual', 'ritual': ritual_name}
-        apply_effect(character,
-                    {'name': ritual_name, 'discipline': 'Blood Sorcery'},
-                    'permanent', params)
-
-    return result
+    try:
+        plan = prepare_cast(character, ritual_name, context={"requested_ingredients": list(ingredients or [])})
+        identity = begin_cast(character, plan)
+    except ValueError as error:
+        return {"success": False, "message": str(error), "cast_id": None}
+    return {"success": False, "request_created": True, "cast_id": identity,
+            "message": "Unpaid ritual request created; Builder attestation and caster confirmation required."}
 
 
 def get_power_duration(power_dict: Dict[str, Any]) -> Optional[str]:

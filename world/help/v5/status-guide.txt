@@ -51,7 +51,9 @@ Your total Status is the sum of the three, from 0 to 5.
 
 |yPolitical Influence:|n
   - The Storyteller may add Status to social pools in Camarilla
-    contexts; the game only displays Status and no roll adds it
+    contexts; the game only displays a suggested modifier and no
+    roll adds it automatically. Add an approved modifier to the
+    pool you enter.
   - Higher Status gets better hunting grounds
   - Access to domain resources and protection
 

@@ -181,7 +181,7 @@ class MxpMarkupTests(TestCase):
 
         resp = client.post(
             reverse("builder:room_triggers", args=[project.pk, "r2"]),
-            data=json.dumps(_trigger(parameters={"message": MXP_PAYLOAD})),
+            data=json.dumps(dict(_trigger(parameters={"message": MXP_PAYLOAD}), version=project.version)),
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 400)
@@ -289,7 +289,7 @@ class TriggerCapTests(TestCase):
         client.force_login(owner)
         resp = client.post(
             reverse("builder:room_triggers", args=[project.pk, "r1"]),
-            data=json.dumps(_trigger(id="one_more")),
+            data=json.dumps(dict(_trigger(id="one_more"), version=project.version)),
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 400)

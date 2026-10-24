@@ -461,19 +461,19 @@ class ImmutabilityTests(BuilderGateTestBase):
         # Version moved on since this copy was read: refused, map unchanged.
         stale = BuildProject.objects.get(pk=project.pk)
         BuildProject.objects.filter(pk=project.pk).update(version=5)
-        resp = RoomTriggersAPI._save_map(stale, _map("Stale"))
+        resp = RoomTriggersAPI._save_map(stale, _map("Stale"), stale.version)
         self.assertEqual(resp.status_code, 409)
         # Status left draft since this copy was read: refused, map unchanged.
         current = BuildProject.objects.get(pk=project.pk)
         BuildProject.objects.filter(pk=project.pk).update(status="submitted")
-        resp = RoomTriggersAPI._save_map(current, _map("Locked"))
+        resp = RoomTriggersAPI._save_map(current, _map("Locked"), current.version)
         self.assertEqual(resp.status_code, 409)
         project.refresh_from_db()
         self.assertEqual(project.map_data["rooms"]["r1"]["name"], "Hall")
         # A current draft copy writes and bumps the version.
         BuildProject.objects.filter(pk=project.pk).update(status="draft")
         fresh = BuildProject.objects.get(pk=project.pk)
-        self.assertIsNone(RoomTriggersAPI._save_map(fresh, _map("Saved")))
+        self.assertIsNone(RoomTriggersAPI._save_map(fresh, _map("Saved"), fresh.version))
         project.refresh_from_db()
         self.assertEqual(project.version, 6)
         self.assertEqual(project.map_data["rooms"]["r1"]["name"], "Saved")
