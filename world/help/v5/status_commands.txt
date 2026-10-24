@@ -28,6 +28,8 @@ See |yhelp status-guide|n for a conceptual overview of the Status system.
   - Sect affiliation
   - Earned Status
   - Position-granted Status
+  - Suggested social modifier, applied manually only with
+    Storyteller approval
 
 |WVIEWING POSITIONS:|n
 

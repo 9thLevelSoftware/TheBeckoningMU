@@ -6,3 +6,8 @@ class BuilderConfig(AppConfig):
     name = "web.builder"
     label = "builder"
     verbose_name = "Web Builder"
+
+    def ready(self):
+        from .operation_fences import install_fence_signals
+
+        install_fence_signals()

@@ -28,6 +28,74 @@ def _trigger(**overrides):
     return trigger
 
 
+class TriggerValidationTests(TestCase):
+    def test_message_and_parameter_schema(self):
+        for params in ({}, {"message": ""}, {"message": "   "}, {"message": 3}, {"message": "Cold", "forged": True}):
+            self.assertFalse(validate_trigger(_trigger(parameters=params))[0], params)
+        for value in (True, 2.5, None, "text"):
+            self.assertTrue(
+                validate_trigger(
+                    _trigger(
+                        action="set_attribute",
+                        parameters={"target": "character", "attr_name": "trigger_flag_seen", "value": value},
+                    )
+                )[0]
+            )
+        for params in (
+            {"target": "account", "attr_name": "trigger_flag_x", "value": 1},
+            {"target": "character", "attr_name": "experience", "value": 1},
+            {"target": "room", "attr_name": "flag", "value": {}},
+            {"target": "room", "attr_name": "flag"},
+        ):
+            self.assertFalse(validate_trigger(_trigger(action="set_attribute", parameters=params))[0])
+
+    def test_build_map_uses_same_parameter_schema(self):
+        from web.builder.validators import validate_build_map
+
+        for params in ({"message": "   "}, {"message": "Cold", "unknown": 1}):
+            self.assertTrue(
+                validate_build_map(
+                    {"rooms": {"r1": {"name": "Hall", "triggers": [_trigger(parameters=params)]}}, "exits": {}}
+                )
+            )
+
+    def test_trigger_endpoint_rejects_unknown_parameters(self):
+        owner = create.create_account(
+            "trigger_schema", "schema@example.com", "testpassword123", permissions=["Builder"]
+        )
+        project = BuildProject.objects.create(user=owner, name="Area", map_data={"rooms": {"r1": {"name": "Hall"}}})
+        client = Client()
+        client.force_login(owner)
+        response = client.post(
+            reverse("builder:room_triggers", args=[project.pk, "r1"]),
+            data=json.dumps(dict(_trigger(parameters={"message": "Cold", "unknown": 1}), version=project.version)),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Unknown parameters", response.json()["error"])
+
+    def test_save_project_rejects_stale_version_without_overwriting(self):
+        owner = create.create_account(
+            "trigger_version", "version@example.com", "testpassword123", permissions=["Builder"]
+        )
+        project = BuildProject.objects.create(
+            user=owner,
+            name="Area",
+            version=2,
+            map_data={"rooms": {"r1": {"name": "Hall", "triggers": [_trigger()]}}, "exits": {}},
+        )
+        client = Client()
+        client.force_login(owner)
+        response = client.post(
+            reverse("builder:save_project"),
+            data=json.dumps({"id": project.pk, "version": 1, "name": "Stale", "map_data": {"rooms": {}, "exits": {}}}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 409)
+        project.refresh_from_db()
+        self.assertEqual(project.map_data["rooms"]["r1"]["triggers"][0], _trigger())
+
+
 class TriggerDispatchTests(TestCase):
     def setUp(self):
         self.room = create.create_object("typeclasses.rooms.Room", key="Crypt", nohome=True)
@@ -130,7 +198,9 @@ class SetAttributeRestrictionTests(TestCase):
         client.force_login(owner)
         url = reverse("builder:room_triggers", args=[project.pk, "r1"])
         resp = client.post(
-            url, data=json.dumps(self._set("character", "experience", 9999)), content_type="application/json"
+            url,
+            data=json.dumps(dict(self._set("character", "experience", 9999), version=project.version)),
+            content_type="application/json",
         )
         self.assertEqual(resp.status_code, 400)
         project.refresh_from_db()

@@ -9,7 +9,7 @@
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
           rel="stylesheet"
-          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YcnS/1p0IHYJ76T0lZcAvhDs/keBoFCmWE="
+          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
           crossorigin="anonymous">
 
     <!-- Bootstrap Icons -->
@@ -133,7 +133,7 @@
             color: var(--builder-muted);
             font-size: 13px;
         }
-        .nav-user a {
+        .nav-user a, .nav-user button {
             color: var(--builder-muted);
             text-decoration: none;
             font-size: 12px;
@@ -142,7 +142,8 @@
             border: 1px solid var(--builder-border);
             transition: all 0.15s;
         }
-        .nav-user a:hover {
+        .nav-user button { background: transparent; cursor: pointer; font-family: inherit; }
+        .nav-user a:hover, .nav-user button:hover {
             color: var(--builder-text);
             border-color: var(--builder-border-hover);
         }
@@ -370,12 +371,34 @@
         <div class="nav-user">
             {% if user.is_authenticated %}
                 <span>{{ user.username }}</span>
-                <a href="{% url 'logout' %}">Log Out</a>
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit">Log Out</button>
+                </form>
             {% endif %}
         </div>
     </nav>
 
     {% block content %}{% endblock %}
+
+    <div id="page-feedback" role="status" aria-live="polite" class="alert alert-info"
+         style="position: fixed; bottom: 1rem; left: 1rem; right: 1rem; z-index: 2000;" hidden></div>
+    <dialog id="page-dialog" aria-labelledby="page-dialog-title" aria-describedby="page-dialog-message"
+            style="max-width: min(34rem, 90vw); border-radius: .5rem; padding: 1.5rem;">
+        <form id="page-dialog-form">
+            <h2 id="page-dialog-title" class="h5">Confirm action</h2>
+            <p id="page-dialog-message" style="white-space: pre-wrap;"></p>
+            <div id="page-dialog-input-group" hidden>
+                <label for="page-dialog-input">Reason</label>
+                <input id="page-dialog-input" class="form-control mb-3" type="text" autocomplete="off">
+            </div>
+            <div class="d-flex justify-content-end gap-2">
+                <button id="page-dialog-cancel" type="button" class="btn btn-secondary">Cancel</button>
+                <button id="page-dialog-continue" type="submit" class="btn btn-primary">Continue</button>
+            </div>
+        </form>
+    </dialog>
+    <script src="{% static 'builder/page-dialogs.js' %}"></script>
 
     <!-- Bootstrap 5 JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"

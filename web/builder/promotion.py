@@ -23,13 +23,15 @@ reactor (KD-6), validate-then-mutate (KD-7):
 import logging
 from typing import Any
 
+from django.db import transaction
 from django.utils import timezone
 from evennia.utils.create import create_object
 
 from web.main_thread import call_in_main_thread
 
-from .sandbox_cleanup import delete_recorded, plain_tags, recorded_objects
-from .validators import is_live_room
+from .manifests import live_manifest
+from .sandbox_cleanup import CleanupError, delete_recorded, plain_tags, recorded_fixtures, recorded_objects
+from .validators import is_live_room, validate_build_map
 
 logger = logging.getLogger(__name__)
 
@@ -152,11 +154,30 @@ def promote_unit(
     from .models import BuildProject
 
     # 1. Validate (no mutations).
+    from .operation_runtime import OperationError, require_idle
+
+    try:
+        require_idle()
+    except OperationError as exc:
+        raise PromotionError(str(exc), status=409) from exc
     project = BuildProject.objects.filter(pk=project_id).first()
     if project is None:
         raise PromotionError("Project not found", status=404)
     if project.status != "built" or not project.built_object_ids:
         raise PromotionError(f"Project must be in 'built' status (current: {project.status})")
+    if project.revision_intent == "replacement":
+        raise PromotionError(
+            "Test this replacement sandbox, then clean it up and apply the separately reviewed live replacement.",
+            status=409,
+        )
+    if project.current_live_revision_id is not None:
+        raise PromotionError("This publication lineage already has a live revision", status=409)
+    if project.built_object_ids.get("cleanup_started"):
+        raise PromotionError("Sandbox cleanup is incomplete; finish cleanup before rebuilding", status=409)
+    snapshot = project.approved_map_data or {}
+    map_errors = validate_build_map(snapshot.get("map_data"), resolved_prototypes=snapshot.get("prototypes", {}))
+    if map_errors:
+        raise PromotionError("Reviewed map requires a new draft and review: " + "; ".join(map_errors[:5]), status=409)
     room_id, direction = _reviewed_connection(project, connection_room_id, connection_direction)
 
     live_room = ObjectDB.objects.filter(pk=room_id).first()
@@ -164,11 +185,32 @@ def promote_unit(
         raise PromotionError(f"The reviewed connection room #{room_id} is no longer a live room", status=409)
 
     rooms, exits, skipped = recorded_objects(project)
+    try:
+        fixtures = recorded_fixtures(project)
+    except CleanupError as exc:
+        raise PromotionError(str(exc), status=409) from exc
     if skipped:
         raise PromotionError(
             "Recorded sandbox objects no longer match the build (tags changed or a player "
             "owns them): " + ", ".join(f"#{i}" for i in skipped)
         )
+    # Sandbox testing cannot change the reviewed entry policy for publication.
+    from world.room_rules import valid_restricted_characters
+
+    rooms_by_id = {room.pk: room for room in rooms}
+    for web_id, reviewed_room in snapshot["map_data"]["rooms"].items():
+        built_room = rooms_by_id.get(project.built_object_ids["rooms"].get(web_id))
+        if built_room is None:
+            raise PromotionError("A reviewed room is missing from the sandbox", status=409)
+        v5 = reviewed_room.get("v5") or {}
+        expected = v5.get("day_night") or "always"
+        actual = built_room.attributes.get("day_night", default="always") or "always"
+        policy = built_room.attributes.get("restricted_characters") if actual == "restricted" else None
+        if actual != expected or (
+            actual == "restricted"
+            and (not valid_restricted_characters(policy) or list(policy) != v5["restricted_characters"])
+        ):
+            raise PromotionError(f"Room '{web_id}' entry policy differs from its reviewed snapshot", status=409)
     entry_id = project.built_object_ids.get("entry")
     entry = next((room for room in rooms if room.id == entry_id), None)
     if entry is None:
@@ -182,7 +224,7 @@ def promote_unit(
 
     # 2. Mutate; 3. compensate on any error.
     project_tag = f"project_{project_id}"
-    objects = rooms + exits
+    objects = rooms + exits + fixtures
     removed, created = [], []
     try:
         # Untag every recorded object in one query (R-3), not per object.
@@ -197,13 +239,20 @@ def promote_unit(
         delete_recorded(leftover_rooms, leftover_exits)
 
         promoted_at = timezone.now()
-        updated = BuildProject.objects.filter(pk=project_id, status="built").update(
-            status="live",
-            promoted_at=promoted_at,
-            sandbox_room_id=None,
-            built_object_ids={},
-            updated_at=timezone.now(),
-        )
+        manifest = live_manifest(project, rooms, exits, created)
+        with transaction.atomic():
+            updated = BuildProject.objects.filter(
+                pk=project_id, status="built", current_live_revision__isnull=True
+            ).update(
+                status="live",
+                current_live_revision_id=project_id,
+                promoted_at=promoted_at,
+                sandbox_room_id=None,
+                built_object_ids={},
+                fixture_manifest={},
+                live_manifest=manifest,
+                updated_at=timezone.now(),
+            )
         if not updated:
             raise PromotionError("Project changed while it was being promoted", status=409)
     except BaseException:
@@ -251,6 +300,7 @@ def promote_unit(
     return {
         "promoted_rooms": len(rooms),
         "promoted_exits": len(exits),
+        "promoted_fixtures": len(fixtures),
         "created_exits": [
             {"id": e.id, "name": e.key, "source": e.location.id, "destination": e.destination.id} for e in created
         ],

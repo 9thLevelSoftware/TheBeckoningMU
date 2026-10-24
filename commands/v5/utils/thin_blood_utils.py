@@ -164,10 +164,12 @@ def use_alchemy(character, formula_name):
     effect = {"name": formula["name"], "description": formula["description"],
               "duration": formula.get("duration_text", formula.get("duration")),
               "dice_pool": formula.get("dice_pool"), "opposed_by": formula.get("opposed_by")}
-    effects = list(character.db.active_effects or [])
-    effects.append({"type": "alchemy", "name": formula["name"], "duration": formula.get("duration"),
-                    "description": formula["description"]})
-    character.db.active_effects = effects
+    from .discipline_effects import apply_effect
+
+    tracked = apply_effect(character, dict(formula, discipline=ALCHEMY), formula.get("duration"),
+                           {"description": formula["description"]}, source_kind="alchemy")
+    if tracked:
+        effect.update(id=tracked["id"], activation_id=tracked["activation_id"])
     return {"success": True, "message": f"You use {formula['name']}.", "effect": effect,
             "roll_result": roll_result, "rouse_result": rouse}
 

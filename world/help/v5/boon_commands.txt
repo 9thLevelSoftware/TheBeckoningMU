@@ -7,6 +7,21 @@ Kindred society. See |yhelp boons-guide|n for the conceptual overview.
 
 |WVIEWING BOONS:|n
 
+|y+boon/list [before=<id>]|n
+  List your outstanding accepted, called-in and disputed boons.
+|y+boon/history [before=<id>]|n
+  List all your boon records, including fulfilled, declined and canceled.
+  Follow the exact Next command to continue beyond twenty records. Pages
+  run newest ID first and reflect current records; return to the first
+  page for newly added boons. Each row links to its complete case.
+
+|y+boon/view <boon #>|n
+  Read the complete original favor and authorized case record, with paging
+  for long records. Actual debtor/creditor characters see public or private
+  cases; account alts have no participant access. Other players see only a
+  public summary. Harpies see full public cases; Builders see private cases
+  and staff notes. Reading never changes the boon.
+
 |y+boon|n
 |yboons|n
   View your complete boon ledger summary.
@@ -138,8 +153,10 @@ position with |y+statusadmin/position|n doesn't grant it.
   Reject a dispute: the boon stands and returns to accepted or called
   in. A boon whose dispute was rejected can't be disputed again.
 
-|y+boonadmin/list|n
-  List all public boons.
+|y+boonadmin/list [before=<id>]|n
+  Page through public records and your actual participant cases. Builders
+  also see private records. Follow the Next command to continue; a Harpy
+  gains no private access through account alts or this queue.
 
 |WBOON STATUS MEANINGS:|n
 

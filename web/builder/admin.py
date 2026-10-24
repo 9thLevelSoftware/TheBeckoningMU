@@ -19,6 +19,18 @@ class BuildProjectAdmin(admin.ModelAdmin):
         # Cleanup and promotion act on these ids, so they are never hand-edited.
         "sandbox_room_id",
         "built_object_ids",
+        "revision_of",
+        "lineage_root",
+        "revision_intent",
+        "submitted_prototypes",
+        "fixture_manifest",
+        "live_manifest",
+        "current_live_revision",
+        "replacement_claim",
+        "replacement_target",
+        "submitted_replacement",
+        "replacement_journal",
+        "retired_manifest",
         "created_at",
         "updated_at",
     ]

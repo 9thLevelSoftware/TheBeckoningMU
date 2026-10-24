@@ -380,6 +380,37 @@ class ResubmitTests(ChargenWebTestCase):
         self.assertEqual(data["character_data"], parse_submission(legal_payload()).as_dict())
         self.assertEqual(data["rejection_notes"], "Pick a different spread")
 
+    def test_edit_validation_allows_own_name_and_resubmit(self):
+        payload = legal_payload()
+        payload["concept"] = "A corrected concept"
+        payload["edit_character_id"] = self.char_id
+        response = self.post("/api/traits/character/validate/", payload, self.player_a)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"valid": True, "errors": []})
+        payload.pop("edit_character_id")
+        response = self.post(url(self.char_id, "resubmit"), payload, self.player_a)
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_edit_validation_requires_owner_and_editable_status(self):
+        payload = dict(legal_payload(), edit_character_id=self.char_id)
+        for account in (self.player_c, self.builder_b):
+            response = self.post("/api/traits/character/validate/", payload, account)
+            self.assertEqual(response.status_code, 404)
+        payload["edit_character_id"] = 99999999
+        self.assertEqual(self.post("/api/traits/character/validate/", payload, self.player_a).status_code, 404)
+        payload["edit_character_id"] = self.char_id
+        self.post(url(self.char_id, "resubmit"), legal_payload(), self.player_a)
+        self.assertEqual(self.post("/api/traits/character/validate/", payload, self.player_a).status_code, 409)
+
+    def test_edit_validation_keeps_other_name_uniqueness_and_create_behavior(self):
+        self.create_as(self.player_c, legal_payload(name="Taken Name"))
+        payload = dict(legal_payload(name="Taken Name"), edit_character_id=self.char_id)
+        response = self.post("/api/traits/character/validate/", payload, self.player_a)
+        self.assertFalse(response.json()["valid"])
+        self.assertIn("already exists", response.json()["errors"][0])
+        response = self.post("/api/traits/character/validate/", legal_payload(), self.player_a)
+        self.assertFalse(response.json()["valid"])
+
     def test_typo_is_rejected_and_the_sheet_is_unchanged(self):
         char = self.character(self.char_id)
         before = export_character(char)

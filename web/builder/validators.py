@@ -288,6 +288,8 @@ def _text(value, field, errors, label, required=False, max_length=MAX_DESC_LENGT
 
 
 def _validate_v5(v5, label, errors):
+    from world.room_rules import valid_restricted_characters
+
     from .v5_conditions import DANGER_LEVELS, LOCATION_TYPES
 
     if v5 is None:
@@ -304,6 +306,14 @@ def _validate_v5(v5, label, errors):
         value = v5.get(field)
         if value not in (None, "") and value not in allowed:
             errors.append(f"{label}: {field} must be one of {', '.join(allowed)}")
+    principals = v5.get("restricted_characters")
+    if v5.get("day_night") == "restricted":
+        if not valid_restricted_characters(principals):
+            errors.append(
+                f"{label}: restricted access requires 1-100 unique positive integer restricted_characters IDs"
+            )
+    elif principals not in (None, []) and not valid_restricted_characters(principals):
+        errors.append(f"{label}: restricted_characters must be 1-100 unique positive integer IDs")
     modifier = v5.get("hunting_modifier")
     low, high = HUNTING_MODIFIER_RANGE
     if modifier is not None and (not _is_int(modifier) or not low <= modifier <= high):
@@ -355,7 +365,7 @@ def _validate_triggers(triggers, label, errors):
         seen.add(trigger_id)
 
 
-def validate_build_map(map_data):
+def validate_build_map(map_data, *, resolved_prototypes=None):
     """
     Validate a map for submission and for the sandbox build.
 
@@ -433,6 +443,9 @@ def validate_build_map(map_data):
             error = validate_lock_string(locks)
             if error:
                 errors.append(f"{label}: {error}")
+    from .prototype_catalog import placement_errors
+
+    errors.extend(placement_errors(map_data, resolved_prototypes))
     return errors
 
 

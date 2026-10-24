@@ -159,9 +159,12 @@ const ChargenCore = (function () {
 
         const discDots = Object.values(state.disciplines).reduce(function (s, v) { return s + Number(v || 0); }, 0);
         let wantDisc = rules.discipline_dots.reduce(function (s, v) { return s + v; }, 0);
-        if (state.clan === 'Thin-Blood') wantDisc = 0;
+        if (state.clan === 'Thin-Blood') {
+            const merits = new Set(state.advantages.filter(function (a) { return Number(a.dots) > 0; }).map(function (a) { return a.name; }));
+            wantDisc = Number(merits.has('Thin-blood Alchemist')) + Number(merits.has('Discipline Affinity'));
+        }
         else if (takesPredator(state) && state.predator_type) wantDisc += 1;
-        out.push(['Discipline dots', discDots, wantDisc, state.clan === 'Thin-Blood' ? discDots <= 2 : discDots === wantDisc]);
+        out.push(['Discipline dots', discDots, wantDisc, discDots === wantDisc]);
         out.push(['Powers', state.powers.length, discDots - (state.disciplines['Thin-Blood Alchemy'] || 0),
                   state.powers.length === discDots - (state.disciplines['Thin-Blood Alchemy'] || 0)]);
 
@@ -183,8 +186,15 @@ const ChargenCore = (function () {
         return out;
     }
 
+    function validationPayload(state, editCharacterId) {
+        const payload = buildPayload(state);
+        if (editCharacterId) payload.edit_character_id = Number(editCharacterId);
+        return payload;
+    }
+
     return {
         storageKey: storageKey, newState: newState, buildPayload: buildPayload,
+        validationPayload: validationPayload,
         stateFromSubmission: stateFromSubmission, skillDistribution: skillDistribution,
         ageOption: ageOption, takesPredator: takesPredator, advantageKind: advantageKind, tallies: tallies
     };
@@ -583,7 +593,7 @@ if (typeof document !== 'undefined') {
         }
 
         async function checkWithServer() {
-            const response = await postJSON('/api/traits/character/validate/', C.buildPayload(state));
+            const response = await postJSON('/api/traits/character/validate/', C.validationPayload(state, editCharacterId));
             const data = await response.json().catch(function () { return {}; });
             const errors = data.errors || (data.error ? [data.error] : []);
             showErrors(errors);

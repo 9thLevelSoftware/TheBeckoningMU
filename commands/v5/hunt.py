@@ -25,7 +25,7 @@ from world.ansi_theme import (
 )
 from world.v5_data import HUNTING_GROUNDS, PREDATOR_TYPES
 
-from .utils.hunting_utils import find_ground, hunt, hunting_pool
+from .utils.hunting_utils import find_ground, format_hunt_outcome, hunt, hunting_pool, serialize_hunt_outcome
 
 GROUND_LIST = ", ".join(f"{key} ({data['difficulty']})" for key, data in HUNTING_GROUNDS.items())
 
@@ -49,7 +49,7 @@ class CmdHunt(default_cmds.MuxCommand):
         +hunt/reset <character>             (staff: allow another hunt now)
         +hunt/story opt-in | opt-out
         +hunt/story start [hunting ground] [persona #dbref]
-        +hunt/story resume [action] | complete
+        +hunt/story resume [action] | status | complete
 
     Hunting grounds and their difficulty (QR p.12):
         slum      2  slums, Skid Row, housing projects
@@ -112,24 +112,14 @@ class CmdHunt(default_cmds.MuxCommand):
         from dice.commands import forget_roll
 
         forget_roll(caller)  # a Willpower re-roll can't reach back past this roll
+        hunger_before = caller.hunger
         result = hunt(caller, ground, alternative=alternative)
         if result["refused"]:
             caller.msg(f"|y{result['refused']}|n")
             return
 
-        output = _banner("SUCCESSFUL HUNT" if result["success"] else "HUNT FAILED")
-        output.append(
-            f"{GOLD}Hunting roll:{RESET} {result['pool_text']} ({result['breakdown']}) vs Difficulty "
-            f"{result['difficulty']} ({ground})"
-        )
-        output.append(result["roll"].format_result(show_details=True))
-        output.append("")
-        output.append(result["message"])
-        if result["resonance"]:
-            output.append(f"Resonance: |y{result['resonance']['type']}|n ({result['resonance']['intensity_name']})")
-        if result["complication"]:
-            output.append(f"|rComplication:|n {result['complication']['desc']} (the Storyteller decides what follows)")
-        caller.msg("\n".join(output))
+        result.update(location=ground, hunger_before=hunger_before, hunger_after=caller.hunger)
+        caller.msg(format_hunt_outcome(serialize_hunt_outcome(result)))
 
     def _story_hunt(self):
         """Run the opt-in prose-only hunt flow with deterministic mechanics."""
@@ -163,6 +153,16 @@ class CmdHunt(default_cmds.MuxCommand):
             set_consent(account, caller, False)
             caller.msg("Story hunting is disabled and your active story session is closed.")
             return
+        if verb == "status":
+            sessions = caller.narrative_sessions.all()
+            session = sessions.filter(status=StorySession.Status.ACTIVE).first() or sessions.order_by("-created_at", "-pk").first()
+            if session is None:
+                caller.msg("You have no stored story hunt result.")
+                return
+            caller.msg(f"Story hunt status: {session.status}")
+            caller.msg(format_hunt_outcome(session.deterministic_outcome))
+            return
+
         consent = NarrativeConsent.objects.filter(account=account, character=caller, opted_in=True).first()
         if consent is None:
             caller.msg("Story hunting is opt-in. Use |w+ hunt/story opt-in|n before any story request.")
@@ -219,6 +219,7 @@ class CmdHunt(default_cmds.MuxCommand):
                     caller.msg(f"|y{exc}|n")
                     return
                 session = start_session(caller, location, result, persona=persona)
+                caller.msg(format_hunt_outcome(result))
             action = f"Begin the hunt scene at {location}."
         else:
             session = caller.narrative_sessions.filter(status=StorySession.Status.ACTIVE).first()
@@ -228,14 +229,10 @@ class CmdHunt(default_cmds.MuxCommand):
             action = rest if verb == "resume" and rest else (
                 "Resume the scene." if verb == "resume" else self.args.strip()
             )
-        session.current_action = action
-        session.save(update_fields=("current_action", "updated_at"))
         try:
             deferred = generate_story(session, action)
         except (RuntimeError, PermissionError, ValueError) as exc:
-            session.current_action = ""
-            session.save(update_fields=("current_action", "updated_at"))
-            caller.msg(f"|r{exc}|n")
+            caller.msg(f"|rNarration unavailable: {exc}|n")
             return
         caller.msg("|wYour action is being woven into the hunt scene...|n")
 
@@ -260,17 +257,8 @@ class CmdHunt(default_cmds.MuxCommand):
         result = hunt(caller, ground)
         if result["refused"]:
             raise ValueError(result["refused"])
-        feeding = result["feeding"] or {}
-        complication = result["complication"]
-        return {
-            "hunting_success": bool(result["success"]),
-            "location": ground,
-            "hunger_before": hunger_before,
-            "hunger_after": caller.hunger,
-            "hunger_reduction": feeding.get("slaked", 0),
-            "resonance": result["resonance"],
-            "complications": [complication] if complication else [],
-        }
+        result.update(location=ground, hunger_before=hunger_before, hunger_after=caller.hunger)
+        return serialize_hunt_outcome(result)
 
     def _reset(self):
         from dice.commands import _is_staff

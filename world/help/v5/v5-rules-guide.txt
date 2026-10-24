@@ -2,9 +2,12 @@
 |W|                  THE V5 RULES IN ONE PLACE                       |
 |[R+===================================================================+|n
 
-TheBeckoningMU plays |yVampire: The Masquerade 5th Edition|n as the core
-book and its Quick Reference (QR) write it. This page is the summary; the
-other help files give the commands and the detail, and point back here.
+TheBeckoningMU uses |yVampire: The Masquerade 5th Edition|n and its Quick
+Reference (QR). Existing catalog values and creation allocations are
+approved provisional chronicle rules while exact source review continues.
+They are not all independently verified book rules. Storytellers adjudicate
+unstated ritual details and Haven outcomes; see help room-rules-guide and
+the specific command guides. This page summarizes the implemented rules.
 
 |WDICE|n (QR p.3-4; help roll-guide)
 

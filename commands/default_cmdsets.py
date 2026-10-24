@@ -73,6 +73,10 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
 
         self.add(CmdEffects)
 
+        from commands.v5.rituals import CmdRitual
+
+        self.add(CmdRitual)
+
         # Add V5 Humanity commands
         from commands.v5.humanity import (
             CmdHumanity,
@@ -95,10 +99,11 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         self.add(CmdHealth)
 
         # Staff: torpor and NPCs
-        from commands.v5.staff import CmdNPC, CmdTorpor
+        from commands.v5.staff import CmdNPC, CmdRoomRules, CmdTorpor
 
         self.add(CmdTorpor)
         self.add(CmdNPC)
+        self.add(CmdRoomRules)
 
         # Add V5 Thin-Blood commands
         from commands.v5.thinblood import CmdAlchemy, CmdDaylight

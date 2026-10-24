@@ -405,6 +405,7 @@ class ChargenRulesAPI(BaseAPIView):
 def export_character(character):
     """The character sheet as JSON, read only through the Character accessors."""
     bio = character.bio
+    advantages = character.advantages
     return {
         "name": character.key,
         "clan": character.clan,
@@ -422,7 +423,16 @@ def export_character(character):
         "specialties": character.specialties,
         "disciplines": character.discipline_levels,
         "discipline_powers": character.known_powers,
-        "advantages": character.advantages,
+        "advantages": advantages,
+        "age_category": character.age_category,
+        "convictions": character.convictions,
+        "touchstones": character.touchstones,
+        "rituals": character.known_rituals,
+        "formulas": character.known_formulas,
+        "advantage_notes": {
+            kind: {name: character.advantage_note(kind, name) for name in advantages[kind]}
+            for kind in ("merits", "flaws")
+        },
         "xp": {"earned": character.xp_earned, "spent": character.xp_spent, "unspent": character.xp},
         "status": bio.status if bio else None,
     }
@@ -490,9 +500,23 @@ class CharacterValidationAPI(BaseAPIView):
     """POST a submission; answers {"valid", "errors"} without creating anything."""
 
     def post(self, request):
-        sub, errors = _parse_and_validate(request.json)
+        exclude_id = None
+        if "edit_character_id" in request.json:
+            character_id = request.json["edit_character_id"]
+            if type(character_id) is not int or character_id <= 0:
+                return error("Invalid edit character ID", 400)
+            # Scope the lookup to the owner so foreign and missing IDs disclose
+            # the same response. Staff visibility does not grant edit authority.
+            bio = CharacterBio.objects.filter(character_id=character_id, account=request.user).first()
+            if bio is None:
+                return error("Character not found", 404)
+            if not bio.can_transition("submitted"):
+                return error("Only rejected or revoked characters can be edited and resubmitted", 409)
+            exclude_id = bio.character_id
+        submission = {key: value for key, value in request.json.items() if key != "edit_character_id"}
+        sub, errors = _parse_and_validate(submission)
         if sub and not errors:
-            problem = name_problem(sub.name, request.user)
+            problem = name_problem(sub.name, request.user, exclude_id=exclude_id)
             errors = [problem] if problem else []
         return JsonResponse({"valid": not errors, "errors": errors})
 

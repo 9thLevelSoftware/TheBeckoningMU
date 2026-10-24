@@ -1,106 +1,59 @@
-from django import forms
+"""Audit-only admin. All managed writes go through Builder Story Operations."""
+
 from django.contrib import admin
-from django.utils import timezone
-from evennia.objects.models import ObjectDB
+from django.core.exceptions import PermissionDenied
+from django.urls import reverse
+from django.utils.html import format_html
+
+from chronicle.services import staff_authorized
 
 from .models import MemoryFact, NarrativePersona
-from .services import validate_persona_character
 
 
-class NarrativePersonaForm(forms.ModelForm):
-    character = forms.ModelChoiceField(queryset=ObjectDB.objects.filter(vtm_bio__isnull=True))
-    profile = forms.CharField(
-        required=False,
-        widget=forms.Textarea,
-        help_text="Player-facing profile sent only to opted-in story generation. Do not add secrets.",
-    )
+class _CurationReadOnlyAdmin(admin.ModelAdmin):
+    actions = None
+    list_per_page = 20
+    curation_route = ""
 
-    class Meta:
-        model = NarrativePersona
-        fields = ("character", "profile")
+    def has_module_permission(self, request):
+        return staff_authorized(request.user)
 
-    def clean_character(self):
-        character = self.cleaned_data["character"]
-        try:
-            return validate_persona_character(character)
-        except ValueError as error:
-            raise forms.ValidationError(str(error)) from error
+    def has_view_permission(self, request, obj=None):
+        return staff_authorized(request.user)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        return tuple(field.name for field in self.model._meta.concrete_fields) + ("curation_link",)
+
+    def get_fields(self, request, obj=None):
+        return self.get_readonly_fields(request, obj)
+
+    @admin.display(description="Builder curation")
+    def curation_link(self, obj):
+        return format_html('<a href="{}">Review in Story Operations</a>', reverse(self.curation_route, args=(obj.pk,)))
+
+    def save_model(self, request, obj, form, change):
+        raise PermissionDenied("Managed narrative records are read-only in admin. Use Story Operations.")
 
 
 @admin.register(NarrativePersona)
-class NarrativePersonaAdmin(admin.ModelAdmin):
-    form = NarrativePersonaForm
-    list_display = ("character", "registered_by", "updated_at")
+class NarrativePersonaAdmin(_CurationReadOnlyAdmin):
+    curation_route = "narrative_ops_persona_edit"
+    list_display = ("character", "version", "registered_by", "updated_by", "updated_at")
     search_fields = ("character__db_key", "profile")
-    readonly_fields = ("registered_by", "created_at", "updated_at")
-    fields = ("character", "profile", "registered_by", "created_at", "updated_at")
-
-    def save_model(self, request, obj, form, change):
-        if not change:
-            obj.registered_by = request.user
-        super().save_model(request, obj, form, change)
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
-class MemoryFactForm(forms.ModelForm):
-    text = forms.CharField(
-        widget=forms.Textarea,
-        help_text="Only approved public facts or approved facts for the exact subject may be sent to story generation.",
-    )
-    staff_entry = forms.CharField(
-        required=False,
-        widget=forms.Textarea,
-        help_text="Staff-only annotation; it is never sent to story generation.",
-    )
-
-    def clean_subject(self):
-        subject = self.cleaned_data.get("subject")
-        if subject is not None and not subject.is_typeclass("typeclasses.characters.Character", exact=False):
-            raise forms.ValidationError("Private memory subjects must be Character objects.")
-        return subject
-
-    class Meta:
-        model = MemoryFact
-        fields = (
-            "persona",
-            "subject",
-            "text",
-            "source_event",
-            "staff_entry",
-            "visibility",
-            "status",
-            "expires_at",
-        )
 
 
 @admin.register(MemoryFact)
-class MemoryFactAdmin(admin.ModelAdmin):
-    form = MemoryFactForm
-    list_display = ("persona", "visibility", "status", "subject", "expires_at", "created_at")
+class MemoryFactAdmin(_CurationReadOnlyAdmin):
+    curation_route = "narrative_ops_memory_edit"
+    list_display = ("persona", "visibility", "status", "subject", "version", "expires_at", "approved_by")
     list_filter = ("status", "visibility", "expires_at")
     search_fields = ("text", "staff_entry", "persona__character__db_key")
-    readonly_fields = ("created_at", "approved_at")
-    fields = (
-        "persona",
-        "subject",
-        "text",
-        "source_event",
-        "staff_entry",
-        "visibility",
-        "status",
-        "expires_at",
-        "created_at",
-        "approved_at",
-    )
-
-    def save_model(self, request, obj, form, change):
-        if obj.status == MemoryFact.Status.APPROVED:
-            obj.approved_at = obj.approved_at or timezone.now()
-        else:
-            obj.approved_at = None
-        super().save_model(request, obj, form, change)
-
-    def has_delete_permission(self, request, obj=None):
-        return False

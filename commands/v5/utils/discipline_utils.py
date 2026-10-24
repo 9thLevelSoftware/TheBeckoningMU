@@ -10,13 +10,8 @@ from .discipline_effects import (
     apply_effect,
     remove_effect,
     get_power_duration,
-    apply_obfuscate_effect,
-    apply_dominate_effect,
-    apply_auspex_effect,
-    apply_celerity_effect,
-    apply_fortitude_effect,
-    apply_presence_effect,
-    apply_protean_effect
+    power_effect_parameters,
+    get_active_effects,
 )
 
 
@@ -192,7 +187,7 @@ def activate_discipline_power(character, discipline_name, power_name, difficulty
     effect_ids = []
     if power_effect_applies(power, roll) and not uncontested:
         effect_ids = start_power_effect(character, power)
-    effects = [e for e in (character.db.active_effects or []) if e.get("id") in effect_ids]
+    effects = [e for e in get_active_effects(character) if e.get("id") in effect_ids]
 
     return {
         "success": True,
@@ -215,30 +210,13 @@ def power_effect_applies(power, roll):
 
 
 def start_power_effect(character, power):
-    """Start a power's tracked effect(s); return the ids of the effects added."""
-    before = {e.get("id") for e in (character.db.active_effects or [])}
+    """Create one logical effect with canonical parameters and one activation ID."""
     duration = get_power_duration(power)
     # A "turn" power lasts one turn unless an effect handler says otherwise.
     parameters = {"turns": 1} if duration == "turn" else {}
-    apply_effect(character, power, duration, parameters)
-
-    discipline_lower = power["discipline"].lower()
-    if discipline_lower == 'obfuscate':
-        apply_obfuscate_effect(character, power['name'])
-    elif discipline_lower == 'dominate':
-        apply_dominate_effect(character, power['name'])
-    elif discipline_lower == 'auspex':
-        apply_auspex_effect(character, power['name'])
-    elif discipline_lower == 'celerity':
-        apply_celerity_effect(character, power['name'])
-    elif discipline_lower == 'fortitude':
-        apply_fortitude_effect(character, power['name'])
-    elif discipline_lower == 'presence':
-        apply_presence_effect(character, power['name'])
-    elif discipline_lower == 'protean':
-        apply_protean_effect(character, power['name'])
-
-    return [e.get("id") for e in (character.db.active_effects or []) if e.get("id") not in before]
+    parameters = power_effect_parameters(character, power, parameters)
+    effect = apply_effect(character, power, duration, parameters)
+    return [effect["id"]] if effect else []
 
 
 def stop_power_effect(character, effect_ids):

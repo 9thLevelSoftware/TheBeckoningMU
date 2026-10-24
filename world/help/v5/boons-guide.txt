@@ -6,6 +6,20 @@ Boons are the |yprimary currency|n of Camarilla politics. They represent
 favors owed between vampires - debts that |ymust|n be honored.
 
 |WBOON TYPES:|n
+Retrieve a saved record with |y+boon/view <boon #>|n. Participants see the
+complete request and Case record, including recorded confirmations,
+disputes and rulings. Legacy Case record text is shown as stored; missing
+authors or dates are not inferred. Harpies can read full public cases;
+private cases require an actual participant character or Builder. Staff
+notes are Builder-only. Other characters, including account alts, see only
+public summaries. Harpies cannot rule on a boon involving a character
+owned by their account; Builders retain their override.
+
+Use |y+boon/list|n to find every outstanding debt and |y+boon/history|n to
+find all your records. Follow the displayed Next command for older pages.
+New records appear on the first page; pages reflect current permissions
+and current state. The short pair view links to full history and details.
+
 
 |yTrivial Boon|n - Minor favors
   - Small service, minor information

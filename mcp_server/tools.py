@@ -31,24 +31,27 @@ def _require_token(ctx: Context, scope: str):
 def _public_chronicle_records(limit: int) -> list[dict]:
     from chronicle.read_services import public_chronicle
 
-    return [_chronicle_record(event) for event in public_chronicle(limit=_bounded_limit(limit))]
+    return [
+        record
+        for event in public_chronicle(limit=_bounded_limit(limit))
+        if (record := _chronicle_record(event)) is not None
+    ]
 
 
 def _account_chronicle_records(account, limit: int) -> list[dict]:
     from chronicle.read_services import account_chronicle
 
     events = account_chronicle(account, limit=_bounded_limit(limit))
-    return [_chronicle_record(event) for event in events]
+    return [record for event in events if (record := _chronicle_record(event, "account", account)) is not None]
 
 
-def _chronicle_record(event):
-    return {
-        "id": event.pk,
-        "kind": event.kind,
-        "title": event.title,
-        "summary": event.summary,
-        "occurred_at": event.occurred_at.isoformat(),
-    }
+def _chronicle_record(event, audience="public", account=None):
+    from chronicle.services import event_projection
+
+    record = event_projection(event, audience, account)
+    if record is None:
+        return None
+    return {key: record[key] for key in ("id", "kind", "title", "summary", "occurred_at")}
 
 
 def register_tools(server: FastMCP) -> None:

@@ -8,30 +8,24 @@ from evennia import default_cmds
 
 from world.ansi_theme import (
     BLOOD_RED,
-    BOX_BL,
-    BOX_BR,
-    BOX_H,
-    BOX_TL,
-    BOX_TR,
-    BOX_V,
-    DARK_RED,
     GOLD,
     PALE_IVORY,
     RESET,
-    SHADOW_GREY,
 )
 
 from .models import Boon
 from .utils import (
     accept_boon,
     acknowledge_boon,
+    boon_view_level,
     call_in_boon,
     cancel_boon,
     decline_boon,
     dispute_boon,
     force_fulfill_boon,
-    uphold_boon,
+    format_boon_detail,
     format_boon_ledger,
+    format_boon_page,
     format_boons_with_character,
     format_pending_boons,
     fulfill_boon,
@@ -40,7 +34,11 @@ from .utils import (
     get_net_boon_position,
     get_pending_boons_for,
     is_character,
+    list_visible_boons,
     offer_boon,
+    parse_boon_cursor,
+    project_boon,
+    uphold_boon,
 )
 
 
@@ -52,12 +50,18 @@ class CmdBoon(default_cmds.MuxCommand):
         +boon
         +boon <character>
         +boon/pending
+        +boon/view <boon #>
+        +boon/list [before=<id>]
+        +boon/history [before=<id>]
         +boon/dispute <boon #> = <reason>
 
     Displays your boons or boons with a specific character.
 
     Switches:
         /pending - View boons requiring your action
+        /view - Read a public summary or your authorized complete case record.
+        /list - Discover all your outstanding boons, twenty per page.
+        /history - Discover all your records, including terminal states.
         /dispute - Dispute an accepted or called-in boon you are party to.
                    It stays owed until staff or a Harpy rules on it.
 
@@ -73,7 +77,20 @@ class CmdBoon(default_cmds.MuxCommand):
     help_category = "V5"
 
     def func(self):
-        caller = self.caller
+        if "list" in self.switches or "history" in self.switches:
+            mode = "history" if "history" in self.switches else "outstanding"
+            command = "+boon/history" if mode == "history" else "+boon/list"
+            try:
+                page = list_visible_boons(self.caller, mode=mode, before=parse_boon_cursor(self.args))
+            except ValueError as error:
+                self.caller.msg(str(error))
+                return
+            self.caller.msg(format_boon_page(page, command))
+            return
+
+        if "view" in self.switches:
+            self._show_detail()
+            return
 
         if "pending" in self.switches:
             self._show_pending()
@@ -88,6 +105,21 @@ class CmdBoon(default_cmds.MuxCommand):
             return
 
         self._show_summary()
+
+    def _show_detail(self):
+        """Page an authorized projection; hide existence of private records."""
+        from evennia.utils.evmore import EvMore
+
+        try:
+            boon = Boon.objects.get(pk=int(self.args.strip()))
+        except (ValueError, Boon.DoesNotExist):
+            self.caller.msg("Boon not found or unavailable.")
+            return
+        level = boon_view_level(self.caller, boon)
+        if level == "none":
+            self.caller.msg("Boon not found or unavailable.")
+            return
+        EvMore(self.caller, format_boon_detail(project_boon(boon, level)), always_page=False, session=self.session)
 
     def _show_summary(self):
         """Show boon summary."""
@@ -419,7 +451,7 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
         +boonadmin/cancel <boon #> = <reason>
         +boonadmin/fulfill <boon #> = <reason>
         +boonadmin/uphold <boon #> = <reason>
-        +boonadmin/list
+        +boonadmin/list [before=<id>]
 
     Switches:
         /acknowledge - Officially acknowledge a boon (Harpy only)
@@ -428,7 +460,8 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
                    both confirmations
         /uphold - Reject a dispute: the boon stands and returns to accepted
                   or called in (it can't be disputed again)
-        /list - List all public boons
+        /list - Page visible records (public or your actual cases;
+                Builders also see private records).
 
     Staff (Builder+) may rule on any boon. A Harpy may not fulfil,
     cancel or uphold a boon that they, or another character on their
@@ -539,23 +572,10 @@ class CmdBoonAdmin(default_cmds.MuxCommand):
         caller.msg(f"|g{message}|n" if success else f"|r{message}|n")
 
     def _list_boons(self):
-        """List all public boons."""
-        from .utils import get_all_public_boons
-
-        caller = self.caller
-        boons = get_all_public_boons()[:20]  # Last 20
-
-        output = []
-        output.append(f"\n{DARK_RED}{BOX_TL}{BOX_H * 76}{BOX_TR}{RESET}")
-        output.append(f"{BOX_V} {PALE_IVORY}PUBLIC BOONS{RESET}{' ' * 61}{BOX_V}")
-        output.append(f"{DARK_RED}{BOX_BL}{BOX_H * 76}{BOX_BR}{RESET}\n")
-
-        for boon in boons:
-            output.append(f"#{boon.id} - {boon.debtor.key} → {boon.creditor.key} - {boon.get_boon_type_display()}")
-            output.append(f"  Status: {boon.status.title()}")
-            output.append(f"  {SHADOW_GREY}{boon.description[:60]}{RESET}")
-            if boon.acknowledged_by_harpy:
-                output.append(f"  {GOLD}✓ Acknowledged by {boon.harpy.key if boon.harpy else 'Harpy'}{RESET}")
-            output.append("")
-
-        caller.msg("\n".join(output))
+        """Discover only currently visible records, using stable ID cursors."""
+        try:
+            page = list_visible_boons(self.caller, mode="adjudication", before=parse_boon_cursor(self.args))
+        except ValueError as error:
+            self.caller.msg(str(error))
+            return
+        self.caller.msg(format_boon_page(page, "+boonadmin/list"))

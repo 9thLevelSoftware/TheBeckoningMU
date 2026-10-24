@@ -7,7 +7,6 @@ to determine if a trigger should fire.
 
 import logging
 import random
-from datetime import datetime
 from typing import Any
 
 from world.v5_data import CLANS
@@ -213,9 +212,9 @@ def _check_time_of_day(time: str) -> bool:
     """Check current time of day."""
     if time not in ("day", "night"):
         return _bad_parameter("time_of_day", "time", time)
-    hour = datetime.now().hour
-    is_night = hour < 6 or hour >= 18
-    return is_night if time == "night" else not is_night
+    from world.room_rules import is_day
+
+    return is_day() if time == "day" else not is_day()
 
 
 def danger_rank(level) -> int | None:

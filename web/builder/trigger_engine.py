@@ -20,7 +20,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .markup import MXP_ERROR, contains_mxp
-from .trigger_actions import ACTION_REGISTRY, validate_set_attribute
+from .trigger_actions import ACTION_PARAMETERS, ACTION_REGISTRY, validate_set_attribute
 from .v5_conditions import check_condition, list_condition_types
 
 logger = logging.getLogger(__name__)
@@ -87,13 +87,19 @@ def validate_trigger(trigger_data: Any) -> tuple[bool, str | None]:
     if not isinstance(enabled, bool):
         return False, "Enabled field must be a boolean"
 
+    unknown = set(parameters) - set(ACTION_PARAMETERS[action_name])
+    if unknown:
+        return False, f"Unknown parameters for {action_name}: {', '.join(sorted(unknown))}"
+
     if action_name in ("send_message", "emit_message"):
         message = parameters.get("message", "")
-        if not isinstance(message, str) or len(message) > MAX_MESSAGE_LENGTH:
+        if not isinstance(message, str) or not message.strip() or len(message) > MAX_MESSAGE_LENGTH:
             return False, f"message must be text of at most {MAX_MESSAGE_LENGTH} characters"
         if contains_mxp(message):
             return False, f"message {MXP_ERROR}"
     elif action_name == "set_attribute":
+        if "value" not in parameters:
+            return False, "set_attribute requires a value (null is allowed)"
         error = validate_set_attribute(
             parameters.get("target", "room"), parameters.get("attr_name"), parameters.get("value")
         )
@@ -161,6 +167,10 @@ def execute_trigger(trigger_data, room, character, **context) -> bool:
     Returns:
         True if the trigger's action ran, False otherwise.
     """
+    from .operation_runtime import object_is_fenced
+
+    if object_is_fenced(room):
+        return False
     is_valid, error_message = validate_trigger(trigger_data)
     if not is_valid:
         logger.warning(
@@ -228,6 +238,10 @@ def execute_triggers(room, trigger_type: str, character, trigger_id: str | None 
     Returns:
         (executed_count, failed_count)
     """
+    from .operation_runtime import object_is_fenced
+
+    if object_is_fenced(room):
+        return 0, 0
     triggers = stored_triggers(room)
     if not triggers:
         return 0, 0

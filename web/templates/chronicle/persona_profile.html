@@ -1,0 +1,9 @@
+{% extends "builder/base.html" %}
+{% block title %}Edit NPC Persona Profile{% endblock %}
+{% block content %}<main style="max-width:1000px;margin:auto;padding:24px;">
+<h1>Edit profile: {{ persona.character.key }}</h1><p><a href="{% url 'narrative_ops_personas' %}">All personas</a> · <a href="{% url 'narrative_ops_memories' %}?persona_id={{ persona.pk }}">Memory curation for this persona</a> · <a href="{% url 'narrative_ops' %}">Story Operations</a></p>
+{% if messages %}<ul>{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul>{% endif %}
+<p>Persona #{{ persona.pk }} · Character #{{ persona.character_id }} · version {{ persona.version }}. The profile is player-facing; do not include secrets.</p>
+<p>Registered by {{ persona.registered_by|default:"Legacy / unrecorded" }} at {{ persona.created_at }}. Last updated {{ persona.updated_at }} by {{ persona.updated_by|default:"Legacy / unrecorded" }}.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save reviewed profile</button></form>
+</main>{% endblock %}

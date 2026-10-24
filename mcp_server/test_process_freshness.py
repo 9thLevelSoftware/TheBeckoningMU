@@ -24,6 +24,10 @@ class SeparateProcessFreshnessTests(SimpleTestCase):
         self.assertIn('"gate": "mcp-process-freshness"', result.stdout)
         self.assertIn('"passed": true', result.stdout)
         evidence = json.loads(result.stdout.strip().splitlines()[-1])
-        self.assertEqual(len(evidence["writer_pids"]), 2)
+        self.assertEqual(len(evidence["writer_pids"]), 3)
         self.assertNotEqual(evidence["reader_pid"], os.getpid())
         self.assertTrue(all(pid != evidence["reader_pid"] for pid in evidence["writer_pids"]))
+        self.assertEqual(evidence["transport"], "owned-loopback-http")
+        self.assertEqual(
+            evidence["withdrawal"], {"transitive_corrected_source": True, "retained_successful_prose": True}
+        )

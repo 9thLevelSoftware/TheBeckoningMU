@@ -246,6 +246,11 @@
         color: var(--builder-text);
     }
 
+    .room-node:focus-visible, .prop-section-header:focus-visible, .trigger-row:focus-visible {
+        outline: 2px solid var(--builder-info);
+        outline-offset: 3px;
+    }
+
     .prop-section-content {
         padding-top: 10px;
     }
@@ -377,6 +382,19 @@
             <input type="text" id="project-name" class="form-control form-control-sm"
                    value="{{ project_name }}" placeholder="Project Name"
                    {% if not can_edit %}disabled{% endif %}>
+            {% if project.revision_of_id %}
+                {% if project.revision_intent == 'replacement' %}
+                <p class="text-builder-muted">Replacement of live revision #{{ project.replacement_target.project_id }} at version {{ project.replacement_target.version }}. Staff reviews the exact target and changes before application.</p>
+                {% else %}
+                <p class="text-builder-muted">Standalone copy of project #{{ project.revision_of_id }}. This draft has its own review and publication connection.</p>
+                {% endif %}
+            {% endif %}
+            {% if is_owner and project_status == 'approved' or is_owner and project_status == 'built' or is_owner and project_status == 'live' %}
+            <button type="button" class="btn-ghost" id="create-draft-copy">Create draft copy</button>
+            {% endif %}
+            {% if is_owner and project_status == 'live' and project.live_manifest.schema_version == 2 %}
+            <button type="button" class="btn-ghost" id="create-replacement">Create replacement revision</button>
+            {% endif %}
         </div>
 
         <div class="sidebar-content">
@@ -388,7 +406,7 @@
             <div id="room-properties" style="display: none;">
                 <!-- Basic Section -->
                 <div class="prop-section">
-                    <div class="prop-section-header" onclick="toggleSection(this)">
+                    <div class="prop-section-header" role="button" tabindex="0" aria-expanded="true" onclick="toggleSection(this)" onkeydown="activateOnKey(event, () => toggleSection(this))">
                         <span>Basic</span>
                         <span class="toggle-icon">-</span>
                     </div>
@@ -429,7 +447,7 @@
 
                 <!-- V5 Settings Section -->
                 <div class="prop-section">
-                    <div class="prop-section-header" onclick="toggleSection(this)">
+                    <div class="prop-section-header" role="button" tabindex="0" aria-expanded="true" onclick="toggleSection(this)" onkeydown="activateOnKey(event, () => toggleSection(this))">
                         <span>V5 Settings</span>
                         <span class="toggle-icon">-</span>
                     </div>
@@ -451,10 +469,16 @@
                             <label class="form-label">Day/Night Access</label>
                             <select id="room-day-night" class="form-select form-select-sm">
                                 <option value="always">Always Accessible</option>
-                                <option value="day_only">Day Only (Mortals)</option>
+                                <option value="day_only">Day Only (06:00-18:00)</option>
                                 <option value="night_only">Night Only</option>
                                 <option value="restricted">Restricted Access</option>
                             </select>
+                            <p class="form-text">America/New_York clock; day is 06:00 to before 18:00 for every character type. Existing traversal locks still apply.</p>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="room-restricted-characters">Restricted entry: character IDs</label>
+                            <input id="room-restricted-characters" class="form-control form-control-sm" type="text" placeholder="12, 34" aria-describedby="restricted-policy-help">
+                            <p id="restricted-policy-help" class="form-text">Required for Restricted Access: 1-100 unique positive character IDs. Missing or ambiguous legacy policies need an explicit reviewed list before building or promotion.</p>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Danger Level</label>
@@ -470,17 +494,19 @@
                             <label class="form-label">Hunting Modifier</label>
                             <input type="number" id="room-hunting" class="form-control form-control-sm"
                                    value="0" min="-5" max="5">
+                            <p class="form-text">Positive values lower hunting difficulty once; negative values raise it. Minimum final difficulty is 1. This room contribution applies to every selected hunting ground.</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Haven Ratings Section (shown when location_type is haven) -->
                 <div class="prop-section" id="haven-section" style="display: none;">
-                    <div class="prop-section-header" onclick="toggleSection(this)">
+                    <div class="prop-section-header" role="button" tabindex="0" aria-expanded="true" onclick="toggleSection(this)" onkeydown="activateOnKey(event, () => toggleSection(this))">
                         <span>Haven Ratings</span>
                         <span class="toggle-icon">-</span>
                     </div>
                     <div class="prop-section-content">
+                        <p class="form-text">Haven ratings require staff adjudication. They record facts for security, space, comfort, occult protection and concealment; they grant no automatic intrusion, capacity or ward bonus.</p>
                         <div class="form-group">
                             <label class="form-label">Security (0-5)</label>
                             <input type="number" id="haven-security" class="form-control form-control-sm"
@@ -511,7 +537,7 @@
 
                 <!-- Triggers Section -->
                 <div class="prop-section">
-                    <div class="prop-section-header" onclick="toggleSection(this)">
+                    <div class="prop-section-header" role="button" tabindex="0" aria-expanded="true" onclick="toggleSection(this)" onkeydown="activateOnKey(event, () => toggleSection(this))">
                         <span>Triggers (<span id="trigger-count">0</span>)</span>
                         <span class="toggle-icon">-</span>
                     </div>
@@ -522,9 +548,29 @@
                     </div>
                 </div>
 
+                <div class="prop-section">
+                    <div class="prop-section-header" role="button" tabindex="0" aria-expanded="true" onclick="toggleSection(this)" onkeydown="activateOnKey(event, () => toggleSection(this))">
+                        <span>Fixtures</span><span class="toggle-icon">-</span>
+                    </div>
+                    <div class="prop-section-content">
+                        <label class="form-label" for="room-fixtures">Placed in this room</label>
+                        <select id="room-fixtures" class="form-select form-select-sm" onchange="selectFixture()"></select>
+                        <label class="form-label" for="fixture-catalog">Curated scenery</label>
+                        <select id="fixture-catalog" class="form-select form-select-sm"></select>
+                        <label class="form-label" for="fixture-name">Name override</label>
+                        <input id="fixture-name" class="form-control form-control-sm" maxlength="80" placeholder="Use catalog name">
+                        <label class="form-label" for="fixture-description">Description override</label>
+                        <textarea id="fixture-description" class="form-control form-control-sm" maxlength="10000" placeholder="Use catalog description"></textarea>
+                        <button id="fixture-place" type="button" class="btn btn-ghost" onclick="placeFixture()">Place new</button>
+                        <button id="fixture-update" type="button" class="btn btn-ghost" onclick="updateFixture()">Update selected</button>
+                        <button id="fixture-delete" type="button" class="btn btn-ghost" onclick="deleteFixture()">Delete selected</button>
+                        <p id="fixture-feedback" role="status" class="form-text">Inert scenery cannot be picked up. Catalog identity and overrides are reviewed before building.</p>
+                    </div>
+                </div>
+
                 <!-- Builder Notes Section -->
                 <div class="prop-section">
-                    <div class="prop-section-header" onclick="toggleSection(this)">
+                    <div class="prop-section-header" role="button" tabindex="0" aria-expanded="true" onclick="toggleSection(this)" onkeydown="activateOnKey(event, () => toggleSection(this))">
                         <span>Builder Notes</span>
                         <span class="toggle-icon">-</span>
                     </div>
@@ -631,10 +677,62 @@
     // json_script (which escapes <, > and &) and is parsed, never inlined.
     let projectId = {{ project_id|default:"null" }};
     let projectVersion = {{ project_version|default:"null" }};
+    document.getElementById('create-draft-copy')?.addEventListener('click', async event => {
+        const button = event.currentTarget;
+        if (button.disabled) return;
+        const identity = [projectId, projectVersion];
+        button.disabled = true;
+        if (!await BuilderDialogs.confirm('Create an independent draft copy? It will need a new review and connection before publication.', button) ||
+            projectId !== identity[0] || projectVersion !== identity[1]) { button.disabled = false; return; }
+        try {
+            const response = await fetch(`/builder/api/project/${projectId}/revisions/`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+                body: JSON.stringify({version: projectVersion, intent: 'copy'})
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not create draft copy');
+            window.location.href = `/builder/edit/${Number(result.id)}/`;
+        } catch (error) {
+            BuilderDialogs.alert(error.message);
+            button.disabled = false;
+        }
+    });
     let canEdit = {{ can_edit|yesno:"true,false" }};
     const isOwner = {{ is_owner|yesno:"true,false" }};
     let mapData = JSON.parse(document.getElementById('map-data').textContent);
     let projectStatus = '{{ project_status|default:"new" }}';
+    const replacementIntent = '{{ project.revision_intent|default:"copy" }}' === 'replacement';
+    document.getElementById('create-replacement')?.addEventListener('click', async event => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+            const response = await fetch(`/builder/api/project/${projectId}/revisions/`, {
+                method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+                body: JSON.stringify({version: projectVersion, intent: 'replacement'})
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not create replacement draft');
+            window.location.href = `/builder/edit/${Number(result.id)}/`;
+        } catch (error) { BuilderDialogs.alert(error.message); button.disabled = false; }
+    });
+
+    async function applyReviewedReplacement(button) {
+        if (button.disabled) return;
+        const identity = [projectId, projectVersion];
+        button.disabled = true;
+        if (!await BuilderDialogs.confirm('Apply the exact reviewed replacement? Occupants and unreviewed contents must leave the affected live area. Removed owned objects will be retired, not purged.', button) ||
+            projectId !== identity[0] || projectVersion !== identity[1]) { button.disabled = false; return; }
+        try {
+            const response = await fetch(`/builder/api/build/${projectId}/replace-live/`, {
+                method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+                body: JSON.stringify({version: projectVersion})
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Replacement failed');
+            window.location.reload();
+        } catch (error) { BuilderDialogs.alert(error.message); button.disabled = false; }
+    }
 
     // Editor state
     let selectedRoomId = null;
@@ -706,20 +804,22 @@
     }
 
     // Apply template to current room
-    function applyTemplate(templateKey) {
-        if (!selectedRoomId || !roomTemplates[templateKey]) return;
+    async function applyTemplate(templateKey) {
+        if (!canEdit || !selectedRoomId || !roomTemplates[templateKey]) return;
 
         const template = roomTemplates[templateKey];
+        const roomId = selectedRoomId;
         const room = mapData.rooms[selectedRoomId];
 
         // Confirm before applying (unless it's a new room or clear template)
         if (templateKey !== 'clear' && room.v5 && room.v5.location_type) {
-            if (!confirm(`Apply "${template.name}" template? This will overwrite current V5 settings.`)) {
+            if (!await BuilderDialogs.confirm(`Apply "${template.name}" template? This will overwrite current V5 settings.`)) {
                 document.getElementById('room-template').value = '';
                 document.getElementById('template-description').textContent = '';
                 return;
             }
         }
+        if (!canEdit || selectedRoomId !== roomId || mapData.rooms[roomId] !== room) return;
 
         // Apply V5 settings
         room.v5 = {...room.v5, ...template.v5};
@@ -727,20 +827,14 @@
         // Update UI
         document.getElementById('room-location-type').value = room.v5.location_type || '';
         document.getElementById('room-day-night').value = room.v5.day_night || 'always';
+        showRestrictedPolicy(room.v5);
         document.getElementById('room-danger').value = room.v5.danger_level || 'safe';
         document.getElementById('room-hunting').value = room.v5.hunting_modifier || 0;
 
         // Update haven section visibility
         toggleHavenSection(room.v5.location_type === 'haven');
 
-        // Apply haven ratings if present
-        if (room.v5.haven_ratings) {
-            document.getElementById('haven-security').value = room.v5.haven_ratings.security || 0;
-            document.getElementById('haven-size').value = room.v5.haven_ratings.size || 0;
-            document.getElementById('haven-luxury').value = room.v5.haven_ratings.luxury || 0;
-            document.getElementById('haven-warding').value = room.v5.haven_ratings.warding || 0;
-            document.getElementById('haven-hidden').checked = room.v5.haven_ratings.location_hidden || false;
-        }
+        populateHavenRatings(room.v5);
 
         // Show description
         showTemplatePreview(templateKey);
@@ -752,6 +846,7 @@
         initMap();
         updateStatusBar();
         loadTemplates();
+        loadPrototypes();
         updateStatusBanner();
 
         // Bind template dropdown
@@ -782,10 +877,19 @@
         drawExitLines();
     }
 
+    function activateOnKey(event, activate) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        if (!event.repeat) activate();
+    }
+
     function createRoomElement(id, room) {
         const el = document.createElement('div');
         el.className = 'room-node';
         el.id = `room-${id}`;
+        el.tabIndex = 0;
+        el.setAttribute('role', 'button');
+        el.setAttribute('aria-label', `Select room: ${room.name || 'New Room'}`);
         el.style.left = (room.grid_x * GRID_SIZE) + 'px';
         el.style.top = (room.grid_y * GRID_SIZE) + 'px';
         el.innerText = room.name || 'New Room';
@@ -799,6 +903,10 @@
                 handleExitClick(id);
             }
         });
+        el.addEventListener('keydown', event => activateOnKey(event, () => {
+            if (currentMode === 'select') selectRoom(id);
+            else if (currentMode === 'exit' && canEdit) handleExitClick(id);
+        }));
 
         document.getElementById('map-canvas').appendChild(el);
     }
@@ -830,22 +938,18 @@
         const v5 = room.v5 || {};
         document.getElementById('room-location-type').value = v5.location_type || '';
         document.getElementById('room-day-night').value = v5.day_night || 'always';
+        showRestrictedPolicy(v5);
         document.getElementById('room-danger').value = v5.danger_level || 'safe';
         document.getElementById('room-hunting').value = v5.hunting_modifier || 0;
 
         // Show/hide haven section
         toggleHavenSection(v5.location_type === 'haven');
 
-        if (v5.haven_ratings) {
-            document.getElementById('haven-security').value = v5.haven_ratings.security || 0;
-            document.getElementById('haven-size').value = v5.haven_ratings.size || 0;
-            document.getElementById('haven-luxury').value = v5.haven_ratings.luxury || 0;
-            document.getElementById('haven-warding').value = v5.haven_ratings.warding || 0;
-            document.getElementById('haven-hidden').checked = v5.haven_ratings.location_hidden || false;
-        }
+        populateHavenRatings(v5);
 
         // Triggers
         updateTriggersDisplay(room.triggers || []);
+        renderFixtureList();
 
         // Reset template dropdown and description
         document.getElementById('room-template').value = '';
@@ -861,6 +965,7 @@
         document.getElementById('room-name').oninput = function(e) {
             room.name = e.target.value;
             document.getElementById(`room-${id}`).innerText = e.target.value || 'New Room';
+            document.getElementById(`room-${id}`).setAttribute('aria-label', `Select room: ${e.target.value || 'New Room'}`);
             markDirty();
         };
 
@@ -893,6 +998,9 @@
             room.v5.day_night = e.target.value;
             markDirty();
         };
+        document.getElementById('room-restricted-characters').onchange = function(e) {
+            storeRestrictedPolicy(id, e.target.value);
+        };
 
         document.getElementById('room-danger').onchange = function(e) {
             if (!room.v5) room.v5 = {};
@@ -905,7 +1013,53 @@
             room.v5.hunting_modifier = parseInt(e.target.value) || 0;
             markDirty();
         };
+
+        for (const key of ['security', 'size', 'luxury', 'warding', 'location_hidden']) {
+            const input = document.getElementById(key === 'location_hidden' ? 'haven-hidden' : 'haven-' + key);
+            input.onchange = function(e) {
+                if (!canEdit || selectedRoomId !== id || mapData.rooms[id] !== room) return;
+                if (!room.v5) room.v5 = {};
+                // Templates shallow-copy V5 data. Detach this nested object
+                // before editing so another room/template keeps its ratings.
+                room.v5.haven_ratings = {...(room.v5.haven_ratings || {}),
+                    [key]: key === 'location_hidden' ? e.target.checked : Number(e.target.value)};
+                markDirty();
+            };
+        }
     }
+
+    function populateHavenRatings(v5) {
+        const ratings = v5.haven_ratings || {};
+        for (const key of ['security', 'size', 'luxury', 'warding']) {
+            const input = document.getElementById('haven-' + key);
+            input.value = ratings[key] ?? 0;
+            input.disabled = !canEdit;
+        }
+        const hidden = document.getElementById('haven-hidden');
+        hidden.checked = ratings.location_hidden === true;
+        hidden.disabled = !canEdit;
+    }
+
+    function showRestrictedPolicy(v5) {
+        const value = v5.restricted_characters;
+        const input = document.getElementById('room-restricted-characters');
+        input.value = Array.isArray(value) ? value.join(', ') : (value == null ? '' : String(value));
+        input.disabled = !canEdit;
+    }
+
+    // Restricted policy helpers start
+    function storeRestrictedPolicy(id, value) {
+        if (!canEdit || !mapData.rooms[id]) return;
+        const parts = value.trim() ? value.trim().split(/[\s,]+/) : [];
+        // Invalid drafts retain their literal input for server feedback; never
+        // coerce a partial number or invent a principal for a legacy policy.
+        const policy = parts.every(part => /^[1-9][0-9]*$/.test(part) && Number.isSafeInteger(Number(part)))
+            ? parts.map(Number) : value;
+        if (!mapData.rooms[id].v5) mapData.rooms[id].v5 = {};
+        mapData.rooms[id].v5.restricted_characters = policy;
+        markDirty();
+    }
+    // Restricted policy helpers end
 
     function toggleHavenSection(show) {
         document.getElementById('haven-section').style.display = show ? 'block' : 'none';
@@ -922,6 +1076,7 @@
             content.classList.add('collapsed');
             icon.textContent = '+';
         }
+        header.setAttribute('aria-expanded', String(!content.classList.contains('collapsed')));
     }
 
     function setMode(mode) {
@@ -998,10 +1153,13 @@
         markDirty();
     }
 
-    function deleteSelected() {
+    async function deleteSelected() {
         if (!canEdit || !selectedRoomId) return;
+        const roomId = selectedRoomId;
+        const room = mapData.rooms[roomId];
 
-        if (!confirm('Delete this room and all its exits?')) return;
+        if (!await BuilderDialogs.confirm('Delete this room and all its exits?')) return;
+        if (!canEdit || selectedRoomId !== roomId || mapData.rooms[roomId] !== room) return;
 
         // Remove exits connected to this room
         if (mapData.exits) {
@@ -1013,6 +1171,9 @@
         }
 
         // Remove room
+        for (const [placementId, placement] of Object.entries(mapData.objects || {})) {
+            if (placement.room_id === selectedRoomId) delete mapData.objects[placementId];
+        }
         delete mapData.rooms[selectedRoomId];
         document.getElementById(`room-${selectedRoomId}`).remove();
 
@@ -1263,9 +1424,12 @@
         drawExitLines();
     }
 
-    function deleteSelectedExit() {
+    async function deleteSelectedExit() {
         if (!canEdit || !selectedExitId) return;
-        if (!confirm('Delete this exit?')) return;
+        const exitId = selectedExitId;
+        const exit = mapData.exits[exitId];
+        if (!await BuilderDialogs.confirm('Delete this exit?')) return;
+        if (!canEdit || selectedExitId !== exitId || mapData.exits[exitId] !== exit) return;
 
         delete mapData.exits[selectedExitId];
         selectedExitId = null;
@@ -1287,6 +1451,9 @@
         const startY = e.clientY;
         const startLeft = parseInt(el.style.left);
         const startTop = parseInt(el.style.top);
+        const room = mapData.rooms[roomId];
+        const startGridX = room.grid_x;
+        const startGridY = room.grid_y;
 
         function onMove(e) {
             let newX = startLeft + (e.clientX - startX);
@@ -1308,7 +1475,7 @@
         function onUp() {
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
-            markDirty();
+            if (room.grid_x !== startGridX || room.grid_y !== startGridY) markDirty();
         }
 
         document.addEventListener('mousemove', onMove);
@@ -1350,6 +1517,11 @@
                 projectId = result.id;
                 projectVersion = result.version;
                 markClean();
+                const errors = (result.validation || {}).errors || [];
+                if (errors.length) {
+                    document.getElementById('save-status').textContent = 'Draft saved. Fix before submission: ' + errors.join('; ');
+                    return;
+                }
                 document.getElementById('save-status').innerHTML = '<i class="bi bi-check-lg" style="color: var(--builder-success);"></i>';
                 setTimeout(() => {
                     document.getElementById('save-status').innerHTML = '';
@@ -1375,7 +1547,10 @@
             'submitted': { cls: 'status-banner-submitted', text: 'Submitted — awaiting staff review', show: true },
             'approved': { cls: 'status-banner-approved', text: 'Approved — ready to build to sandbox!', show: true },
             'built': { cls: 'status-banner-built', text: 'Built — use @goto_sandbox in-game to test', show: true },
-            'live': { cls: 'status-banner-live', text: 'Live — this project is in the game world', show: true }
+            'live': { cls: 'status-banner-live', text: 'Live — this project is in the game world', show: true },
+            'superseded': { cls: 'status-banner-live', text: 'Historical revision — replaced by a separately reviewed revision', show: true },
+            'replacing': { cls: 'status-banner-built', text: 'A reviewed replacement is being applied', show: true },
+            'replacement_failed': { cls: 'status-banner-rejected', text: 'Replacement needs staff inspection. Automatic retry is blocked.', show: true }
         };
 
         const config = bannerConfigs[projectStatus] || bannerConfigs['new'];
@@ -1410,8 +1585,10 @@
             html += '<div class="alert mb-0 py-2 text-center" style="background: rgba(212,160,23,0.1); color: var(--builder-warning); border: 1px solid rgba(212,160,23,0.2); border-radius: 8px;">Awaiting Review</div>';
         } else if (projectStatus === 'approved') {
             html += '<button class="btn btn-accent w-100 mb-2" onclick="buildToSandbox()"><i class="bi bi-hammer"></i> Build to Sandbox</button>';
+            if (replacementIntent) html += '<button class="btn btn-accent w-100 mb-2" onclick="applyReviewedReplacement(this)">Apply reviewed replacement</button>';
         } else if (projectStatus === 'built') {
             html += '<div class="alert mb-0 py-2 text-center" style="background: rgba(56,139,253,0.1); color: var(--builder-info); border: 1px solid rgba(56,139,253,0.2); border-radius: 8px;">Built — test in sandbox</div>';
+            if (replacementIntent) html += '<p>After testing, clean up this candidate sandbox from the dashboard before applying its reviewed replacement.</p>';
         } else if (projectStatus === 'live') {
             html += '<div class="alert mb-0 py-2 text-center" style="background: rgba(46,160,67,0.1); color: var(--builder-success); border: 1px solid rgba(46,160,67,0.2); border-radius: 8px;">Live</div>';
         }
@@ -1421,11 +1598,11 @@
 
     function submitForReview() {
         if (!projectId) {
-            alert('Please save the project first.');
+            BuilderDialogs.alert('Please save the project first.');
             return;
         }
         if (isDirty) {
-            alert('Please save your changes before submitting.');
+            BuilderDialogs.alert('Please save your changes before submitting.');
             return;
         }
         // The submit dialog on the dashboard collects the live room and
@@ -1433,38 +1610,44 @@
         window.location.href = "{% url 'builder:dashboard' %}?submit=" + encodeURIComponent(projectId);
     }
 
+    let sandboxBuildBusy = false;
     async function buildToSandbox() {
+        if (sandboxBuildBusy) return;
         if (!projectId) {
-            alert('Please save the project first.');
+            BuilderDialogs.alert('Please save the project first.');
             return;
         }
 
         if (projectStatus === 'new' || projectStatus === 'draft') {
-            alert('Project must be submitted and approved before building to sandbox.\n\nCurrent status: ' + projectStatus);
+            BuilderDialogs.alert('Project must be submitted and approved before building to sandbox.\n\nCurrent status: ' + projectStatus);
             return;
         }
 
         if (projectStatus === 'submitted') {
-            alert('Project is awaiting staff review. Please wait for approval.');
+            BuilderDialogs.alert('Project is awaiting staff review. Please wait for approval.');
             return;
         }
 
         if (projectStatus === 'built') {
-            alert('Sandbox already exists. Use the dashboard to manage your sandbox.');
+            BuilderDialogs.alert('Sandbox already exists. Use the dashboard to manage your sandbox.');
             return;
         }
 
         if (projectStatus === 'live') {
-            alert('Project is already live.');
+            BuilderDialogs.alert('Project is already live.');
             return;
         }
 
         if (projectStatus !== 'approved') {
-            alert('Unexpected project status: ' + projectStatus);
+            BuilderDialogs.alert('Unexpected project status: ' + projectStatus);
             return;
         }
 
-        if (!confirm('Build this project to a sandbox?\n\nThis will create real game rooms you can walk through and test.')) {
+        const identity = [projectId, projectVersion];
+        sandboxBuildBusy = true;
+        if (!await BuilderDialogs.confirm('Build this project to a sandbox?\n\nThis will create real game rooms you can walk through and test.') ||
+            projectId !== identity[0] || projectVersion !== identity[1] || projectStatus !== 'approved' || isDirty) {
+            sandboxBuildBusy = false;
             return;
         }
 
@@ -1485,14 +1668,16 @@
                 projectStatus = 'built';
                 if (typeof updateStatusBanner === 'function') updateStatusBanner();
                 document.getElementById('save-status').textContent = '';
-                alert(`Sandbox built successfully!\n\n${result.room_count} rooms and ${result.exit_count} exits created.\n\nUse @goto_sandbox in-game to walk through your build.`);
+                BuilderDialogs.alert(`Sandbox built successfully!\n\n${result.room_count} rooms and ${result.exit_count} exits created.\n\nUse @goto_sandbox in-game to walk through your build.`);
             } else {
                 document.getElementById('save-status').textContent = 'Build failed';
-                alert('Build failed: ' + (result.error || 'Unknown error'));
+                BuilderDialogs.alert('Build failed: ' + (result.error || 'Unknown error'));
             }
         } catch (err) {
             document.getElementById('save-status').textContent = 'Build error';
-            alert('Error building sandbox: ' + err.message);
+            BuilderDialogs.alert('Error building sandbox: ' + err.message);
+        } finally {
+            sandboxBuildBusy = false;
         }
     }
 
@@ -1533,9 +1718,15 @@
             const enabled = trigger.enabled !== false;
 
             const row = document.createElement('div');
-            row.className = 'd-flex justify-content-between align-items-center mb-2 p-2' + (enabled ? '' : ' text-muted');
+            row.className = 'trigger-row d-flex justify-content-between align-items-center mb-2 p-2' + (enabled ? '' : ' text-muted');
+            row.tabIndex = canEdit ? 0 : -1;
+            row.setAttribute('role', 'button');
+            row.setAttribute('aria-label', `Edit ${typeLabel} trigger: ${trigger.action || 'No action'}`);
+            row.setAttribute('aria-disabled', String(!canEdit));
             row.style.cssText = 'cursor: pointer; border: 1px solid var(--builder-border); border-radius: 6px;';
-            row.addEventListener('click', () => editTrigger(trigger.id));
+            const activate = () => { if (canEdit) editTrigger(trigger.id); };
+            row.addEventListener('click', activate);
+            row.addEventListener('keydown', event => activateOnKey(event, activate));
 
             const info = document.createElement('div');
             const label = document.createElement('strong');
@@ -1555,11 +1746,144 @@
         }
     }
 
+    async function loadPrototypes() {
+        try {
+            const response = await fetch("{% url 'builder:prototypes' %}");
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Catalog unavailable');
+            const catalog = document.getElementById('fixture-catalog');
+            catalog.replaceChildren();
+            for (const prototype of result.prototypes) {
+                catalog.add(new Option(`${prototype.label} (revision ${prototype.revision})`, `${prototype.id}@${prototype.revision}`));
+            }
+            document.getElementById('fixture-feedback').textContent = `Inert, immovable scenery. Limit ${result.max_fixtures} per project and ${result.max_fixtures_per_room} per room. Each catalog revision and override is reviewed.`;
+        } catch (error) {
+            document.getElementById('fixture-feedback').textContent = error.message;
+        }
+        for (const id of ['fixture-catalog', 'fixture-name', 'fixture-description', 'fixture-place', 'fixture-update', 'fixture-delete']) {
+            document.getElementById(id).disabled = !canEdit;
+        }
+    }
+
+    // Fixture editor start
+    function renderFixtureList(selected = '') {
+        const list = document.getElementById('room-fixtures');
+        list.replaceChildren();
+        list.add(new Option('-- Select a fixture --', ''));
+        for (const [id, placement] of Object.entries(mapData.objects || {})) {
+            if (placement.room_id !== selectedRoomId) continue;
+            list.add(new Option(`${id}: ${placement.name || placement.prototype_id} (${placement.prototype_id} revision ${placement.prototype_revision})`, id));
+        }
+        list.value = selected;
+    }
+
+    function selectFixture() {
+        const placement = (mapData.objects || {})[document.getElementById('room-fixtures').value];
+        if (!placement) return;
+        const catalog = document.getElementById('fixture-catalog');
+        const identity = `${placement.prototype_id}@${placement.prototype_revision}`;
+        if (!Array.from(catalog.options).some(option => option.value === identity)) {
+            catalog.add(new Option(`${placement.prototype_id} revision ${placement.prototype_revision} (stored)`, identity));
+        }
+        catalog.value = identity;
+        document.getElementById('fixture-name').value = placement.name || '';
+        document.getElementById('fixture-description').value = placement.description || '';
+    }
+
+    function fixtureValues() {
+        const [prototypeId, revision] = document.getElementById('fixture-catalog').value.split('@');
+        if (!prototypeId || !Number.isInteger(Number(revision))) throw new Error('Choose a catalog entry first.');
+        const placement = {prototype_id: prototypeId, prototype_revision: Number(revision), room_id: selectedRoomId};
+        const name = document.getElementById('fixture-name').value;
+        const description = document.getElementById('fixture-description').value;
+        if (name) placement.name = name;
+        if (description) placement.description = description;
+        return placement;
+    }
+
+    function placeFixture() {
+        if (!canEdit || !selectedRoomId) return;
+        try {
+            const placement = fixtureValues();
+            if (!mapData.objects) mapData.objects = {};
+            let next = Number(mapData.next_object_id) || 1;
+            let id;
+            do { id = 'f' + next++; } while (mapData.objects[id]);
+            mapData.next_object_id = next;
+            mapData.objects[id] = placement;
+            renderFixtureList(id);
+            markDirty();
+        } catch (error) { document.getElementById('fixture-feedback').textContent = error.message; }
+    }
+
+    function updateFixture() {
+        if (!canEdit || !selectedRoomId) return;
+        const id = document.getElementById('room-fixtures').value;
+        if (!(mapData.objects || {})[id] || mapData.objects[id].room_id !== selectedRoomId) return;
+        try {
+            mapData.objects[id] = fixtureValues();
+            renderFixtureList(id);
+            markDirty();
+        } catch (error) { document.getElementById('fixture-feedback').textContent = error.message; }
+    }
+
+    function deleteFixture() {
+        if (!canEdit || !selectedRoomId) return;
+        const id = document.getElementById('room-fixtures').value;
+        if (!(mapData.objects || {})[id] || mapData.objects[id].room_id !== selectedRoomId) return;
+        delete mapData.objects[id];
+        renderFixtureList();
+        markDirty();
+    }
+    // Fixture editor end
+
+    let actionParameters = {};
+    function readActionParameters() {
+        const result = {...actionParameters};
+        for (const input of document.querySelectorAll('.action-param')) {
+            let value = input.value;
+            if (input.dataset.type === 'primitive') {
+                value = JSON.parse(value);
+                if (value !== null && typeof value === 'object') throw new Error('Value must be a JSON primitive.');
+            }
+            result[input.dataset.param] = value;
+        }
+        return result;
+    }
+    function onTriggerActionChange(existing = null) {
+        const schema = (triggerMetadata.actions[document.getElementById('trigger-action').value] || {}).parameters || {};
+        if (existing !== null) actionParameters = {...existing};
+        else {
+            try { actionParameters = readActionParameters(); }
+            catch (error) { document.getElementById('trigger-error').textContent = error.message; return; }
+            actionParameters = Object.fromEntries(Object.entries(actionParameters).filter(([key]) => key in schema));
+        }
+        const container = document.getElementById('action-parameters');
+        container.replaceChildren();
+        for (const [key, info] of Object.entries(schema)) {
+            const label = document.createElement('label');
+            label.htmlFor = 'action-param-' + key;
+            label.textContent = info.label || key;
+            label.className = 'form-label';
+            const input = document.createElement(info.type === 'select' ? 'select' : 'input');
+            input.id = label.htmlFor;
+            input.className = 'form-control action-param';
+            input.dataset.param = key;
+            input.dataset.type = info.type;
+            if (info.type === 'select') for (const option of info.options || []) input.add(new Option(option, option));
+            const value = actionParameters[key];
+            input.value = info.type === 'primitive' ? JSON.stringify(value === undefined ? null : value) : (value === undefined ? (info.options || [''])[0] : value);
+            container.append(label, input);
+        }
+    }
+
     // Add new trigger
     function addTrigger() {
-        if (!selectedRoomId) return;
+        if (!canEdit || !selectedRoomId) return;
 
         editingTriggerId = null;
+        document.getElementById('btn-delete-trigger').style.display = 'none';
+        document.getElementById('trigger-error').textContent = '';
         document.getElementById('trigger-modal-title').textContent = 'Add Trigger';
         document.getElementById('trigger-id').value = 'trigger_' + Date.now();
         document.getElementById('trigger-type').value = 'entry';
@@ -1569,6 +1893,7 @@
 
         // Populate action dropdown
         populateActionSelect();
+        onTriggerActionChange({});
 
         // Show/hide interval field
         onTriggerTypeChange();
@@ -1580,13 +1905,15 @@
 
     // Edit existing trigger
     function editTrigger(triggerId) {
-        if (!selectedRoomId || !mapData.rooms[selectedRoomId]) return;
+        if (!canEdit || !selectedRoomId || !mapData.rooms[selectedRoomId]) return;
 
         const room = mapData.rooms[selectedRoomId];
         const trigger = (room.triggers || []).find(t => t.id === triggerId);
         if (!trigger) return;
 
         editingTriggerId = triggerId;
+        document.getElementById('btn-delete-trigger').style.display = '';
+        document.getElementById('trigger-error').textContent = '';
         document.getElementById('trigger-modal-title').textContent = 'Edit Trigger';
         document.getElementById('trigger-id').value = trigger.id;
         document.getElementById('trigger-type').value = trigger.type;
@@ -1598,6 +1925,7 @@
         if (trigger.action) {
             document.getElementById('trigger-action').value = trigger.action;
         }
+        onTriggerActionChange(trigger.parameters || {});
 
         // Show/hide interval field
         onTriggerTypeChange();
@@ -1643,6 +1971,7 @@
 
         const div = document.createElement('div');
         div.className = 'condition-row mb-3 p-2';
+        div.conditionParameters = condition ? {...condition.parameters} : {};
         div.id = rowId;
         div.style.cssText = 'border: 1px solid var(--builder-border); border-radius: 6px;';
         div.innerHTML = `
@@ -1677,6 +2006,7 @@
 
     // Handle condition type change - populate parameters
     function onConditionTypeChange(rowId, existingParams = null) {
+        if (existingParams === null) document.getElementById(rowId).conditionParameters = {};
         const typeSelect = document.getElementById(`${rowId}_type`);
         const paramsContainer = document.getElementById(`${rowId}_params`);
         const conditionType = typeSelect.value;
@@ -1698,6 +2028,11 @@
                 field.className = 'form-select form-select-sm condition-param';
                 for (const opt of paramInfo.options || []) {
                     field.add(new Option(opt, opt, value === opt, value === opt));
+                }
+                // Stored values can outlive the options offered by this client.
+                // Preserve them until an explicit change or server rejection.
+                if (value !== undefined && value !== null && !(paramInfo.options || []).includes(value)) {
+                    field.add(new Option(String(value), String(value), true, true));
                 }
             } else if (paramInfo.type === 'number') {
                 field = document.createElement('input');
@@ -1722,14 +2057,17 @@
 
     // Save trigger
     async function saveTrigger() {
-        if (!selectedRoomId || !mapData.rooms[selectedRoomId]) return;
+        if (!canEdit || !selectedRoomId || !mapData.rooms[selectedRoomId]) return;
+        let parameters;
+        try { parameters = readActionParameters(); }
+        catch (error) { document.getElementById('trigger-error').textContent = error.message; return; }
 
         const triggerData = {
             id: document.getElementById('trigger-id').value,
             type: document.getElementById('trigger-type').value,
             action: document.getElementById('trigger-action').value,
             enabled: document.getElementById('trigger-enabled').checked,
-            parameters: {},
+            parameters,
             conditions: []
         };
 
@@ -1746,14 +2084,14 @@
 
             const condition = {
                 type: typeSelect.value,
-                parameters: {}
+                parameters: {...row.conditionParameters}
             };
 
             // Gather parameters
             const paramInputs = row.querySelectorAll('.condition-param');
             for (const input of paramInputs) {
                 const paramName = input.getAttribute('data-param');
-                condition.parameters[paramName] = input.value;
+                condition.parameters[paramName] = input.type === 'number' && input.value !== '' ? Number(input.value) : input.value;
             }
 
             triggerData.conditions.push(condition);
@@ -1761,7 +2099,7 @@
 
         // Validate
         if (!triggerData.action) {
-            alert('Please select an action');
+            BuilderDialogs.alert('Please select an action');
             return;
         }
 
@@ -1785,10 +2123,14 @@
     }
 
     // Delete trigger
-    function deleteTrigger() {
-        if (!selectedRoomId || !editingTriggerId) return;
+    async function deleteTrigger() {
+        if (!canEdit || !selectedRoomId || !editingTriggerId) return;
+        const roomId = selectedRoomId;
+        const triggerId = editingTriggerId;
+        const currentRoom = mapData.rooms[roomId];
 
-        if (!confirm('Delete this trigger?')) return;
+        if (!await BuilderDialogs.confirm('Delete this trigger?')) return;
+        if (!canEdit || selectedRoomId !== roomId || editingTriggerId !== triggerId || mapData.rooms[roomId] !== currentRoom) return;
 
         const room = mapData.rooms[selectedRoomId];
         if (room.triggers) {
@@ -1835,12 +2177,14 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Action</label>
-                    <select class="form-select" id="trigger-action">
+                    <label class="form-label" for="trigger-action">Action</label>
+                    <select class="form-select" id="trigger-action" onchange="onTriggerActionChange()">
                         <option value="">-- Select Action --</option>
                     </select>
                 </div>
 
+                <div id="action-parameters" class="mb-3"></div>
+                <div id="trigger-error" role="alert" class="text-danger"></div>
                 <div class="mb-3">
                     <label class="form-label">Conditions (optional)</label>
                     <div id="conditions-container">

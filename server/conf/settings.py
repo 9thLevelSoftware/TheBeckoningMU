@@ -49,6 +49,7 @@ INSTALLED_APPS += (
     "chronicle.apps.ChronicleConfig",
     "narrative.apps.NarrativeConfig",
     "oauth2_provider",
+    "mcp_server.apps.MCPServerConfig",
     "web.builder.apps.BuilderConfig",
 )
 
@@ -165,6 +166,7 @@ MCP_ALLOWED_HOSTS = os.environ.get("MCP_ALLOWED_HOSTS") or None
 MCP_ALLOWED_ORIGINS = os.environ.get("MCP_ALLOWED_ORIGINS") or None
 
 OAUTH2_PROVIDER = {
+    "OAUTH2_VALIDATOR_CLASS": "mcp_server.oauth_validators.MCPOAuth2Validator",
     "SCOPES": {
         "character:self:read": "Read your own character summary, status, and boons",
         "chronicle:read:public": "Read published public Chronicle events",

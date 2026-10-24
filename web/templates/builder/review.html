@@ -255,23 +255,8 @@
 
 {% block extra_js %}
 <script>
-// CSRF token helper
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}
-
-const csrftoken = getCookie('csrftoken');
+// Use Django's rendered token regardless of the configured CSRF cookie name.
+const csrftoken = '{{ csrf_token }}';
 
 // ── Reject Modal ───────────────────────────────────
 let currentProjectId = null;
@@ -305,7 +290,7 @@ confirmReject.addEventListener('click', async function() {
 
     const notes = rejectionNotes.value.trim();
     if (notes.length < 10) {
-        alert('Please provide at least 10 characters of feedback');
+        BuilderDialogs.alert('Please provide at least 10 characters of feedback');
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-x-lg"></i> Reject';
         return;
@@ -322,20 +307,23 @@ confirmReject.addEventListener('click', async function() {
             rejectModal.hide();
             loadProjects();
         } else {
-            alert('Error: ' + (data.error || 'Failed to reject project'));
+            BuilderDialogs.alert('Error: ' + (data.error || 'Failed to reject project'));
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-x-lg"></i> Reject';
         }
     } catch (error) {
-        alert('Error rejecting project: ' + error.message);
+        BuilderDialogs.alert('Error rejecting project: ' + error.message);
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-x-lg"></i> Reject';
     }
 });
 
 // ── Approve ────────────────────────────────────────
+const pendingApprovals = new Set();
 async function approveProject(id, name, version) {
-    if (!confirm(`Approve "${name}"? This will allow the builder to proceed to sandbox testing.`)) return;
+    if (pendingApprovals.has(id)) return;
+    pendingApprovals.add(id);
+    if (!await BuilderDialogs.confirm(`Approve "${name}"? This will allow the builder to proceed to sandbox testing.`)) { pendingApprovals.delete(id); return; }
 
     try {
         // Send the version this card showed: the approval is refused (409)
@@ -349,10 +337,12 @@ async function approveProject(id, name, version) {
         if (data.status === 'success') {
             loadProjects();
         } else {
-            alert('Error: ' + (data.error || 'Failed to approve project'));
+            BuilderDialogs.alert('Error: ' + (data.error || 'Failed to approve project'));
         }
     } catch (error) {
-        alert('Error approving project: ' + error.message);
+        BuilderDialogs.alert('Error approving project: ' + error.message);
+    } finally {
+        pendingApprovals.delete(id);
     }
 }
 
@@ -493,6 +483,16 @@ async function loadProjects() {
                 </div>
                 <div class="review-card-body">
                     <p class="review-desc">${escapeHtml(project.description || 'No description provided')}</p>
+                    ${project.revision_of_id && project.revision_intent !== 'replacement' ? `<p class="review-desc">Standalone copy of project #${Number(project.revision_of_id)}; independent publication lineage #${Number(project.root_project_id)}. Approval applies only to this draft and its connection.</p>` : ''}
+                    ${project.replacement_plan && project.replacement_plan.target ? `
+                    <div class="builder-notes">
+                        <strong>Reviewed live replacement</strong><br>
+                        Target revision #${Number(project.replacement_plan.target.project_id)}, version ${Number(project.replacement_plan.target.version)}, lineage #${Number(project.root_project_id)}.<br>
+                        Target manifest SHA256: ${escapeHtml(project.replacement_plan.target.manifest_hash)}
+                        <details><summary>Field changes, additions, retirements and connection</summary><pre>${escapeHtml(JSON.stringify(project.replacement_plan.changes, null, 2))}</pre></details>
+                        <details><summary>Exact target object and timer identities</summary><pre>${escapeHtml(JSON.stringify(project.replacement_plan.source_manifest, null, 2))}</pre></details>
+                        Removed live objects are retired and retained; this review grants no purge authority.
+                    </div>` : ''}
 
                     <div class="review-stats">
                         <div class="review-stat">
@@ -512,6 +512,23 @@ async function loadProjects() {
                     <div class="builder-notes">
                         <strong>Connects to</strong><br>
                         ${formatConnection(project.connection)}
+                    </div>
+
+                    <div class="builder-notes">
+                        <strong>Reviewed fixtures</strong><br>
+                        ${Object.entries(project.fixtures || {}).map(([id, record]) => {
+                            const placement = record.placement;
+                            return `${escapeHtml(id)}: ${escapeHtml(placement.prototype_id)} revision ${Number(placement.prototype_revision)}, room ${escapeHtml(placement.room_id)}<br>Name: ${escapeHtml(placement.name || record.definition.label)}<br>Description: ${escapeHtml(placement.description === undefined ? record.definition.description : placement.description)}<br>Definition SHA256: ${escapeHtml(record.definition_hash)}`;
+                        }).join('<hr>') || 'No fixtures'}
+                    </div>
+
+                    <div class="builder-notes">
+                        <strong>Room settings</strong><br>
+                        Clock: America/New_York; day 06:00 to before 18:00. Existing traversal locks apply.<br>
+                        ${Object.entries(project.room_settings || {}).map(([id, settings]) =>
+                            `${escapeHtml(id)}: ${escapeHtml(settings.day_night || 'always')}; restricted character IDs ${escapeHtml(JSON.stringify(settings.restricted_characters || []))}; hunting modifier ${escapeHtml(String(settings.hunting_modifier || 0))}; Haven facts ${escapeHtml(JSON.stringify(settings.haven_ratings || {}))}`
+                        ).join('<br>')}
+                        <br>Positive hunting modifiers lower difficulty once (minimum 1). Haven facts require staff adjudication and confer no automatic bonuses.
                     </div>
 
                     ${project.submission_notes ? `

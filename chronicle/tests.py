@@ -106,6 +106,7 @@ class ChronicleEventServiceTests(OwnedCharacterTestCase):
         deliver(self.char1, source)
         event = ChronicleEvent.objects.get(idempotency_key="private-transition")
         self.account.permissions.add("Builder")
+        publish_event(source.pk, self.account)
         publish_event(event.pk, self.account)
         deliver(self.char2, other_source)
 
@@ -345,23 +346,32 @@ class ChronicleEventServiceTests(OwnedCharacterTestCase):
         )
 
         self.client.force_login(self.account)
-        response = self.client.post(f"/staff/narrative-ops/memories/{fact.pk}/approve/")
+        response = self.client.post(
+            f"/staff/narrative-ops/memories/{fact.pk}/approve/", {"expected_version": fact.version}
+        )
         self.assertNotEqual(response.status_code, 200)
         fact.refresh_from_db()
         self.assertEqual(fact.status, MemoryFact.Status.DRAFT)
 
         staff = self.account
         staff.permissions.add("Builder")
+        publish_event(event.pk, staff)
         self.client.force_login(staff)
         response = self.client.get("/staff/narrative-ops/")
         self.assertContains(response, "A sourced memory awaiting review.")
         self.assertContains(response, f"Source Chronicle #{event.pk}")
-        self.client.post(f"/staff/narrative-ops/memories/{fact.pk}/approve/")
+        response = self.client.post(
+            f"/staff/narrative-ops/memories/{fact.pk}/approve/", {"expected_version": fact.version}
+        )
+        self.assertEqual(response.status_code, 302)
         fact.refresh_from_db()
         self.assertEqual(fact.status, MemoryFact.Status.APPROVED)
         self.assertIsNotNone(fact.approved_at)
 
-        self.client.post(f"/staff/narrative-ops/memories/{fact.pk}/redact/")
+        response = self.client.post(
+            f"/staff/narrative-ops/memories/{fact.pk}/redact/", {"expected_version": fact.version}
+        )
+        self.assertEqual(response.status_code, 302)
         fact.refresh_from_db()
         self.assertEqual(fact.status, MemoryFact.Status.REDACTED)
         self.assertEqual(fact.text, "")
@@ -391,13 +401,15 @@ class ChronicleEventServiceTests(OwnedCharacterTestCase):
         self.account.permissions.add("Builder")
         self.client.force_login(self.account)
 
-        response = self.client.post(f"/staff/narrative-ops/memories/{fact.pk}/redact/")
+        response = self.client.post(
+            f"/staff/narrative-ops/memories/{fact.pk}/redact/", {"expected_version": fact.version}
+        )
 
         self.assertEqual(response.status_code, 302)
         fact.refresh_from_db()
         self.assertEqual(fact.status, MemoryFact.Status.REDACTED)
         self.assertEqual(fact.text, "")
-        self.assertEqual(fact.staff_entry, "[redacted staff entry]")
+        self.assertEqual(fact.staff_entry, "")
         self.assertIsNone(fact.source_event_id)
         self.assertNotContains(self.client.get("/staff/narrative-ops/"), "Sensitive staff provenance.")
 

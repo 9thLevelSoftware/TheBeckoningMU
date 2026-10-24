@@ -16,7 +16,9 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The expanded integration suite takes about 31 minutes locally; allow
+    # dependency setup and normal hosted-runner variance without truncation.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 

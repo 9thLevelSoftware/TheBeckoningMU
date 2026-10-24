@@ -1,0 +1,77 @@
+|WRITUAL CASTING — PROVISIONAL CHRONICLE PROCEDURE|n
+
+|y+ritual|n lists learned rituals.
+|y+ritual <name> [= <target>]|n creates an UNPAID request.
+|y+ritual/status [<cast-id>]|n shows durable state, revision, payments and dice.
+|y+ritual/confirm <cast-id>|n confirms the attested procedure and its costs.
+|y+ritual/resolve <cast-id>|n checks a due casting explicitly (also timed by its Script).
+|y+ritual/cancel <cast-id>|n cancels an ordinary waiting attempt; recorded payments remain paid.
+
+You must have learned the ritual and meet its Blood Sorcery rating. The
+catalog's provisional defaults are five minutes per level, one Rouse check
+unless the entry overrides it, Intelligence + Blood Sorcery and difficulty
+level + 1 unless overridden. Truth of Blood and Dagon's Call retain their
+Resolve pools and catalog resistance pools. No Discipline-power Blood
+Potency reroll, surge, or other bonus is silently applied to ritual rolls.
+
+The catalog does not supply every target fact, ingredient, payment timing,
+cancellation consequence, opposed procedure, duration or outcome. There is
+no inventory model proving materials. An authenticated Builder must attest
+these facts for the EXACT request revision, then you confirm that procedure.
+Payment may precede casting or follow its roll only as explicitly attested;
+cancellation/failure retain paid costs and grant no automatic effect.
+Rouse failures can raise Hunger. Hunger 5 refuses unpaid voluntary checks.
+Pending Hunger frenzy tests remain recorded and visible; use +frenzy.
+
+A successful CASTING ROLL is not automatically a discovered identity,
+truth, ward, transport, damage, immunity or other supernatural outcome.
+It waits for staff adjudication. A staff-adjudicated outcome can add only
+a descriptive +effects marker with an explicit duration; it is not an
+automatic mechanical power. Staff tick advances attested turn counters;
+scene/night/permanent markers require explicit Storyteller removal.
+
+Escape to True Sanctuary's twelve Rouse checks are spread over preparation.
+Staff must name twelve distinct one-check checkpoints, record their facts
+and attest that the catalog's 25-minute casting follows their completion.
+Each checkpoint requires its own staff confirmation/payment. No preparation
+interval is guessed, no remaining checks are charged by a loop, and feeding
+between checkpoints does not cause a completed checkpoint to charge again.
+
+The attempt, exact dice, procedure, payment ledger and history survive
+reloads. Waiting casting deadlines resume. Interrupted payment, resolution
+or adjudication becomes review_required on startup and NEVER automatically
+recharges, rerolls or repeats an effect. Status does not declare an operation
+stale while it may still be running. Staff review can explicitly abandon an
+investigated attempt, preserving its uncertainty/history without refund or
+replay. Any resource correction is a separate staff responsibility.
+
+|WBUILDER PROCEDURES|n
+
+All actions are bound to the requested character and exact cast revision:
+
+|y+ritual/attest <character>/<cast-id> = <revision>/<JSON procedure>|n
+|y+ritual/pay <character>/<cast-id> = <revision>/<checkpoint-id>|n
+|y+ritual/adjudicate <character>/<cast-id> = <revision>/<duration>/<outcome>|n
+|y+ritual/review <character>/<cast-id> = <revision>/<investigation note>|n
+
+An ordinary attestation object must explicitly provide:
+{"materials":"witnessed materials and preparation", "target_facts":"verified facts",
+ "duration":"staff_adjudicated", "outcome":"requested adjudication",
+ "failure":"no effect; paid costs retained", "failure_policy":"no_effect_retain_paid",
+ "cancellation":"retain_paid", "payment_timing":"before_casting",
+ "casting_start":"after_payment", "casting_relationship":"recorded preparation/time facts",
+ "opposition":"none", "opposed_ties":"defender_wins",
+ "opposed_success":"catalog_difficulty_and_contest", "checkpoints":[]}
+
+These are required statements, not facts automatically supplied by the game.
+For after_casting payment use casting_start on_confirm. Catalog opposition
+requires opposition catalog_roll and an explicitly selected actor_wins or
+defender_wins tie policy, plus opposed_success catalog_difficulty_and_contest
+to attest that BOTH the catalog difficulty and contest apply. Use
+staff_adjudicated opposition for another procedure. Sanctuary requires
+payment_timing staged_preparation, casting_start after_checkpoints and twelve
+objects such as {"id":"prep-1","rouse":1,"description":"verified checkpoint facts"}.
+Adjudication durations: instant, scene, night, permanent, or turn:<positive count>.
+
+All catalog values remain provisional chronicle policy pending source review.
+|ySee also:|n help effects-guide, help xp-guide, help disciplines-guide

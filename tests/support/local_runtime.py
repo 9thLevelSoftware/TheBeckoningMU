@@ -105,6 +105,8 @@ def narrative_http():
             self.mode = "valid"
             self.received = []
             self.heartbeats = []
+            self.disconnected = []
+            self.late_responses = []
 
         def render_POST(self, request):  # noqa: N802
             payload = json.loads(request.content.read())
@@ -115,11 +117,26 @@ def narrative_http():
             assert pending.status == "pending" and pending.action_text
             mode = self.mode
 
+            def disconnected(_failure):
+                self.disconnected.append(pending.pk)
+                return None
+
+            request.notifyFinish().addErrback(disconnected)
+            # The result is visible before the first byte of provider traffic.
+            shown = "\n".join(str(call.args[0]) for call in character.msg.call_args_list)
+            assert shown.count("SUCCESSFUL HUNT") == 1
+            assert "Hunger 5 -> 3" in shown and "Hunger dice:" in shown
+
             def heartbeat():
-                assert StoryGenerationRequest.objects.get(pk=pending.pk).status == "pending"
-                self.heartbeats.append(pending.pk)
+                if StoryGenerationRequest.objects.get(pk=pending.pk).status == "pending":
+                    self.heartbeats.append(pending.pk)
 
             def respond():
+                if mode == "late-valid":
+                    self.late_responses.append(pending.pk)
+                    assert StoryGenerationRequest.objects.get(pk=pending.pk).status == "failed"
+                    if pending.pk in self.disconnected:
+                        return
                 request.setHeader(b"Content-Type", b"application/json")
                 content = {"prose": "A local shadow moves. |r", "citations": []}
                 if mode == "citation":
@@ -135,7 +152,24 @@ def narrative_http():
                 request.finish()
 
             reactor.callLater(0.02, heartbeat)
-            reactor.callLater(0.15, respond)
+            if mode == "headers-stall":
+                return NOT_DONE_YET
+            if mode == "body-stall":
+                request.write(b'{"choices":[')
+                return NOT_DONE_YET
+            if mode == "declared-overflow":
+                request.setHeader(b"Content-Length", b"2048")
+                request.write(b"{")
+                return NOT_DONE_YET
+            if mode == "chunked-overflow":
+                request.write(b" " * 200)
+                reactor.callLater(0.03, request.write, b" " * 200)
+                return NOT_DONE_YET
+            if mode == "socket-abort":
+                request.write(b'{"choices":[')
+                reactor.callLater(0.03, request.transport.abortConnection)
+                return NOT_DONE_YET
+            reactor.callLater(0.5 if mode == "late-valid" else 0.15, respond)
             return NOT_DONE_YET
 
     endpoint = Endpoint()
@@ -169,6 +203,9 @@ def narrative_http():
                 "endpoint": f"http://127.0.0.1:{listener.getHost().port}/chat/completions",
                 "model": "local-fixture",
                 "api_key": "local-fixture-only",
+                "request_timeout_seconds": 0.3,
+                "connect_timeout_seconds": 0.2,
+                "response_max_bytes": 256,
             }
             with (
                 patch("dice.dice_roller.randint", return_value=8) as dice,
@@ -179,23 +216,57 @@ def narrative_http():
                 command("/story start downtown")
                 session = StorySession.objects.get(character=character, status="active")
                 outcome = dict(session.deterministic_outcome)
+                assert outcome["schema_version"] == 1
+                assert outcome["dice"] == {"regular": [8, 8], "hunger": [8] * 5}
+                assert outcome["pool"]["rolled"] == 7
                 assert outcome["hunger_before"] == 5 and outcome["hunger_after"] == 3
                 assert get_hunger(character) == 3 and dice.call_count == 7, (get_hunger(character), dice.call_count)
                 first = yield wait_for_request()
                 assert first.status == "succeeded" and first.action_text == ""
                 assert first.response == "A local shadow moves. |r"
                 assert "||r" in str(character.msg.call_args)
-                for mode in ("valid", "http-error", "malformed", "citation", "mutation"):
+                modes = (
+                    "valid",
+                    "http-error",
+                    "malformed",
+                    "citation",
+                    "mutation",
+                    "headers-stall",
+                    "body-stall",
+                    "chunked-overflow",
+                    "declared-overflow",
+                    "socket-abort",
+                    "late-valid",
+                )
+                for mode in modes:
                     endpoint.mode = mode
                     command("/story resume I watch from the doorway.")
                     request = yield wait_for_request()
                     assert request.status == ("succeeded" if mode == "valid" else "failed"), mode
                     assert request.action_text == ""
                     assert (bool(request.response)) == (mode == "valid")
+                    if mode in ("headers-stall", "body-stall", "late-valid"):
+                        assert request.error == "timeout", (mode, request.error)
+                    if mode in ("chunked-overflow", "declared-overflow"):
+                        assert request.error == "response_too_large", (mode, request.error)
+                    if mode == "late-valid":
+                        yield task.deferLater(reactor, 0.25, lambda: None)
+                        request.refresh_from_db()
+                        assert request.status == "failed" and request.response == ""
+                        assert request.pk in endpoint.late_responses
+                    if mode in ("headers-stall", "body-stall", "chunked-overflow", "declared-overflow", "late-valid"):
+                        yield task.deferLater(reactor, 0.03, lambda: None)
+                        assert request.pk in endpoint.disconnected, mode
                     session.refresh_from_db()
+                    assert session.current_action == ""
                     assert session.deterministic_outcome == outcome
                     assert get_hunger(character) == 3 and dice.call_count == 7
+                    shown = "\n".join(str(call.args[0]) for call in character.msg.call_args_list)
+                    assert shown.count("SUCCESSFUL HUNT") == 1
+                    if mode != "valid":
+                        assert "story request failed" in str(character.msg.call_args)
                 assert "A local shadow moves." in endpoint.received[1]["messages"][-1]["content"]
+                endpoint.mode = "valid"
                 command("/story start downtown")  # existing session must not resolve a second hunt
                 yield wait_for_request()
                 assert dice.call_count == 7 and StorySession.objects.count() == 1
@@ -211,6 +282,9 @@ def narrative_http():
                 assert not NarrativeConsent.objects.get(character=character).opted_in
                 # Ordinary deterministic hunting continues to work without any provider.
                 settings.NARRATIVE_AI = {}
+                command("/story status")
+                assert "Hunger 5 -> 3" in str(character.msg.call_args)
+                assert dice.call_count == 7
                 command(" downtown")
                 assert "already hunted" in str(character.msg.call_args)
                 assert dice.call_count == 7 and get_hunger(character) == 3
@@ -220,9 +294,20 @@ def narrative_http():
                 command(" downtown")
                 assert "without a kill" in str(character.msg.call_args)
                 assert dice.call_count == 14 and get_hunger(character) == 1
-                assert StoryGenerationRequest.objects.count() == 7
-            assert len(endpoint.received) == len(endpoint.heartbeats) == 7
-            print(json.dumps({"gate": "command-http", "requests": 7, "heartbeats_while_pending": 7, "passed": True}))
+                assert StoryGenerationRequest.objects.count() == len(modes) + 2
+            assert len(endpoint.received) == len(modes) + 2
+            assert len(endpoint.heartbeats) >= 7
+            print(
+                json.dumps(
+                    {
+                        "gate": "command-http",
+                        "requests": len(endpoint.received),
+                        "heartbeats_while_pending": len(endpoint.heartbeats),
+                        "aborted_connections": len(endpoint.disconnected),
+                        "passed": True,
+                    }
+                )
+            )
         finally:
             yield listener.stopListening()
 
@@ -253,7 +338,7 @@ def write_fixture(database, phase):
         Boon.objects.filter(creditor=character).update(status="accepted")
         other = ObjectDB.objects.get(db_key="LocalCharacter2")
         Boon.objects.create(debtor=other, creditor=character, boon_type="life", status="accepted")
-    else:
+    elif phase == "transfer":
         from evennia.accounts.models import AccountDB
 
         from traits.models import CharacterBio
@@ -261,13 +346,27 @@ def write_fixture(database, phase):
         owner = AccountDB.objects.get(username="LocalAccount2")
         CharacterBio.objects.filter(character=character).update(account=owner)
         ChronicleEvent.objects.filter(idempotency_key="local-private").update(summary="Fresh private event")
+    elif phase == "withdraw":
+        from evennia.accounts.models import AccountDB
+
+        from chronicle.services import redact_event
+
+        source = ChronicleEvent.objects.get(idempotency_key="local-source")
+        actor = AccountDB.objects.get(username="LocalModerator")
+        redact_event(source.pk, actor, expected_version=source.version)
+    else:
+        raise AssertionError("Unknown fixture writer phase")
     print(json.dumps({"writer_pid": os.getpid(), "phase": phase}))
 
 
 def mcp_freshness(database):
+    import asyncio
+    import socket
     from datetime import timedelta
+    from urllib.parse import urlsplit
 
     import httpx
+    import uvicorn
     from asgiref.sync import async_to_sync
     from django.conf import settings
     from django.utils import timezone
@@ -276,7 +375,9 @@ def mcp_freshness(database):
     from oauth2_provider.models import AccessToken, Application
 
     from boons.models import Boon
-    from chronicle.models import ChronicleEvent
+    from chronicle.availability import source_context
+    from chronicle.models import ChronicleEvent, ChronicleGenerationRequest
+    from chronicle.services import begin_correction, event_projection, publish_event, staff_events
     from mcp_server.app import create_application
     from mcp_server.auth import OAUTH_SCOPES
     from status.models import CamarillaPosition, CharacterStatus
@@ -304,9 +405,71 @@ def mcp_freshness(database):
         status="published",
     )
     event.participants.add(character)
-    settings.MCP_OAUTH_ISSUER = "http://127.0.0.1/o"
-    settings.MCP_RESOURCE_URL = "http://127.0.0.1/mcp"
-    settings.MCP_ALLOWED_HOSTS = ("127.0.0.1",)
+    import evennia
+
+    moderator = evennia.create_account("LocalModerator", email=None, password="local-fixture-only")
+    moderator.permissions.add("Builder")
+    source = ChronicleEvent.objects.create(
+        idempotency_key="local-source",
+        source_app="staff",
+        source_type="scene",
+        source_id="2",
+        kind="scene.curated",
+        title="Source awaiting later redaction",
+        summary="A public source for the retained local recap.",
+        visibility="public",
+        status="published",
+    )
+    _selected, fingerprints = source_context([source.pk])
+    request = ChronicleGenerationRequest.objects.create(
+        requested_by=moderator,
+        mode="recap",
+        source_ids=[str(source.pk)],
+        source_fingerprints=fingerprints,
+        status="succeeded",
+    )
+    recap = ChronicleEvent.objects.create(
+        idempotency_key="local-recap",
+        source_app="chronicle",
+        source_type="ChronicleGenerationRequest",
+        source_id=str(request.pk),
+        kind="scene.curated",
+        title="Retained generated recap",
+        summary="Successful generated prose retained for staff source review.",
+        visibility="public",
+        status="published",
+        ai_generated=True,
+    )
+    recap.source_events.add(source)
+    request.draft_event = recap
+    request.save(update_fields=["draft_event"])
+    correction = begin_correction(recap.pk, moderator, changes={"title": "Corrected retained recap"})
+    correction = publish_event(correction.pk, moderator, expected_version=correction.version)
+    descendant = ChronicleEvent.objects.create(
+        idempotency_key="local-descendant",
+        source_app="staff",
+        source_type="scene",
+        source_id="3",
+        kind="scene.curated",
+        title="Transitive corrected-source recap",
+        summary="A retained descendant depending on the corrected recap.",
+        visibility="public",
+        status="published",
+    )
+    descendant.source_events.add(correction)
+    warmed_correction = ChronicleEvent.objects.prefetch_related("source_events", "participants").get(pk=correction.pk)
+    warmed_descendant = ChronicleEvent.objects.prefetch_related("source_events", "participants").get(pk=descendant.pk)
+    retained_prose = {recap.pk: recap.summary, correction.pk: correction.summary, descendant.pk: descendant.summary}
+    protected_ids = {source.pk, recap.pk, correction.pk, descendant.pk}
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(128)
+    listener.setblocking(False)
+    port = listener.getsockname()[1]
+    origin = f"http://127.0.0.1:{port}"
+    settings.MCP_OAUTH_ISSUER = origin + "/o"
+    settings.MCP_RESOURCE_URL = origin + "/mcp"
+    settings.MCP_ALLOWED_HOSTS = (f"127.0.0.1:{port}",)
     application = Application.objects.create(
         user=account, name="Local fixture", client_type="public", authorization_grant_type="authorization-code"
     )
@@ -320,6 +483,9 @@ def mcp_freshness(database):
             resource=[settings.MCP_RESOURCE_URL],
         )
     app = create_application()
+    server = uvicorn.Server(
+        uvicorn.Config(app, log_level="error", access_log=False, lifespan="on", timeout_graceful_shutdown=3)
+    )
     writer_pids = []
 
     def write(phase):
@@ -337,11 +503,21 @@ def mcp_freshness(database):
         writer_pids.append(record["writer_pid"])
 
     async def exercise():
-        async with app.app.router.lifespan_context(app.app):
+        serving = asyncio.create_task(server.serve(sockets=[listener]))
+
+        async def local_only(request):
+            parsed = urlsplit(str(request.url))
+            assert parsed.scheme == "http" and parsed.netloc == f"127.0.0.1:{port}", "Non-fixture HTTP refused"
+
+        http_options = {"timeout": 8, "trust_env": False, "event_hooks": {"request": [local_only]}}
+        try:
+            async with asyncio.timeout(8):
+                while not server.started:
+                    if serving.done():
+                        await serving
+                    await asyncio.sleep(0.01)
             async with (
-                httpx.AsyncClient(
-                    transport=httpx.ASGITransport(app=app), headers={"Authorization": "Bearer local-token-1"}
-                ) as http,
+                httpx.AsyncClient(**http_options, headers={"Authorization": "Bearer local-token-1"}) as http,
                 streamable_http_client(settings.MCP_RESOURCE_URL, http_client=http) as (read, send, _),
                 ClientSession(read, send) as session,
             ):
@@ -353,6 +529,12 @@ def mcp_freshness(database):
                     return json.loads(result.content[0].text)
 
                 initial = await call("get_my_character_summary")
+                for tool in ("get_public_chronicle", "get_my_chronicle"):
+                    warm = await session.call_tool(tool, {})
+                    assert not warm.isError
+                    rows = [json.loads(block.text) for block in warm.content]
+                    assert {source.pk, correction.pk, descendant.pk}.issubset({row["id"] for row in rows})
+                    assert recap.pk not in {row["id"] for row in rows}
                 assert initial["name"] == cached_name and initial["vampire"]["hunger"] == 5
                 assert initial["boons"] == {"owed": 1, "held": 0, "net": -1}
                 assert (await session.call_tool("get_my_character_summary", {"character_id": foreign.pk})).isError
@@ -377,10 +559,17 @@ def mcp_freshness(database):
                     assert (await session.call_tool(tool, {"character_id": character.pk})).isError
                 private = await session.call_tool("get_my_chronicle", {})
                 assert not private.isError and "Local private event" not in str(private)
+                write("withdraw")
+                for tool in ("get_public_chronicle", "get_my_chronicle"):
+                    refreshed = await session.call_tool(tool, {})
+                    assert not refreshed.isError
+                    rows = [json.loads(block.text) for block in refreshed.content]
+                    assert protected_ids.isdisjoint(row["id"] for row in rows)
+                    assert all(prose not in str(refreshed) for prose in retained_prose.values())
+                assert event_projection(warmed_correction) is None
+                assert event_projection(warmed_descendant, "account", account) is None
             async with (
-                httpx.AsyncClient(
-                    transport=httpx.ASGITransport(app=app), headers={"Authorization": "Bearer local-token-2"}
-                ) as http,
+                httpx.AsyncClient(**http_options, headers={"Authorization": "Bearer local-token-2"}) as http,
                 streamable_http_client(settings.MCP_RESOURCE_URL, http_client=http) as (read, send, _),
                 ClientSession(read, send) as session,
             ):
@@ -389,6 +578,18 @@ def mcp_freshness(database):
                 assert not summary.isError and json.loads(summary.content[0].text) == current
                 private = await session.call_tool("get_my_chronicle", {})
                 assert not private.isError and "Fresh private event" in str(private)
+                assert protected_ids.isdisjoint(json.loads(block.text)["id"] for block in private.content)
+        finally:
+            server.should_exit = True
+            try:
+                await asyncio.wait_for(serving, timeout=8)
+            finally:
+                listener.close()
+                from asgiref.sync import sync_to_async
+                from django.db import connections
+
+                await sync_to_async(connections.close_all, thread_sensitive=True)()
+                connections.close_all()
 
     async_to_sync(exercise)()
     assert character.key == cached_name and character.db.stats == cached_stats and character.account.pk == account.pk
@@ -397,9 +598,25 @@ def mcp_freshness(database):
     assert cached_bio.account_id == account.pk
     assert status.earned_status == 1 and position.name == "Old position"
     assert debt.boon_type == "trivial" and credit.status == "offered"
+    request.refresh_from_db()
+    assert request.status == "succeeded" and request.source_fingerprints == fingerprints
+    assert ChronicleEvent.objects.get(pk=source.pk).summary == ""
+    for event_id, prose in retained_prose.items():
+        retained = staff_events(moderator).get(pk=event_id)
+        assert retained.summary == prose
+        assert retained.status == ("superseded" if event_id == recap.pk else "withdrawn")
+        if event_id != recap.pk:
+            assert retained.withdrawal_reason == "source_redacted" and retained.withdrawn_by_id == moderator.pk
     print(
         json.dumps(
-            {"gate": "mcp-process-freshness", "reader_pid": os.getpid(), "writer_pids": writer_pids, "passed": True}
+            {
+                "gate": "mcp-process-freshness",
+                "reader_pid": os.getpid(),
+                "writer_pids": writer_pids,
+                "transport": "owned-loopback-http",
+                "withdrawal": {"transitive_corrected_source": True, "retained_successful_prose": True},
+                "passed": True,
+            }
         )
     )
 

@@ -7,6 +7,7 @@ from .read_services import (
     character_summary_for_account,
     public_chronicle,
 )
+from .services import event_projection
 
 
 class PlayerReadOnlyAPIView(View):
@@ -18,26 +19,26 @@ class PlayerReadOnlyAPIView(View):
         return super().dispatch(request, *args, **kwargs)
 
 
-def serialize_event(event):
-    return {
-        "id": event.pk,
-        "kind": event.kind,
-        "title": event.title,
-        "summary": event.summary,
-        "occurred_at": event.occurred_at.isoformat(),
-        "ai_generated": event.ai_generated,
-        "payload": event.payload,
-    }
+def serialize_event(event, audience="public", account=None, *, character_id=None):
+    return event_projection(event, audience, account, character_id=character_id)
+
+
+def _project(events, audience="public", account=None, *, character_id=None):
+    return [
+        record
+        for event in events
+        if (record := serialize_event(event, audience, account, character_id=character_id)) is not None
+    ]
 
 
 class PublicChronicleAPIView(PlayerReadOnlyAPIView):
     def get(self, request):
-        return JsonResponse({"events": [serialize_event(event) for event in public_chronicle()]})
+        return JsonResponse({"events": _project(public_chronicle())})
 
 
 class MyChronicleAPIView(PlayerReadOnlyAPIView):
     def get(self, request):
-        return JsonResponse({"events": [serialize_event(event) for event in account_chronicle(request.user)]})
+        return JsonResponse({"events": _project(account_chronicle(request.user), "account", request.user)})
 
 
 class CharacterSummaryAPIView(PlayerReadOnlyAPIView):
@@ -53,4 +54,4 @@ class CharacterChronicleAPIView(PlayerReadOnlyAPIView):
         events = character_chronicle_for_account(request.user, character_id)
         if events is None:
             return JsonResponse({"error": "character_not_found"}, status=404)
-        return JsonResponse({"events": [serialize_event(event) for event in events]})
+        return JsonResponse({"events": _project(events, "participants", request.user, character_id=character_id)})

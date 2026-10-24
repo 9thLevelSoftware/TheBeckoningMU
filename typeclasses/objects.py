@@ -8,11 +8,87 @@ with a location in the game world (like Characters, Rooms, Exits).
 
 """
 
-from evennia.objects.objects import DefaultObject
 from django.conf import settings
+from evennia.objects.models import ObjectDB
+from evennia.objects.objects import DefaultObject
+from evennia.typeclasses.tags import AliasHandler, PermissionHandler, TagHandler
+from evennia.utils.utils import lazy_property
 
 
-class ObjectParent:
+def _fenced_property(name, field):
+    """Keep Evennia's original setters, hooks and cache maintenance intact."""
+    original = getattr(ObjectDB, name)
+
+    def assign(obj, value):
+        from web.builder.operation_fences import guard_object
+
+        guard_object(obj, field=field, value=value)
+        original.fset(obj, value)
+
+    def remove(obj):
+        from web.builder.operation_fences import guard_object
+
+        guard_object(obj, field=field, value=None)
+        original.fdel(obj)
+
+    return property(original.fget, assign, remove, original.__doc__)
+
+
+class _FencedTagWrites:
+    def _guard_builder_write(self):
+        from evennia.scripts.models import ScriptDB
+
+        from web.builder.operation_fences import guard_object
+        from web.builder.operation_runtime import assert_script_mutation_allowed
+
+        if isinstance(self.obj, ScriptDB):
+            assert_script_mutation_allowed(self.obj)
+        else:
+            guard_object(self.obj)
+
+    def add(self, *args, **kwargs):
+        self._guard_builder_write()
+        return super().add(*args, **kwargs)
+
+    def remove(self, *args, **kwargs):
+        self._guard_builder_write()
+        return super().remove(*args, **kwargs)
+
+    def clear(self, *args, **kwargs):
+        # Evennia clears through rows directly, without m2m_changed signals.
+        self._guard_builder_write()
+        return super().clear(*args, **kwargs)
+
+
+class _FencedAliases(_FencedTagWrites, AliasHandler):
+    pass
+
+
+class _FencedTags(_FencedTagWrites, TagHandler):
+    pass
+
+
+class _FencedPermissions(_FencedTagWrites, PermissionHandler):
+    pass
+
+
+class BuilderFencedTags:
+    """Preserve Evennia handlers while guarding their direct through-row clear."""
+
+    @lazy_property
+    def aliases(self):
+        return _FencedAliases(self)
+
+    @lazy_property
+    def tags(self):
+        return _FencedTags(self)
+
+    @lazy_property
+    def permissions(self):
+        return _FencedPermissions(self)
+
+
+class ObjectParent(BuilderFencedTags):
     """
     This is a mixin that can be used to override *all* entities inheriting at
     some distance from DefaultObject (Objects, Exits, Characters and Rooms).
@@ -22,6 +98,40 @@ class ObjectParent:
     take precedence.
 
     """
+
+    location = _fenced_property("location", "db_location_id")
+    home = _fenced_property("home", "db_home_id")
+    destination = _fenced_property("destination", "db_destination_id")
+    key = _fenced_property("key", "db_key")
+
+    def move_to(self, destination, *args, **kwargs):
+        from web.builder.operation_fences import guard_movement
+        from web.builder.operation_runtime import OperationError
+
+        try:
+            # Positional parameters follow DefaultObject.move_to unchanged.
+            use_destination = args[2] if len(args) > 2 else kwargs.get("use_destination", True)
+            guard_movement(self, destination, use_destination=use_destination)
+        except OperationError as error:
+            emit_to_obj = args[1] if len(args) > 1 else kwargs.get("emit_to_obj")
+            (emit_to_obj or self).msg(str(error))
+            return False
+        return super().move_to(destination, *args, **kwargs)
+
+    def access(self, accessing_obj, access_type="view", default=False, **kwargs):
+        from web.builder.operation_fences import access_is_fenced
+
+        if access_is_fenced(self, access_type):
+            return False
+        return super().access(accessing_obj, access_type, default, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        from web.builder.operation_fences import guard_object
+        from web.builder.operation_runtime import assert_connection_room_allowed
+
+        guard_object(self)
+        assert_connection_room_allowed(self.pk)
+        return super().delete(*args, **kwargs)
 
     def get_display_tags(self, looker, **kwargs):
 

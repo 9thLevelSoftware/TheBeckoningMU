@@ -171,7 +171,9 @@ class CmdSpend(default_cmds.MuxCommand):
         +spend attribute <name>
         +spend skill <name>
         +spend specialty <skill> = <specialty name>
-        +spend discipline <name>
+        +spend discipline <name> = <power>
+        +spend/choices
+        +spend/claim <entitlement-id> = <power>
         +spend advantage <background or merit>
         +spend advantage <background> = <who or what>   (Allies, Contacts, ...)
         +spend bp
@@ -192,7 +194,7 @@ class CmdSpend(default_cmds.MuxCommand):
         +spend attribute strength
         +spend skill brawl
         +spend specialty brawl = Grappling
-        +spend discipline potence
+        +spend discipline potence = Prowess
         +spend advantage Resources
         +spend advantage Allies = street gang
         +spend ritual Ward against Ghouls
@@ -208,6 +210,32 @@ class CmdSpend(default_cmds.MuxCommand):
     def func(self):
         """Execute spend command."""
         caller = self.caller
+
+        if "choices" in self.switches:
+            choices = caller.pending_power_choices
+            if not choices:
+                caller.msg("No pending discipline power choices.")
+                return
+            from world.power_eligibility import eligible_power_names
+
+            caller.msg("Pending power choices (no additional XP):")
+            for choice in choices:
+                rating = min(caller.get_trait(choice["discipline"]), choice["rating"])
+                names = eligible_power_names(caller, choice["discipline"], rating)
+                caller.msg(f"{choice['id']}: {choice['discipline']} (up to {rating}) — "
+                           + (", ".join(names) or "none eligible; ask staff"))
+            return
+        if "claim" in self.switches:
+            if not self.lhs or not self.rhs:
+                caller.msg("Usage: +spend/claim <entitlement-id> = <power>")
+                return
+            try:
+                result = caller.claim_discipline_power(self.lhs.strip(), self.rhs.strip())
+            except (ValueError, KeyError) as error:
+                caller.msg(f"|r{error}|n Nothing was spent or claimed.")
+                return
+            caller.msg(f"Learned {result['power']} from {result['entitlement']['id']}; no XP charged.")
+            return
 
         lhs = (self.lhs or "").strip()
         if not lhs:

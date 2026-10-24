@@ -45,12 +45,53 @@ const typed = core.buildPayload(s);
 // 2. The edit form: a stored submission back into state and out again.
 const roundTrip = core.buildPayload(core.stateFromSubmission(rules, fixture));
 
-console.log(JSON.stringify({typed, roundTrip, tallies: core.tallies(rules, s)}));
+console.log(JSON.stringify({typed, roundTrip, tallies: core.tallies(rules, s),
+    createValidation: core.validationPayload(s, null), editValidation: core.validationPayload(s, '9')}));
 """
 
 
 @unittest.skipUnless(shutil.which("node"), "Node.js is not installed")
 class ChargenClientPayloadTests(EvenniaTest):
+    def test_thin_blood_discipline_tracker_uses_selected_merits(self):
+        program = r"""
+const core = require(process.argv[1]);
+const rules = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+const state = core.newState(rules);
+state.clan = 'Thin-Blood';
+function row() { return core.tallies(rules, state).find(r => r[0] === 'Discipline dots'); }
+const rows = [row()];
+state.advantages = [{name: 'Thin-blood Alchemist', dots: 1}];
+state.disciplines = {'Thin-Blood Alchemy': 1};
+rows.push(row());
+state.advantages.push({name: 'Discipline Affinity', dots: 1});
+state.disciplines.Potence = 1;
+rows.push(row());
+state.advantages = [{name: 'Discipline Affinity', dots: 1}];
+state.disciplines = {Potence: 1};
+rows.push(row());
+state.advantages = [];
+rows.push(row());
+console.log(JSON.stringify(rows));
+"""
+        result = subprocess.run(
+            ["node", "-e", program, str(SCRIPT)],
+            input=json.dumps(chargen_rules()),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        self.assertEqual(
+            json.loads(result.stdout),
+            [
+                ["Discipline dots", 0, 0, True],
+                ["Discipline dots", 1, 1, True],
+                ["Discipline dots", 2, 2, True],
+                ["Discipline dots", 1, 1, True],
+                ["Discipline dots", 1, 0, False],
+            ],
+        )
+
     def run_node(self, rules):
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
         result = subprocess.run(
@@ -68,6 +109,8 @@ class ChargenClientPayloadTests(EvenniaTest):
         out = self.run_node(rules)
         self.assertEqual(out["typed"], legal_payload())
         self.assertEqual(out["roundTrip"], legal_payload())
+        self.assertEqual(out["createValidation"], out["typed"])
+        self.assertEqual(out["editValidation"], dict(out["typed"], edit_character_id=9))
         self.assertEqual(validate_v5_creation(parse_submission(out["typed"])), [])
         self.assertTrue(all(t[3] for t in out["tallies"]), out["tallies"])
 

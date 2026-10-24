@@ -79,7 +79,10 @@ class Room(ObjectParent, DefaultRoom):
         """
         Returns the displayed description of the room
         """
-        return self.db.desc or "You see nothing special."
+        description = self.db.desc or "You see nothing special."
+        if self.attributes.get("location_type") == "haven":
+            description += "\nHaven benefits are staff-adjudicated; ratings grant no automatic bonuses or outcomes."
+        return description
 
     def get_display_characters(self, looker, **kwargs):
         """
@@ -223,6 +226,10 @@ class Room(ObjectParent, DefaultRoom):
         - The builder who owns the sandbox
         - Staff members
         """
+        from web.builder.operation_fences import access_is_fenced
+
+        if access_is_fenced(self, access_type):
+            return False
         if access_type == "traverse" and self.tags.get("sandbox"):
             # Check if accessing_obj is the sandbox owner
             # Sandbox rooms are tagged with project_{id}
@@ -255,6 +262,10 @@ class Room(ObjectParent, DefaultRoom):
         """
         This is the hook for returning the appearance of the room.
         """
+        from web.builder.operation_runtime import object_is_fenced
+
+        if object_is_fenced(self):
+            return "This area is temporarily unavailable while a builder operation completes."
         header = self.get_display_header(looker, **kwargs)
 
         name = self.get_display_name(looker, **kwargs)

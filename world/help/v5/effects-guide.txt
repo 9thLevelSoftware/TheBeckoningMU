@@ -19,14 +19,25 @@ after the scene; the Storyteller decides when it has ended.
 
 |WWHAT AN EFFECT DOES|n
 
-An effect is a record, not an automatic bonus. Two kinds feed into rolls:
-an active Celerity bonus adds to your defense against |y+attack|n, and an
-active Potence bonus adds to the damage of your attacks. Everything else
-(being unseen, a Dominate command, heightened senses) is applied by the
-Storyteller in the scene.
+Fleetness adds your Celerity rating to noncombat Dexterity tests and one
+Dexterity + Athletics defense per turn. Other defense pools receive no
+Fleetness bonus. The best standard defense is chosen after modifiers.
+Staff |y+effects/tick|n starts your next turn and renews that one defense;
+using Fleetness again, logging out or clearing its record does not renew it.
 
-Using a power again adds a second entry; the Storyteller decides whether
-two uses of the same power stack.
+Under the chronicle's provisional catalog policy, Prowess adds Potence to
+Brawl/Melee attack damage, Toughness subtracts Fortitude from Superficial
+physical damage, and Resilience adds Fortitude to your Health maximum.
+Repeated activations do not stack these contributions. Toughness does not
+reduce Aggravated damage. These catalog values await primary-source review.
+Other recorded effects, such as being unseen or a Dominate command, remain
+Storyteller-adjudicated unless a command explicitly describes a consumer.
+Numeric |yroll <pool>|n commands have no trait or combat context: include
+trait-specific bonuses and Health impairment in that pool with the
+Storyteller. The game cannot infer Dexterity or a defense from a number.
+
+Using a power again records a separate activation; automatic bonuses use
+the strongest eligible contribution once, rather than adding duplicates.
 
 |WCOMMANDS|n
 

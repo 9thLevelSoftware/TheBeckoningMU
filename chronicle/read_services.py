@@ -7,7 +7,7 @@ from boons.utils import get_boon_totals
 from status.models import CharacterStatus
 
 from .models import ChronicleEvent
-from .services import characters_for_account, participant_events, public_events
+from .services import available_events, characters_for_account, participant_events, public_events
 
 SUMMARY_ATTRIBUTES = ("stats", "vampire", "pools", "advantages")
 
@@ -86,10 +86,15 @@ def character_chronicle_for_account(account, character_id, limit=100):
     character = characters_for_account(account).filter(pk=character_id).values("id").first()
     if character is None:
         return None
-    return ChronicleEvent.objects.filter(
-        participants__pk=character["id"],
-        visibility=ChronicleEvent.Visibility.PARTICIPANTS,
-        status=ChronicleEvent.Status.PUBLISHED,
+    return available_events(
+        ChronicleEvent.objects.filter(
+            participants__pk=character["id"],
+            visibility=ChronicleEvent.Visibility.PARTICIPANTS,
+            status=ChronicleEvent.Status.PUBLISHED,
+        ),
+        audience="participants",
+        account=account,
+        character_id=character["id"],
     )[:limit]
 
 

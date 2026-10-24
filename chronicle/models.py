@@ -17,6 +17,12 @@ class ChronicleEvent(models.Model):
         PUBLISHED = "published", "Published"
         SUPERSEDED = "superseded", "Superseded"
         REDACTED = "redacted", "Redacted"
+        DISCARDED = "discarded", "Discarded"
+        WITHDRAWN = "withdrawn", "Withdrawn for source review"
+
+    class LineageStatus(models.TextChoices):
+        KNOWN = "known", "Known"
+        UNKNOWN = "unknown", "Needs source review"
 
     idempotency_key = models.CharField(max_length=200, unique=True)
     source_app = models.CharField(max_length=64)
@@ -54,13 +60,35 @@ class ChronicleEvent(models.Model):
         related_name="chronicle_events_redacted",
     )
     redacted_at = models.DateTimeField(null=True, blank=True)
-    supersedes = models.OneToOneField(
+    version = models.PositiveIntegerField(default=1)
+    supersedes = models.ForeignKey(
         "self",
         on_delete=models.PROTECT,
         null=True,
         blank=True,
-        related_name="correction",
+        related_name="corrections",
     )
+    supersedes_version = models.PositiveIntegerField(null=True, blank=True)
+    revision_of = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="revisions")
+    discarded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chronicle_events_discarded",
+    )
+    discarded_at = models.DateTimeField(null=True, blank=True)
+    withdrawn_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chronicle_events_withdrawn",
+    )
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+    withdrawal_reason = models.CharField(max_length=80, blank=True)
+    lineage_status = models.CharField(max_length=8, choices=LineageStatus.choices, default=LineageStatus.KNOWN)
+    lineage_note = models.CharField(max_length=80, blank=True)
     ai_generated = models.BooleanField(default=False)
     source_events = models.ManyToManyField("self", blank=True, symmetrical=False, related_name="derived_events")
 
@@ -69,6 +97,13 @@ class ChronicleEvent(models.Model):
         indexes = [
             models.Index(fields=["status", "visibility", "occurred_at"]),
             models.Index(fields=["source_app", "source_type", "source_id"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("supersedes",),
+                condition=models.Q(status="draft", supersedes__isnull=False),
+                name="chronicle_one_active_correction_draft",
+            ),
         ]
 
     def __str__(self):
@@ -94,6 +129,7 @@ class ChronicleGenerationRequest(models.Model):
     source_fingerprints = models.JSONField(default=dict)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
     dispatched_at = models.DateTimeField(null=True, blank=True)
+    deadline_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     citations = models.JSONField(default=list, blank=True)

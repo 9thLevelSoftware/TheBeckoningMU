@@ -32,6 +32,72 @@ from .app import RequestProtection, create_application
 from .tools import _require_token, register_tools
 
 
+class MCPWithdrawalTests(TestCase):
+    def setUp(self):
+        from evennia.objects.models import ObjectDB
+
+        from chronicle.models import ChronicleEvent
+        from chronicle.test_moderation import moderation_fixture
+
+        self.staff, self.a = moderation_fixture("mcp-withdrawal")
+        self.owner = get_user_model().objects.create_user(username="mcp-withdrawal-owner")
+        self.other = get_user_model().objects.create_user(username="mcp-withdrawal-other")
+        self.character = ObjectDB.objects.create(
+            db_key="MCP Withdrawal", db_typeclass_path="typeclasses.characters.Character"
+        )
+        CharacterBio.objects.create(character=self.character, account=self.owner)
+        self.b = ChronicleEvent.objects.create(
+            idempotency_key="mcp-recap",
+            source_app="staff",
+            source_type="scene",
+            source_id="mcp-recap",
+            kind="scene.curated",
+            status="published",
+            visibility="public",
+            title="MCP recap",
+            summary="MCP-WITHDRAWAL-SENSITIVE",
+        )
+        self.b.source_events.add(self.a)
+        self.c = ChronicleEvent.objects.create(
+            idempotency_key="mcp-personal-recap",
+            source_app="staff",
+            source_type="scene",
+            source_id="mcp-personal",
+            kind="scene.curated",
+            status="published",
+            visibility="participants",
+            title="MCP personal recap",
+            summary="MCP-WITHDRAWAL-PERSONAL",
+        )
+        self.c.source_events.add(self.b)
+        self.c.participants.add(self.character)
+
+    def test_public_and_account_mcp_projections_recheck_transitive_source_withdrawal(self):
+        from chronicle.services import redact_event
+
+        from .tools import _account_chronicle_records, _chronicle_record, _public_chronicle_records
+
+        warm = self.b
+        self.assertIn(self.b.pk, {row["id"] for row in _public_chronicle_records(100)})
+        self.assertIn(self.c.pk, {row["id"] for row in _account_chronicle_records(self.owner, 100)})
+        redact_event(self.a.pk, self.staff)
+        self.assertEqual(_public_chronicle_records(100), [])
+        self.assertEqual(_account_chronicle_records(self.owner, 100), [])
+        self.assertIsNone(_chronicle_record(warm))
+
+    def test_warmed_account_record_rechecks_ownership_and_raw_ancestor_revocation(self):
+        from chronicle.models import ChronicleEvent
+
+        from .tools import _chronicle_record
+
+        self.assertIsNotNone(_chronicle_record(self.c, "account", self.owner))
+        CharacterBio.objects.filter(character=self.character).update(account=self.other)
+        self.assertIsNone(_chronicle_record(self.c, "account", self.owner))
+        self.assertIsNotNone(_chronicle_record(self.c, "account", self.other))
+        ChronicleEvent.objects.filter(pk=self.a.pk).update(status="redacted")
+        self.assertIsNone(_chronicle_record(self.c, "account", self.other))
+
+
 def _valid_access_token(scopes):
     return AccessToken(
         token="",

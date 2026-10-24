@@ -43,3 +43,18 @@ CSRF_TRUSTED_ORIGINS = [
 # "Deployment notes (client addresses)" in README.md. Without it the
 # approval page's same-address flag means nothing.
 # UPSTREAM_IPS = ["<front proxy address>"]
+
+# Optional OpenAI-compatible prose provider. HTTPS is required except for local
+# loopback fixtures. Keep the real key in secret_settings.py. Requests are never
+# retried automatically. The total deadline includes connecting, headers, body,
+# and response parsing; the connection timeout is additionally bounded.
+# NARRATIVE_AI = {
+#     "endpoint": "https://provider.example/v1/chat/completions",
+#     "model": "your-model",
+#     "api_key": "your-private-key",
+#     "request_timeout_seconds": 30,  # positive seconds, maximum 300
+#     "connect_timeout_seconds": 10,  # positive seconds, maximum 300
+#     "response_max_bytes": 1048576,  # positive integer, maximum 8388608 (8 MiB)
+#     "prose_max_chars": 12000,  # positive integer, maximum 100000
+# }
+# Invalid limits disable provider configuration before any request is sent.
